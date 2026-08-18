@@ -1,0 +1,18 @@
+{
+  "name": "Arbeitszeit 2026",
+  "short_name": "Arbeitszeit",
+  "description": "Offline Arbeitszeit- und Überstundenerfassung für 2026",
+  "lang": "de-DE",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f5fbfc",
+  "theme_color": "#083344",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

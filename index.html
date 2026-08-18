@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#083344" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Arbeitszeit 2026" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="icon.svg" />
+    <link rel="icon" href="icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="styles.css" />
+    <title>Arbeitszeit 2026</title>
+  </head>
+  <body>
+    <div id="app" class="app-shell" aria-live="polite">
+      <div class="loading-card">
+        <div class="loading-mark">AZ</div>
+        <p>Arbeitszeit wird vorbereitet …</p>
+      </div>
+    </div>
+    <input id="restore-file" type="file" accept="application/json" hidden />
+    <script type="module" src="app.js?v=4"></script>
+  </body>
+</html>

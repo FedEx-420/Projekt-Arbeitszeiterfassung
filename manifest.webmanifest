@@ -1,7 +1,7 @@
 {
-  "name": "Arbeitszeit 2026",
+  "name": "Arbeitszeit · Team",
   "short_name": "Arbeitszeit",
-  "description": "Offline Arbeitszeit- und Überstundenerfassung für 2026",
+  "description": "Gemeinsame Arbeitszeit-, Kunden- und Arbeitsscheinerfassung",
   "lang": "de-DE",
   "start_url": "./",
   "display": "standalone",
@@ -16,3 +16,4 @@
     }
   ]
 }
+

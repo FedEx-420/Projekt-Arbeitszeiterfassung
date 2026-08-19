@@ -60,6 +60,11 @@ function currentStatus() { const row = currentDay(), name = HOLIDAYS[s.selected]
 function me() { return s.employees.find((row) => row.id === s.employeeId) || s.profile }
 function tell(text, error = false) { s.note = { text, error }; render(); setTimeout(() => { if (s.note?.text === text) { s.note = null; render() } }, 4500) }
 async function data(request) { const { data: result, error } = await request; if (error) throw error; return result }
+async function deleteSavedRecord(table, id) {
+  const removed = await data(db.from(table).delete().eq("id", id).select("id"))
+  if (!removed?.length) throw new Error("Der Eintrag konnte nicht gelöscht werden. Bitte die Seite einmal neu laden und erneut versuchen.")
+  return removed[0]
+}
 
 async function loadProfile() {
   s.profile = await data(db.from("profiles").select("*").eq("id", s.session.user.id).single())
@@ -345,12 +350,12 @@ root.addEventListener("click", async (event) => {
     if (button.dataset.action === "open-appointment-form") { s.calendarForm = "appointment"; render(); return }
     if (button.dataset.action === "close-calendar-form") { s.calendarForm = ""; render(); return }
     if (button.dataset.action === "add-entry") await addEntry()
-    if (button.dataset.action === "delete-entry" && window.confirm("Diese Kundenzeile wirklich löschen?")) { await data(db.from("time_entries").delete().eq("id", button.dataset.id)); s.entries = s.entries.filter((row) => row.id !== button.dataset.id); render() }
+    if (button.dataset.action === "delete-entry" && window.confirm("Diese Kundenzeile wirklich löschen?")) { await deleteSavedRecord("time_entries", button.dataset.id); await loadData(); tell("Zeiterfassungszeile gelöscht.") }
     if (button.dataset.action === "open-order") { s.view = "orders"; render(); const field = root.querySelector("[data-form='order'] [name='customerName']"); if (field) { field.value = button.dataset.customer || ""; field.focus() } }
-    if (button.dataset.action === "delete-customer") { const row = s.customers.find((item) => item.id === button.dataset.id); if (row && window.confirm("Kunde „" + row.name + "“ wirklich löschen? Bereits erfasste Zeiten bleiben erhalten.")) { await data(db.from("customers").delete().eq("id", row.id)); s.customers = s.customers.filter((item) => item.id !== row.id); tell("Kunde gelöscht.") } }
+    if (button.dataset.action === "delete-customer") { const row = s.customers.find((item) => item.id === button.dataset.id); if (row && window.confirm("Kunde „" + row.name + "“ wirklich löschen? Bereits erfasste Zeiten bleiben erhalten.")) { await deleteSavedRecord("customers", row.id); await loadData(); tell("Kunde gelöscht.") } }
     if (button.dataset.action === "delete-customer-field") { const row = s.customers.find((item) => item.id === button.dataset.id); if (row && window.confirm("Das zusätzliche Kundendatenfeld „" + button.dataset.key + "“ wirklich entfernen?")) { const fields = { ...(row.custom_fields || {}) }; delete fields[button.dataset.key]; Object.assign(row, await data(db.from("customers").update({ custom_fields: fields }).eq("id", row.id).select().single())); tell("Kundendatenfeld entfernt.") } }
     if (button.dataset.action === "delete-item") { await data(db.from("work_order_items").delete().eq("id", button.dataset.id)); s.items = s.items.filter((row) => row.id !== button.dataset.id); render() }
-    if (button.dataset.action === "delete-order" && window.confirm("Diesen Arbeitsschein mit allen Positionen löschen?")) { await data(db.from("work_orders").delete().eq("id", button.dataset.id)); s.orders = s.orders.filter((row) => row.id !== button.dataset.id); s.items = s.items.filter((row) => row.work_order_id !== button.dataset.id); render() }
+    if (button.dataset.action === "delete-order" && window.confirm("Diesen Arbeitsschein mit allen Positionen löschen?")) { await deleteSavedRecord("work_orders", button.dataset.id); await loadData(); tell("Arbeitsschein gelöscht.") }
     if (button.dataset.action === "delete-column" && window.confirm("Zusatzspalte entfernen? Die bisherigen Werte bleiben in den Einträgen gespeichert.")) { await data(db.from("custom_columns").delete().eq("id", button.dataset.id)); s.columns = s.columns.filter((row) => row.id !== button.dataset.id); render() }
     if (button.dataset.action === "delete-material" && window.confirm("Material „" + button.dataset.name + "“ aus dem Katalog entfernen? Bereits verwendete Preise bleiben in vorhandenen Arbeitsscheinen erhalten.")) { await data(db.from("materials").update({ active: false }).eq("id", button.dataset.id)); await loadData(); tell("Material aus dem Katalog entfernt.") }
     if (button.dataset.action === "delete-appointment" && window.confirm("Diesen Kundentermin wirklich entfernen?")) { await data(db.from("appointments").delete().eq("id", button.dataset.id)); await loadData(); tell("Kundentermin entfernt.") }

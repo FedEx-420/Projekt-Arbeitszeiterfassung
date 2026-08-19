@@ -336,7 +336,9 @@ function calendar() {
   const workRows = details.entries.map((row) => "<li><strong>" + h(row.customer_name || "Ohne Kunden") + "</strong> · " + h(row.start_time || "–") + "–" + h(calc(row).end_time || "–") + " Uhr · " + hours(calc(row).executed_hours) + "</li>").join("")
   const appointmentRows = details.appointments.map((row) => "<li><strong>Termin: " + h(row.title) + "</strong>" + (row.customer_name ? " · " + h(row.customer_name) : "") + (row.notes ? " · " + h(row.notes) : "") + " <button class='text-button' data-action='delete-appointment' data-id='" + h(row.id) + "'>Entfernen</button></li>").join("")
   const vacation = details.vacation ? "<li class='calendar-vacation-text " + (details.vacation.status === "requested" ? "pending-text" : "approved-text") + "'><strong>" + (details.vacation.status === "requested" ? "Urlaub beantragt" : "Urlaub genehmigt") + "</strong> · " + n(details.vacation.requested_days).toLocaleString("de-DE", { maximumFractionDigits: 2 }) + " Tage</li>" : ""
-  const sickness = details.sick ? "<li class='calendar-sick-text'><strong>Krank gemeldet</strong> · ganzer Arbeitstag</li>" : ""
+  const sickness = details.sick
+    ? "<li class='calendar-sick-text'><strong>Krank gemeldet</strong> · ganzer Arbeitstag</li>"
+    : "<li class='calendar-sick-clear'><strong>Nicht krank gemeldet</strong> · kein Krankheitstag gespeichert</li>"
   const detailList = workRows + appointmentRows + vacation + sickness || "<li class='muted'>Keine Aktivitäten an diesem Tag.</li>"
   const chief = s.profile.role === "chief", employeeMayReportSick = weekday(s.selected) || Boolean(details.vacation) || Boolean(HOLIDAYS[s.selected])
   const sicknessCalendarAction = chief
@@ -393,9 +395,13 @@ async function setSick(value) {
   if (!value && !existing) { tell("Für diesen Tag ist keine Krankmeldung vorhanden."); return }
   const saved = await data(db.from("work_days").upsert({ employee_id: s.employeeId, work_date: s.selected, sick: value }, { onConflict: "employee_id,work_date" }).select().single())
   s.days.set(saved.work_date, saved)
-  await loadData()
-  render()
-  tell(value ? (s.profile.role === "chief" ? "Der Krankheitstag wurde gespeichert." : "Deine Krankmeldung wurde gespeichert.") : "Die Krankmeldung wurde entfernt.")
+  const message = value
+    ? (s.profile.role === "chief" ? "Der Krankheitstag wurde gespeichert und sofort angezeigt." : "Deine Krankmeldung wurde gespeichert und sofort angezeigt.")
+    : "Die Krankmeldung wurde entfernt und der Tag wird wieder als nicht krank angezeigt."
+  tell(message)
+  // Die sichtbare Rückmeldung darf nicht von einem späteren Gesamtabgleich abhängen.
+  // Der Abgleich hält parallel geänderte Daten anderer Geräte anschließend aktuell.
+  try { await loadData(); render() } catch (_) {}
 }
 async function markSick() { await setSick(1) }
 async function removeSick() { await setSick(0) }

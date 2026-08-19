@@ -11,7 +11,7 @@ const HOLIDAYS = {
 }
 if (!cfg?.supabaseUrl || !cfg?.supabasePublishableKey) throw new Error("App-Konfiguration fehlt.")
 const db = createClient(cfg.supabaseUrl, cfg.supabasePublishableKey)
-const s = { session: null, profile: null, employees: [], employeeId: null, view: "planner", selected: workday(new Date()), customers: [], days: new Map(), entries: [], columns: [], orders: [], items: [], materials: [], messages: [], appointments: [], vacationRequests: [], calendarMonth: new Date().getMonth(), calendarYear: new Date().getFullYear(), calendarForm: "", note: null, loading: true }
+const s = { session: null, profile: null, employees: [], employeeId: null, view: "planner", selected: workday(new Date()), customers: [], days: new Map(), entries: [], columns: [], orders: [], items: [], materials: [], messages: [], appointments: [], vacationRequests: [], calendarMonth: new Date().getMonth(), calendarYear: new Date().getFullYear(), calendarForm: "", customerChannel: null, customerSyncTimer: null, note: null, loading: true }
 
 function iso(value) {
   const d = value instanceof Date ? value : new Date(String(value) + "T12:00:00")
@@ -40,6 +40,10 @@ function calc(row) {
   return { ...row, pause_hours: pause, executed_hours: done, end_time: row.start_time ? addTime(row.start_time, (done + pause) * 60) : "" }
 }
 function jobs() { return s.entries.filter((row) => row.work_date === s.selected).sort((a, b) => String(a.created_at || a.id).localeCompare(String(b.created_at || b.id))) }
+function orderStartFor(workDate) {
+  const earlier = s.orders.concat(s.entries).filter((row) => row.work_date === workDate && calc(row).end_time).sort((left, right) => String(left.created_at || left.id).localeCompare(String(right.created_at || right.id)))
+  return earlier.length ? calc(earlier.at(-1)).end_time || "07:30" : "07:30"
+}
 function sameDay(left, right) { return String(left) === String(right) }
 function inRange(value, start, end) { return String(value) >= String(start) && String(value) <= String(end) }
 function employeeName(id) { return s.employees.find((row) => row.id === id)?.username || "Unbekannter Mitarbeiter" }
@@ -85,11 +89,22 @@ async function loadData() {
   const ids = s.orders.map((row) => row.id)
   s.items = ids.length ? await data(db.from("work_order_items").select("*").in("work_order_id", ids).order("created_at")) : []
 }
+function syncCustomersAcrossDevices() {
+  if (s.customerChannel) db.removeChannel(s.customerChannel)
+  if (!s.session) return
+  s.customerChannel = db.channel("customer-sync-" + s.session.user.id)
+    .on("postgres_changes", { event: "*", schema: "public", table: "customers" }, () => {
+      if (s.view !== "customers" || !s.session) return
+      window.clearTimeout(s.customerSyncTimer)
+      s.customerSyncTimer = window.setTimeout(async () => { try { await loadData(); render() } catch (_) {} }, 250)
+    })
+    .subscribe()
+}
 async function boot() {
   s.loading = true; render()
   const result = await db.auth.getSession(); s.session = result.data.session
-  if (!s.session) { s.loading = false; render(); return }
-  try { await loadProfile(); await loadEmployees(); await loadData() }
+  if (!s.session) { if (s.customerChannel) { db.removeChannel(s.customerChannel); s.customerChannel = null } s.loading = false; render(); return }
+  try { await loadProfile(); await loadEmployees(); await loadData(); syncCustomersAcrossDevices() }
   catch (error) { await db.auth.signOut(); s.session = null; s.profile = null; s.note = { text: "Anmeldung konnte nicht geladen werden: " + error.message, error: true } }
   s.loading = false; render()
 }
@@ -132,7 +147,12 @@ function planner() {
 }
 function customers() {
   const total = (customer) => s.entries.filter((row) => row.customer_id === customer.id || String(row.customer_name).toLowerCase() === String(customer.name).toLowerCase()).reduce((sum, row) => sum + calc(row).executed_hours, 0)
-  const list = s.customers.length ? s.customers.map((row) => "<article class='customer-row'><div><h2>" + h(row.name) + "</h2><p>" + hours(total(row)) + " im Jahr " + YEAR + "</p></div><button class='danger-outline' data-action='delete-customer' data-id='" + h(row.id) + "'>Kunde löschen</button></article>").join("") : "<div class='empty-state'>Noch keine Kunden vorhanden.</div>"
+  const card = (row) => {
+    const fields = Object.entries(row.custom_fields || {})
+    const saved = fields.length ? "<div class='customer-field-values'>" + fields.map((field) => "<div><span>" + h(field[0]) + "</span><strong>" + h(field[1]) + "</strong><button class='text-button' data-action='delete-customer-field' data-id='" + h(row.id) + "' data-key='" + h(field[0]) + "'>Entfernen</button></div>").join("") + "</div>" : "<p class='muted customer-fields-empty'>Noch keine zusätzlichen Kundendaten.</p>"
+    return "<article class='customer-row customer-card'><div class='customer-head'><div><h2>" + h(row.name) + "</h2><p>" + hours(total(row)) + " im Jahr " + YEAR + "</p></div><button class='danger-outline' data-action='delete-customer' data-id='" + h(row.id) + "'>Kunde löschen</button></div><div class='customer-extra'><h3>Zusätzliche Kundendaten</h3>" + saved + "<form data-form='customer-field' data-id='" + h(row.id) + "' class='customer-field-add'><label>Feldbezeichnung<input name='fieldName' required placeholder='z. B. Telefonnummer'></label><label>Wert<input name='fieldValue' required placeholder='Wert eintragen'></label><button class='quiet' type='submit'>Feld speichern</button></form></div></article>"
+  }
+  const list = s.customers.length ? s.customers.map(card).join("") : "<div class='empty-state'>Noch keine Kunden vorhanden.</div>"
   return "<main class='page'><section class='hero-small'><p class='eyebrow'>KUNDENLISTE</p><h1>Kunden verwalten</h1><p class='muted'>Die Stunden summieren sich aus allen Einträgen des ausgewählten Mitarbeiters.</p></section><form data-form='customer' class='inline-form labelled-inline'><label>Kundenname<input name='name' required placeholder='Neuen Kunden eingeben'></label><button class='primary' type='submit'>Kunde anlegen</button></form><section class='customer-list'>" + list + "</section></main>"
 }
 function orderCard(order) {
@@ -145,16 +165,17 @@ function orderCard(order) {
 }
 function orders() {
   const options = s.customers.map((row) => "<option value='" + h(row.name) + "'></option>").join("")
-  return "<main class='page'><section class='hero-small'><p class='eyebrow'>ARBEITSSCHEINE</p><h1>Material und Kosten</h1><p class='muted'>Ein neuer Arbeitsschein übernimmt Kunden, Arbeitszeit und Stunden automatisch in die Zeiterfassung.</p></section><form data-form='order' class='order-create'><div class='form-grid order-grid'><label>Datum<input name='workDate' type='date' value='" + s.selected + "' required></label><label>Kunde<input name='customerName' list='customer-list' required placeholder='Kunde auswählen'></label><label>Titel<input name='title' placeholder='z. B. Reparatur'></label><label>Berechnung<select name='calculationMode'><option value='hours'>Stunden eingeben</option><option value='end_time'>Endzeit eingeben</option></select></label><label>Arbeitsbeginn<input name='startTime' type='time' value='07:30' required></label><label>Arbeitsende<input name='endTime' type='time'></label><label>Pause (Stunden)<input name='pauseHours' inputmode='decimal' value='0'></label><label>Ausgeführte Stunden<input name='executedHours' inputmode='decimal' value='0'></label></div><label>Notiz<textarea name='notes' placeholder='Zusätzliche Hinweise'></textarea></label><button class='primary' type='submit'>Arbeitsschein anlegen</button></form><datalist id='customer-list'>" + options + "</datalist><section class='order-list'>" + (s.orders.length ? s.orders.map(orderCard).join("") : "<div class='empty-state'>Noch keine Arbeitsscheine vorhanden.</div>") + "</section></main>"
+  return "<main class='page'><section class='hero-small'><p class='eyebrow'>ARBEITSSCHEINE</p><h1>Material und Kosten</h1><p class='muted'>Endzeit eintragen oder Stunden eingeben – die jeweils andere Zeit wird automatisch berechnet und in die Zeiterfassung übernommen.</p></section><form data-form='order' class='order-create'><div class='form-grid order-grid'><label>Datum<input id='order-work-date' name='workDate' type='date' value='" + s.selected + "' required></label><label>Kunde<input name='customerName' list='customer-list' required placeholder='Kunde auswählen'></label><label>Titel<input name='title' placeholder='z. B. Reparatur'></label><label>Arbeitsbeginn<input id='order-start-time' name='startTime' type='time' value='" + orderStartFor(s.selected) + "' required></label><label>Arbeitsende (oder Stunden)<input name='endTime' type='time'></label><label>Pause (Stunden)<input name='pauseHours' inputmode='decimal' value='0'></label><label>Ausgeführte Stunden (oder Ende)<input name='executedHours' inputmode='decimal' placeholder='z. B. 2,5'></label></div><label>Notiz<textarea name='notes' placeholder='Zusätzliche Hinweise'></textarea></label><button class='primary' type='submit'>Arbeitsschein anlegen</button></form><datalist id='customer-list'>" + options + "</datalist><section class='order-list'>" + (s.orders.length ? s.orders.map(orderCard).join("") : "<div class='empty-state'>Noch keine Arbeitsscheine vorhanden.</div>") + "</section></main>"
 }
 function settings() {
   const employee = me(), chief = s.profile.role === "chief"
   const columns = s.columns.length ? s.columns.map((row) => "<div><span>" + h(row.name) + "</span>" + (chief ? "<button class='danger-outline' data-action='delete-column' data-id='" + h(row.id) + "'>Entfernen</button>" : "") + "</div>").join("") : "<p class='muted'>Keine zusätzlichen Eingabefelder.</p>"
   const columnControl = chief ? "<form data-form='column' class='inline-form labelled-inline'><label>Neue Feldbezeichnung<input name='name' required placeholder='z. B. Fahrzeug'></label><button class='primary' type='submit'>Feld hinzufügen</button></form>" : "<p class='muted'>Zusätzliche Felder können nur vom Chef angelegt oder entfernt werden.</p>"
-  const account = "<section class='settings-section'><h2>Mein Benutzerkonto</h2><p>Hier kann jeder sein eigenes Passwort und seinen eigenen Benutzernamen ändern.</p><form data-form='self-account' class='form-grid account-form'><label>Benutzername<input name='username' value='" + h(s.profile.username) + "' required></label><label>Neues Passwort<input name='password' type='password' autocomplete='new-password' placeholder='Leer lassen = unverändert'></label><button class='primary' type='submit'>Konto speichern</button></form></section>"
+  const ownVacation = chief ? "<label>Mein Urlaubsanspruch (Tage)<input name='vacationAllowance' inputmode='decimal' value='" + h(s.profile.vacation_allowance) + "' required></label>" : ""
+  const account = "<section class='settings-section'><h2>Mein Benutzerkonto</h2><p>Hier kann jeder sein eigenes Passwort und seinen eigenen Benutzernamen ändern." + (chief ? " Als Chef kannst du außerdem deinen eigenen Urlaubsanspruch pflegen." : "") + "</p><form data-form='self-account' class='form-grid account-form'><label>Benutzername<input name='username' value='" + h(s.profile.username) + "' required></label><label>Neues Passwort<input name='password' type='password' autocomplete='new-password' placeholder='Leer lassen = unverändert'></label>" + ownVacation + "<button class='primary' type='submit'>Konto speichern</button></form></section>"
   const materialCatalogue = !chief ? "" : "<section class='settings-section'><div class='section-title'><div><p class='eyebrow'>CHEFBEREICH</p><h2>Materialkatalog</h2><p>Preise werden ausschließlich hier gepflegt. Im Arbeitsschein sind sie nur sichtbar.</p></div></div><form data-form='new-material' class='inline-form labelled-inline'><label>Material<input name='name' required placeholder='z. B. Kabel'></label><label>Preis pro Stück (€)<input name='unitPrice' inputmode='decimal' value='0' required></label><button class='primary' type='submit'>Material anlegen</button></form><div class='material-catalogue'>" + (s.materials.length ? s.materials.map((row) => "<form data-form='material-update' data-id='" + h(row.id) + "' class='catalogue-row'><label>Material<input name='name' value='" + h(row.name) + "' required></label><label>Preis pro Stück (€)<input name='unitPrice' inputmode='decimal' value='" + h(row.unit_price) + "' required></label><button class='quiet' type='submit'>Speichern</button><button class='danger-outline' type='button' data-action='delete-material' data-id='" + h(row.id) + "' data-name='" + h(row.name) + "'>Entfernen</button></form>").join("") : "<p class='muted'>Noch kein Material angelegt.</p>") + "</div></section>"
   const staff = !chief ? "" : "<section class='settings-section'><div class='section-title'><div><p class='eyebrow'>CHEFBEREICH</p><h2>Mitarbeiter verwalten</h2><p>Konten, Passwörter und der gesamte Urlaubsanspruch werden hier sicher verwaltet.</p></div></div><form data-form='new-employee' class='inline-form labelled-inline employee-add'><label>Benutzername<input name='username' required placeholder='z. B. Max.Muster'></label><label>Startpasswort<input name='password' type='password' required></label><button class='primary' type='submit'>Mitarbeiter hinzufügen</button></form><div class='employee-list'>" + (s.employees.filter((row) => row.role === "employee").length ? s.employees.filter((row) => row.role === "employee").map((row) => "<form data-form='employee-update' data-id='" + h(row.id) + "' class='employee-row'><strong>" + h(row.username) + "</strong><label>Benutzername<input name='username' value='" + h(row.username) + "' required></label><label>Neues Passwort<input name='password' type='password' placeholder='Leer lassen = unverändert'></label><label>Urlaubsanspruch (Tage)<input name='vacationAllowance' inputmode='decimal' value='" + h(row.vacation_allowance) + "' required></label><button class='quiet' type='submit'>Speichern</button><button class='danger-outline' type='button' data-action='delete-employee' data-id='" + h(row.id) + "' data-name='" + h(row.username) + "'>Löschen</button></form>").join("") : "<p class='muted'>Noch keine Mitarbeiterkonten angelegt.</p>") + "</div></section>"
-  return "<main class='page'><section class='hero-small'><p class='eyebrow'>EINSTELLUNGEN</p><h1>" + (chief ? "Daten von " + h(employee?.username) : "Persönliche Einstellungen") + "</h1><p class='muted'>Zusatzfelder ergänzen die Erfassung, ohne feste Berechnungen zu verändern.</p></section>" + account + "<section class='settings-section'><h2>Urlaubsanspruch</h2><p>Gesamt: <strong>" + n(employee?.vacation_allowance).toLocaleString("de-DE", { minimumFractionDigits: 2 }) + " Tage</strong> · bereits genehmigt: <strong>" + approvedVacationDays(employee?.id).toLocaleString("de-DE", { minimumFractionDigits: 2 }) + " Tage</strong> · verbleibend: <strong>" + remainingVacationDays(employee?.id).toLocaleString("de-DE", { minimumFractionDigits: 2 }) + " Tage</strong>.</p></section><section class='settings-section'><h2>Zusätzliche Eingabefelder</h2><p>Diese Felder erscheinen bei jeder Kundenzeile des ausgewählten Mitarbeiters.</p>" + columnControl + "<div class='column-list'>" + columns + "</div></section>" + materialCatalogue + staff + "</main>"
+  return "<main class='page'><section class='hero-small'><p class='eyebrow'>EINSTELLUNGEN</p><h1>" + (chief ? "Daten von " + h(employee?.username) : "Persönliche Einstellungen") + "</h1><p class='muted'>Zusatzfelder ergänzen die Erfassung, ohne feste Berechnungen zu verändern.</p></section>" + account + "<section class='settings-section'><h2>Urlaubsanspruch</h2><p>Gesamt: <strong>" + n(employee?.vacation_allowance).toLocaleString("de-DE", { minimumFractionDigits: 2 }) + " Tage</strong> · bereits genehmigt: <strong>" + approvedVacationDays(employee?.id).toLocaleString("de-DE", { minimumFractionDigits: 2 }) + " Tage</strong> · verbleibend: <strong>" + remainingVacationDays(employee?.id).toLocaleString("de-DE", { minimumFractionDigits: 2 }) + " Tage</strong>.</p></section><section class='settings-section'><h2>Zusätzliche Eingabefelder Zeiterfassung</h2><p>Diese Felder erscheinen bei jeder Kundenzeile des ausgewählten Mitarbeiters.</p>" + columnControl + "<div class='column-list'>" + columns + "</div></section>" + materialCatalogue + staff + "</main>"
 }
 function calendarActivity(day) {
   const entries = s.entries.filter((row) => sameDay(row.work_date, day))
@@ -251,16 +272,25 @@ root.addEventListener("submit", async (event) => {
     else if (form.dataset.form === "customer") { await customer(form.name.value); tell("Kunde angelegt.") }
     else if (form.dataset.form === "column") { const name = form.name.value.trim(); if (!name) throw new Error("Bitte eine Bezeichnung eingeben."); s.columns.push(await data(db.from("custom_columns").insert({ id: guid(), employee_id: s.employeeId, name, position: s.columns.length }).select().single())); render() }
     else if (form.dataset.form === "order") {
-      const found = await customer(form.customerName.value), calculationMode = form.calculationMode.value
-      if (calculationMode === "end_time" && !form.endTime.value) throw new Error("Für die Berechnung über die Endzeit bitte ein Arbeitsende eintragen.")
-      const timing = calc({ start_time: form.startTime.value || "07:30", end_time: form.endTime.value || "", pause_hours: Math.max(0, n(form.pauseHours.value)), executed_hours: Math.max(0, n(form.executedHours.value)), calculation_mode: calculationMode })
+      const found = await customer(form.customerName.value), hasEndTime = Boolean(form.endTime.value), hasHours = String(form.executedHours.value || "").trim() !== ""
+      if (!hasEndTime && !hasHours) throw new Error("Bitte entweder das Arbeitsende oder die ausgeführten Stunden eintragen.")
+      const calculationMode = hasEndTime ? "end_time" : "hours"
+      const timing = calc({ start_time: form.startTime.value || "07:30", end_time: form.endTime.value || "", pause_hours: Math.max(0, n(form.pauseHours.value)), executed_hours: hasHours ? Math.max(0, n(form.executedHours.value)) : 0, calculation_mode: calculationMode })
       await data(db.from("work_orders").insert({ id: guid(), employee_id: s.employeeId, work_date: form.workDate.value, customer_id: found.id, customer_name: found.name, title: form.title.value.trim(), notes: form.notes.value.trim(), start_time: timing.start_time, end_time: timing.end_time, pause_hours: timing.pause_hours, executed_hours: timing.executed_hours, calculation_mode: timing.calculation_mode }).select().single())
       await loadData(); tell("Arbeitsschein angelegt und in die Zeiterfassung übernommen.")
     }
     else if (form.dataset.form === "material") { if (!form.materialId.value) throw new Error("Bitte ein Material auswählen."); s.items.push(await data(db.from("work_order_items").insert({ id: guid(), work_order_id: form.dataset.orderId, material_id: form.materialId.value, position_name: "Material", quantity: Math.max(0, n(form.quantity.value)), unit_price: 0 }).select().single())); render() }
     else if (form.dataset.form === "new-employee") { await manage({ action: "create", username: form.username.value, password: form.password.value }); tell("Mitarbeiterkonto angelegt.") }
     else if (form.dataset.form === "employee-update") { await manage({ action: "update", employeeId: form.dataset.id, username: form.username.value, password: form.password.value, vacationAllowance: form.vacationAllowance.value }); tell("Mitarbeiter gespeichert.") }
-    else if (form.dataset.form === "self-account") { await manage({ action: "self-update", username: form.username.value, password: form.password.value }); await loadProfile(); await loadEmployees(); tell("Dein Benutzerkonto wurde gespeichert.") }
+    else if (form.dataset.form === "self-account") { await manage({ action: "self-update", username: form.username.value, password: form.password.value, vacationAllowance: form.vacationAllowance?.value }); await loadProfile(); await loadEmployees(); tell("Dein Benutzerkonto wurde gespeichert.") }
+    else if (form.dataset.form === "customer-field") {
+      const row = s.customers.find((item) => item.id === form.dataset.id), fieldName = form.fieldName.value.trim(), fieldValue = form.fieldValue.value.trim()
+      if (!row) throw new Error("Der Kunde wurde nicht gefunden.")
+      if (!fieldName || !fieldValue) throw new Error("Bitte Feldbezeichnung und Wert eintragen.")
+      if (fieldName.length > 80 || fieldValue.length > 300) throw new Error("Die Feldbezeichnung darf maximal 80, der Wert maximal 300 Zeichen enthalten.")
+      Object.assign(row, await data(db.from("customers").update({ custom_fields: { ...(row.custom_fields || {}), [fieldName]: fieldValue } }).eq("id", row.id).select().single()))
+      tell("Kundendaten gespeichert.")
+    }
     else if (form.dataset.form === "new-material") { const name = form.name.value.trim(); if (!name) throw new Error("Bitte eine Materialbezeichnung eingeben."); await data(db.from("materials").insert({ name, unit_price: Math.max(0, n(form.unitPrice.value)) })); await loadData(); tell("Material angelegt.") }
     else if (form.dataset.form === "material-update") { const name = form.name.value.trim(); if (!name) throw new Error("Bitte eine Materialbezeichnung eingeben."); await data(db.from("materials").update({ name, unit_price: Math.max(0, n(form.unitPrice.value)) }).eq("id", form.dataset.id)); await loadData(); tell("Material gespeichert.") }
     else if (form.dataset.form === "vacation-request") {
@@ -284,6 +314,7 @@ root.addEventListener("change", async (event) => {
   try {
     if (el.id === "employee-picker") await pickEmployee(el.value)
     else if (el.id === "date-picker") { s.selected = el.value; render() }
+    else if (el.id === "order-work-date") { const start = root.querySelector("#order-start-time"); if (start) start.value = orderStartFor(el.value) }
     else if (el.id === "vacation-input") await saveDay("vacation", el.value)
     else if (el.id === "sick-input") await saveDay("sick", el.value)
     else if (el.dataset.entryField) await editEntry(el.dataset.id, el.dataset.entryField, el.value)
@@ -294,7 +325,7 @@ root.addEventListener("change", async (event) => {
 root.addEventListener("click", async (event) => {
   const button = event.target.closest("button"); if (!button) return
   try {
-    if (button.dataset.view) { s.view = button.dataset.view; if (s.view === "mailbox" || s.view === "calendar") await loadData(); render(); return }
+    if (button.dataset.view) { s.view = button.dataset.view; await loadData(); render(); return }
     if (button.dataset.action === "forgot-password") {
       const username = window.prompt("Bitte deinen Benutzernamen eingeben. Der Chef erhält dann eine vertrauliche Nachricht.")
       if (username === null) return
@@ -303,7 +334,7 @@ root.addEventListener("click", async (event) => {
       tell(result.data?.message || "Wenn ein Konto gefunden wurde, ist der Chef informiert worden.")
       return
     }
-    if (button.dataset.action === "logout") { await db.auth.signOut(); s.session = null; s.profile = null; s.employeeId = null; render(); return }
+    if (button.dataset.action === "logout") { if (s.customerChannel) { await db.removeChannel(s.customerChannel); s.customerChannel = null } await db.auth.signOut(); s.session = null; s.profile = null; s.employeeId = null; render(); return }
     if (button.dataset.action === "choose-date") { s.selected = button.dataset.date; render(); return }
     if (button.dataset.action === "previous-date") { s.selected = nextWorkday(-1); render(); return }
     if (button.dataset.action === "next-date") { s.selected = nextWorkday(1); render(); return }
@@ -317,6 +348,7 @@ root.addEventListener("click", async (event) => {
     if (button.dataset.action === "delete-entry" && window.confirm("Diese Kundenzeile wirklich löschen?")) { await data(db.from("time_entries").delete().eq("id", button.dataset.id)); s.entries = s.entries.filter((row) => row.id !== button.dataset.id); render() }
     if (button.dataset.action === "open-order") { s.view = "orders"; render(); const field = root.querySelector("[data-form='order'] [name='customerName']"); if (field) { field.value = button.dataset.customer || ""; field.focus() } }
     if (button.dataset.action === "delete-customer") { const row = s.customers.find((item) => item.id === button.dataset.id); if (row && window.confirm("Kunde „" + row.name + "“ wirklich löschen? Bereits erfasste Zeiten bleiben erhalten.")) { await data(db.from("customers").delete().eq("id", row.id)); s.customers = s.customers.filter((item) => item.id !== row.id); tell("Kunde gelöscht.") } }
+    if (button.dataset.action === "delete-customer-field") { const row = s.customers.find((item) => item.id === button.dataset.id); if (row && window.confirm("Das zusätzliche Kundendatenfeld „" + button.dataset.key + "“ wirklich entfernen?")) { const fields = { ...(row.custom_fields || {}) }; delete fields[button.dataset.key]; Object.assign(row, await data(db.from("customers").update({ custom_fields: fields }).eq("id", row.id).select().single())); tell("Kundendatenfeld entfernt.") } }
     if (button.dataset.action === "delete-item") { await data(db.from("work_order_items").delete().eq("id", button.dataset.id)); s.items = s.items.filter((row) => row.id !== button.dataset.id); render() }
     if (button.dataset.action === "delete-order" && window.confirm("Diesen Arbeitsschein mit allen Positionen löschen?")) { await data(db.from("work_orders").delete().eq("id", button.dataset.id)); s.orders = s.orders.filter((row) => row.id !== button.dataset.id); s.items = s.items.filter((row) => row.work_order_id !== button.dataset.id); render() }
     if (button.dataset.action === "delete-column" && window.confirm("Zusatzspalte entfernen? Die bisherigen Werte bleiben in den Einträgen gespeichert.")) { await data(db.from("custom_columns").delete().eq("id", button.dataset.id)); s.columns = s.columns.filter((row) => row.id !== button.dataset.id); render() }

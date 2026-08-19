@@ -11,7 +11,7 @@ const HOLIDAYS = {
 }
 if (!cfg?.supabaseUrl || !cfg?.supabasePublishableKey) throw new Error("App-Konfiguration fehlt.")
 const db = createClient(cfg.supabaseUrl, cfg.supabasePublishableKey)
-const s = { session: null, profile: null, employees: [], employeeId: null, view: "planner", selected: workday(new Date()), customers: [], days: new Map(), entries: [], columns: [], orders: [], items: [], materials: [], messages: [], mailboxFolder: "all", appointments: [], vacationRequests: [], calendarMonth: new Date().getMonth(), calendarYear: new Date().getFullYear(), calendarForm: "", customerChannel: null, customerSyncTimer: null, teamChannel: null, teamSyncTimer: null, note: null, loading: true }
+const s = { session: null, profile: null, employees: [], employeeId: null, view: "planner", selected: workday(new Date()), customers: [], days: new Map(), entries: [], columns: [], orders: [], items: [], materials: [], messages: [], mailboxFolder: "all", appointments: [], vacationRequests: [], calendarMonth: new Date().getMonth(), calendarYear: new Date().getFullYear(), calendarForm: "", customerChannel: null, customerSyncTimer: null, teamChannel: null, teamSyncTimer: null, dayStatusOverrides: new Map(), note: null, loading: true }
 
 function iso(value) {
   const d = value instanceof Date ? value : new Date(String(value) + "T12:00:00")
@@ -184,7 +184,16 @@ async function loadData() {
     data(db.from("appointments").select("*").order("event_date")),
     data(db.from("vacation_requests").select("*").order("start_date")),
   ])
-  s.customers = all[0]; s.days = new Map(all[1].map((row) => [row.work_date, row])); s.entries = all[2]; s.columns = all[3]; s.orders = all[4]; s.materials = all[5]; s.messages = all[6]; s.appointments = all[7]; s.vacationRequests = all[8]
+  const loadedDays = new Map(all[1].map((row) => [row.work_date, row]))
+  // Eine gerade erfolgreich gespeicherte Krankmeldung bleibt sichtbar, auch wenn
+  // ein parallel gestarteter Datenabgleich noch einen älteren Stand zurückgibt.
+  for (const [key, saved] of s.dayStatusOverrides) {
+    if (saved.employee_id !== employee) continue
+    const loaded = loadedDays.get(saved.work_date)
+    if (loaded && n(loaded.sick) === n(saved.sick)) s.dayStatusOverrides.delete(key)
+    else loadedDays.set(saved.work_date, saved)
+  }
+  s.customers = all[0]; s.days = loadedDays; s.entries = all[2]; s.columns = all[3]; s.orders = all[4]; s.materials = all[5]; s.messages = all[6]; s.appointments = all[7]; s.vacationRequests = all[8]
   const ids = s.orders.map((row) => row.id)
   s.items = ids.length ? await data(db.from("work_order_items").select("*").in("work_order_id", ids).order("created_at")) : []
 }
@@ -394,6 +403,7 @@ async function setSick(value) {
   if (value && status.sick) { tell("Der Tag ist bereits als krank markiert."); return }
   if (!value && !existing) { tell("Für diesen Tag ist keine Krankmeldung vorhanden."); return }
   const saved = await data(db.from("work_days").upsert({ employee_id: s.employeeId, work_date: s.selected, sick: value }, { onConflict: "employee_id,work_date" }).select().single())
+  s.dayStatusOverrides.set(saved.employee_id + ":" + saved.work_date, saved)
   s.days.set(saved.work_date, saved)
   const message = value
     ? (s.profile.role === "chief" ? "Der Krankheitstag wurde gespeichert und sofort angezeigt." : "Deine Krankmeldung wurde gespeichert und sofort angezeigt.")

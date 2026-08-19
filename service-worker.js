@@ -1,9 +1,9 @@
-const CACHE_NAME = "arbeitszeit-team-v20";
+const CACHE_NAME = "arbeitszeit-team-v21";
 const APP_FILES = [
   "./",
   "./index.html",
   "./styles.css",
-  "./app.js?v=20",
+  "./app.js?v=21",
   "./config.js?v=1",
   "./manifest.webmanifest",
   "./icon.svg",

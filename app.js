@@ -258,11 +258,13 @@ function planner() {
   const list = rows.length ? rows.map((row, index) => job(row, index, status.locked)).join("") : "<div class='empty-state'>" + (status.locked || !weekday(s.selected) ? "An diesem Tag ist keine Arbeitszeiterfassung möglich." : "Noch kein Kunde erfasst. Mit „+ Kunde“ beginnen.") + "</div>"
   const overtime = Math.abs(balance) < 0.005 ? "–" : (balance > 0 ? "+" : "") + hours(balance)
   const person = employeeName(s.employeeId), chief = s.profile.role === "chief"
+  const vacationRequest = s.vacationRequests.find((request) => request.employee_id === s.employeeId && request.status !== "rejected" && inRange(s.selected, request.start_date, request.end_date))
   const sicknessAction = chief
     ? (status.sick ? "<button class='danger-outline' data-action='remove-sick'>Krankheitstag entfernen</button>" : "<button class='primary' data-action='mark-sick'>Krankheitstag hinzufügen</button>")
     : "<span class='status-label sick-label'>" + (status.sick ? "Als krank gemeldet" : "Nur der Chef verwaltet Krankheitstage") + "</span>"
   const sicknessBox = "<section class='sickness-control'><div><p class='eyebrow'>KRANKHEIT</p><h2>" + (chief ? "Krankheitsstatus von " + h(person) : "Mein Krankheitsstatus") + "</h2><p class='muted'>" + (chief ? "Du kannst Krankheitstage für diese Person hinzufügen oder entfernen – auch wenn Urlaub eingetragen ist." : "Krankheitstage werden ausschließlich vom Chef eingetragen oder entfernt.") + "</p></div><div class='sickness-actions'><span class='sickness-state " + (status.sick ? "marked" : "") + "'>" + (status.sick ? "Krank gemeldet" : "Nicht krank gemeldet") + "</span>" + sicknessAction + "</div></section>"
-  return "<main class='page'><datalist id='customer-list'>" + s.customers.map((row) => "<option value='" + h(row.name) + "'></option>").join("") + "</datalist>" + datePicker() + "<section class='summary-grid'><div class='summary-card'><span>Sollzeit</span><strong>" + hours(goal) + "</strong></div><div class='summary-card'><span>Ausgeführt</span><strong>" + hours(total) + "</strong></div><div class='summary-card'><span>Überstunden</span><strong class='" + (balance > 0.004 ? "positive" : balance < -0.004 ? "negative" : "") + "'>" + overtime + "</strong></div></section>" + sicknessBox + "<section class='status-card'><div><strong>Abwesenheit</strong><p>Urlaub wird nur vom Chef verwaltet. Eine Krankmeldung gilt immer für den ganzen Tag.</p></div><div class='absence-overview'><span>Urlaub: <strong>" + (status.vacation ? "markiert" : "nicht markiert") + "</strong></span><span>Krankheit: <strong>" + (status.sick ? "markiert" : "nicht markiert") + "</strong></span></div></section>" + absence + "<section class='jobs-section'><div class='section-title'><div><h2>Kunden & Zeiten</h2><p>Stunden eingeben oder Beginn und Ende eintragen – die andere Angabe wird berechnet.</p></div><button class='primary' data-action='add-entry'" + (status.locked || !weekday(s.selected) ? " disabled" : "") + ">+ Kunde</button></div>" + list + "</section></main>"
+  const vacationAction = chief && vacationRequest ? "<button class='danger-outline' data-action='remove-vacation'>Urlaubszeitraum entfernen</button>" : ""
+  return "<main class='page'><datalist id='customer-list'>" + s.customers.map((row) => "<option value='" + h(row.name) + "'></option>").join("") + "</datalist>" + datePicker() + "<section class='summary-grid'><div class='summary-card'><span>Sollzeit</span><strong>" + hours(goal) + "</strong></div><div class='summary-card'><span>Ausgeführt</span><strong>" + hours(total) + "</strong></div><div class='summary-card'><span>Überstunden</span><strong class='" + (balance > 0.004 ? "positive" : balance < -0.004 ? "negative" : "") + "'>" + overtime + "</strong></div></section>" + sicknessBox + "<section class='status-card'><div><strong>Abwesenheit</strong><p>Urlaub wird nur vom Chef verwaltet. Eine Krankmeldung gilt immer für den ganzen Tag.</p></div><div class='absence-overview'><span>Urlaub: <strong>" + (status.vacation ? "markiert" : "nicht markiert") + "</strong></span><span>Krankheit: <strong>" + (status.sick ? "markiert" : "nicht markiert") + "</strong></span>" + vacationAction + "</div></section>" + absence + "<section class='jobs-section'><div class='section-title'><div><h2>Kunden & Zeiten</h2><p>Stunden eingeben oder Beginn und Ende eintragen – die andere Angabe wird berechnet.</p></div><button class='primary' data-action='add-entry'" + (status.locked || !weekday(s.selected) ? " disabled" : "") + ">+ Kunde</button></div>" + list + "</section></main>"
 }
 function customers() {
   const total = (customer) => s.entries.filter((row) => row.customer_id === customer.id || String(row.customer_name).toLowerCase() === String(customer.name).toLowerCase()).reduce((sum, row) => sum + calc(row).executed_hours, 0)
@@ -335,10 +337,12 @@ function calendar() {
   const vacation = details.vacation ? "<li class='calendar-vacation-text " + (details.vacation.status === "requested" ? "pending-text" : "approved-text") + "'><strong>" + (details.vacation.status === "requested" ? "Urlaub beantragt" : "Urlaub genehmigt") + "</strong> · " + n(details.vacation.requested_days).toLocaleString("de-DE", { maximumFractionDigits: 2 }) + " Tage</li>" : ""
   const sickness = details.sick ? "<li class='calendar-sick-text'><strong>Krank gemeldet</strong> · ganzer Arbeitstag</li>" : ""
   const detailList = workRows + appointmentRows + vacation + sickness || "<li class='muted'>Keine Aktivitäten an diesem Tag.</li>"
-  const sicknessCalendarAction = s.profile.role === "chief"
+  const chief = s.profile.role === "chief"
+  const sicknessCalendarAction = chief
     ? (details.sick ? "<button class='danger-outline' data-action='remove-sick'>Krankheitstag entfernen</button>" : "<button class='quiet' data-action='mark-sick'>Krankheitstag hinzufügen</button>")
     : ""
-  return "<main class='page'><section class='hero-small calendar-hero'><div><p class='eyebrow'>PERSÖNLICHER KALENDER</p><h1>" + (s.profile.role === "chief" ? "Kalender von " + h(employeeName(s.employeeId)) : "Mein Kalender") + "</h1><p class='muted'>Auf einen Tag tippen, um Arbeitszeiten, Kundentermine, Urlaub und Krankheit zu sehen.</p></div><div class='calendar-actions'><button class='primary' data-action='open-vacation-form'>Urlaub beantragen</button><button class='quiet' data-action='open-appointment-form'>Kundentermin vormerken</button>" + sicknessCalendarAction + "</div></section>" + calendarForm() + "<section class='calendar-card'><div class='calendar-toolbar'><button class='icon-button' data-action='previous-month' aria-label='Vorheriger Monat'>‹</button><h2>" + monthLabel(s.calendarYear, s.calendarMonth) + "</h2><button class='icon-button' data-action='next-month' aria-label='Nächster Monat'>›</button></div><div class='calendar-weekdays'><span>Mo</span><span>Di</span><span>Mi</span><span>Do</span><span>Fr</span><span>Sa</span><span>So</span></div><div class='calendar-grid'>" + cells.join("") + "</div><p class='calendar-key'><span><i class='work-marker'></i> Arbeitszeit</span><span><i class='appointment-marker'></i> Kundentermin</span><span><i class='vacation-marker requested'></i> Urlaub beantragt</span><span><i class='vacation-marker approved'></i> Urlaub genehmigt</span><span><i class='sick-marker'></i> Krank gemeldet</span></p></section><section class='day-details'><h2>Aktivitäten am " + dayText(s.selected) + "</h2><ul>" + detailList + "</ul></section></main>"
+  const vacationCalendarAction = chief && details.vacation ? "<button class='danger-outline' data-action='remove-vacation'>Urlaubszeitraum entfernen</button>" : ""
+  return "<main class='page'><section class='hero-small calendar-hero'><div><p class='eyebrow'>PERSÖNLICHER KALENDER</p><h1>" + (chief ? "Kalender von " + h(employeeName(s.employeeId)) : "Mein Kalender") + "</h1><p class='muted'>Auf einen Tag tippen, um Arbeitszeiten, Kundentermine, Urlaub und Krankheit zu sehen.</p></div><div class='calendar-actions'><button class='primary' data-action='open-vacation-form'>Urlaub beantragen</button><button class='quiet' data-action='open-appointment-form'>Kundentermin vormerken</button>" + sicknessCalendarAction + vacationCalendarAction + "</div></section>" + calendarForm() + "<section class='calendar-card'><div class='calendar-toolbar'><button class='icon-button' data-action='previous-month' aria-label='Vorheriger Monat'>‹</button><h2>" + monthLabel(s.calendarYear, s.calendarMonth) + "</h2><button class='icon-button' data-action='next-month' aria-label='Nächster Monat'>›</button></div><div class='calendar-weekdays'><span>Mo</span><span>Di</span><span>Mi</span><span>Do</span><span>Fr</span><span>Sa</span><span>So</span></div><div class='calendar-grid'>" + cells.join("") + "</div><p class='calendar-key'><span><i class='work-marker'></i> Arbeitszeit</span><span><i class='appointment-marker'></i> Kundentermin</span><span><i class='vacation-marker requested'></i> Urlaub beantragt</span><span><i class='vacation-marker approved'></i> Urlaub genehmigt</span><span><i class='sick-marker'></i> Krank gemeldet</span></p></section><section class='day-details'><h2>Aktivitäten am " + dayText(s.selected) + "</h2><ul>" + detailList + "</ul></section></main>"
 }
 function overlaps(leftStart, leftEnd, rightStart, rightEnd) { return String(leftStart) <= String(rightEnd) && String(leftEnd) >= String(rightStart) }
 function vacationMessage(message) {
@@ -387,9 +391,7 @@ async function setSick(value) {
   if (status.name) throw new Error("An Feiertagen kann kein Krankheitstag erfasst werden.")
   if (value && status.sick) { tell("Der Tag ist bereits als krank markiert."); return }
   if (!value && !existing) { tell("Für diesen Tag ist keine Krankmeldung vorhanden."); return }
-  const saved = existing
-    ? await data(db.from("work_days").update({ sick: value }).eq("employee_id", s.employeeId).eq("work_date", s.selected).select().single())
-    : await data(db.from("work_days").insert({ employee_id: s.employeeId, work_date: s.selected, vacation: 0, sick: value }).select().single())
+  const saved = await data(db.from("work_days").upsert({ employee_id: s.employeeId, work_date: s.selected, sick: value }, { onConflict: "employee_id,work_date" }).select().single())
   s.days.set(saved.work_date, saved)
   await loadData()
   render()
@@ -397,6 +399,15 @@ async function setSick(value) {
 }
 async function markSick() { await setSick(1) }
 async function removeSick() { await setSick(0) }
+async function removeVacation() {
+  if (s.profile.role !== "chief") throw new Error("Urlaubszeiträume können nur vom Chef entfernt werden.")
+  const request = s.vacationRequests.find((row) => row.employee_id === s.employeeId && row.status !== "rejected" && inRange(s.selected, row.start_date, row.end_date))
+  if (!request) { tell("Für diesen Tag ist kein Urlaubszeitraum vorhanden."); return }
+  await data(db.from("vacation_requests").update({ status: "rejected", decided_by: s.profile.id, decided_at: new Date().toISOString(), decision_note: "Vom Chef entfernt" }).eq("id", request.id).select().single())
+  await loadData()
+  render()
+  tell("Der Urlaubszeitraum wurde entfernt.")
+}
 async function deleteWorkOrder(orderId) {
   await data(db.from("time_entries").delete().eq("work_order_id", orderId))
   await deleteSavedRecord("work_orders", orderId)
@@ -499,6 +510,7 @@ root.addEventListener("click", async (event) => {
     if (button.dataset.action === "add-entry") await addEntry()
     if (button.dataset.action === "mark-sick") await markSick()
     if (button.dataset.action === "remove-sick") await removeSick()
+    if (button.dataset.action === "remove-vacation" && window.confirm("Diesen gesamten Urlaubszeitraum wirklich entfernen?")) await removeVacation()
     if (button.dataset.action === "download-pdf") { downloadPdf(); return }
     if (button.dataset.action === "delete-entry" && window.confirm("Diese Kundenzeile wirklich löschen?")) { await deleteSavedRecord("time_entries", button.dataset.id); await loadData(); tell("Zeiterfassungszeile gelöscht.") }
     if (button.dataset.action === "open-order") { if (!canUse("orders")) throw new Error("Das Menü Arbeitsscheine wurde vom Chef nicht freigegeben."); s.view = "orders"; render(); const field = root.querySelector("[data-form='order'] [name='customerName']"); if (field) { field.value = button.dataset.customer || ""; field.focus() } }

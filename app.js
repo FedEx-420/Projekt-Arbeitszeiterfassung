@@ -11,7 +11,7 @@ const HOLIDAYS = {
 }
 if (!cfg?.supabaseUrl || !cfg?.supabasePublishableKey) throw new Error("App-Konfiguration fehlt.")
 const db = createClient(cfg.supabaseUrl, cfg.supabasePublishableKey)
-const s = { session: null, profile: null, employees: [], employeeId: null, view: "planner", selected: workday(new Date()), customers: [], days: new Map(), entries: [], columns: [], orders: [], items: [], materials: [], messages: [], mailboxFolder: "all", appointments: [], vacationRequests: [], calendarMonth: new Date().getMonth(), calendarYear: new Date().getFullYear(), calendarForm: "", customerChannel: null, customerSyncTimer: null, teamChannel: null, teamSyncTimer: null, dayStatusOverrides: new Map(), note: null, loading: true }
+const s = { session: null, profile: null, employees: [], employeeId: null, view: "planner", selected: workday(new Date()), customers: [], days: new Map(), entries: [], columns: [], orders: [], items: [], materials: [], messages: [], mailboxFolder: "all", appointments: [], vacationRequests: [], vacationRequestOverrides: new Map(), calendarMonth: new Date().getMonth(), calendarYear: new Date().getFullYear(), calendarForm: "", customerChannel: null, customerSyncTimer: null, teamChannel: null, teamSyncTimer: null, dayStatusOverrides: new Map(), note: null, loading: true }
 
 function iso(value) {
   const d = value instanceof Date ? value : new Date(String(value) + "T12:00:00")
@@ -193,7 +193,16 @@ async function loadData() {
     if (loaded && n(loaded.sick) === n(saved.sick)) s.dayStatusOverrides.delete(key)
     else loadedDays.set(saved.work_date, saved)
   }
-  s.customers = all[0]; s.days = loadedDays; s.entries = all[2]; s.columns = all[3]; s.orders = all[4]; s.materials = all[5]; s.messages = all[6]; s.appointments = all[7]; s.vacationRequests = all[8]
+  const loadedVacations = [...all[8]]
+  for (const [id, saved] of s.vacationRequestOverrides) {
+    const index = loadedVacations.findIndex((row) => row.id === id)
+    if (index < 0) { loadedVacations.push(saved); continue }
+    const loaded = loadedVacations[index]
+    if (loaded.status === saved.status || (saved.status === "requested" && loaded.status !== "requested")) s.vacationRequestOverrides.delete(id)
+    else loadedVacations[index] = saved
+  }
+  loadedVacations.sort((left, right) => String(left.start_date).localeCompare(String(right.start_date)))
+  s.customers = all[0]; s.days = loadedDays; s.entries = all[2]; s.columns = all[3]; s.orders = all[4]; s.materials = all[5]; s.messages = all[6]; s.appointments = all[7]; s.vacationRequests = loadedVacations
   const ids = s.orders.map((row) => row.id)
   s.items = ids.length ? await data(db.from("work_order_items").select("*").in("work_order_id", ids).order("created_at")) : []
 }
@@ -327,7 +336,7 @@ function calendarActivity(day) {
 function calendarForm() {
   if (!s.calendarForm) return ""
   if (s.calendarForm === "vacation") {
-    if (s.employeeId !== s.profile.id) return "<section class='calendar-form-card'><p class='muted'>Urlaub beantragt jeder Mitarbeiter in seinem eigenen Konto. Als Chef kannst du eingegangene Anträge im Postfach entscheiden.</p></section>"
+    if (s.employeeId !== s.profile.id) return "<section class='calendar-form-card'><p class='muted'>Du siehst gerade den Kalender eines Mitarbeiters. Urlaubsanträge stellst du in deinem eigenen Kalender; eingegangene Mitarbeiteranträge entscheidest du im Postfach.</p><button class='primary' data-action='request-own-vacation'>Zu meinem Kalender wechseln</button></section>"
     return "<section class='calendar-form-card'><h2>Urlaub beantragen</h2><form data-form='vacation-request' class='form-grid'><label>Von<input name='startDate' type='date' value='" + s.selected + "' required></label><label>Bis<input name='endDate' type='date' value='" + s.selected + "' required></label><label>Hinweis (optional)<input name='note' placeholder='z. B. Familienurlaub'></label><button class='primary' type='submit'>Antrag senden</button><button class='quiet' type='button' data-action='close-calendar-form'>Abbrechen</button></form></section>"
   }
   const options = s.customers.map((row) => "<option value='" + h(row.name) + "'></option>").join("")
@@ -478,8 +487,12 @@ root.addEventListener("submit", async (event) => {
       const requestedDays = vacationDays(form.startDate.value, form.endDate.value)
       if (!requestedDays) throw new Error("Der Antrag muss mindestens einen Arbeitstag enthalten.")
       if (requestedDays > remainingVacationDays(s.profile.id)) throw new Error("Dafür stehen nicht genügend Resturlaubstage zur Verfügung.")
-      await data(db.from("vacation_requests").insert({ employee_id: s.profile.id, start_date: form.startDate.value, end_date: form.endDate.value, requested_days: requestedDays, status: "requested", decision_note: form.note.value.trim() }))
-      s.calendarForm = ""; await loadData(); tell(s.profile.role === "chief" ? "Dein Urlaub wurde automatisch genehmigt. Die Bestätigung liegt in deinem Postfach." : "Urlaubsantrag gesendet. Die Tage sind vorläufig im Kalender markiert.")
+      const saved = await data(db.from("vacation_requests").insert({ employee_id: s.profile.id, start_date: form.startDate.value, end_date: form.endDate.value, requested_days: requestedDays, status: "requested", decision_note: form.note.value.trim() }).select().single())
+      s.vacationRequestOverrides.set(saved.id, saved)
+      s.vacationRequests = s.vacationRequests.filter((row) => row.id !== saved.id).concat(saved).sort((left, right) => String(left.start_date).localeCompare(String(right.start_date)))
+      s.calendarForm = ""
+      tell(saved.status === "approved" ? "Dein Urlaub wurde automatisch genehmigt und im Kalender markiert. Die Bestätigung liegt in deinem Postfach." : "Urlaubsantrag gesendet. Die Tage sind vorläufig im Kalender markiert und der Chef wurde benachrichtigt.")
+      try { await loadData(); render() } catch (_) {}
     }
     else if (form.dataset.form === "appointment") {
       const name = form.customerName.value.trim(); let found = null
@@ -520,6 +533,7 @@ root.addEventListener("click", async (event) => {
     if (button.dataset.action === "previous-month") { const current = new Date(s.calendarYear, s.calendarMonth - 1, 1); s.calendarMonth = current.getMonth(); s.calendarYear = current.getFullYear(); render(); return }
     if (button.dataset.action === "next-month") { const current = new Date(s.calendarYear, s.calendarMonth + 1, 1); s.calendarMonth = current.getMonth(); s.calendarYear = current.getFullYear(); render(); return }
     if (button.dataset.action === "open-vacation-form") { s.calendarForm = "vacation"; render(); return }
+    if (button.dataset.action === "request-own-vacation") { await pickEmployee(s.profile.id); s.calendarForm = "vacation"; render(); return }
     if (button.dataset.action === "open-appointment-form") { s.calendarForm = "appointment"; render(); return }
     if (button.dataset.action === "close-calendar-form") { s.calendarForm = ""; render(); return }
     if (button.dataset.action === "open-person-statistics") { await pickEmployee(button.dataset.id); s.view = "settings"; render(); return }

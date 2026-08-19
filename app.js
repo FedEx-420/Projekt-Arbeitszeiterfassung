@@ -11,7 +11,7 @@ const HOLIDAYS = {
 }
 if (!cfg?.supabaseUrl || !cfg?.supabasePublishableKey) throw new Error("App-Konfiguration fehlt.")
 const db = createClient(cfg.supabaseUrl, cfg.supabasePublishableKey)
-const s = { session: null, profile: null, employees: [], employeeId: null, view: "planner", selected: workday(new Date()), customers: [], days: new Map(), entries: [], columns: [], orders: [], items: [], note: null, loading: true }
+const s = { session: null, profile: null, employees: [], employeeId: null, view: "planner", selected: workday(new Date()), customers: [], days: new Map(), entries: [], columns: [], orders: [], items: [], materials: [], messages: [], appointments: [], vacationRequests: [], calendarMonth: new Date().getMonth(), calendarYear: new Date().getFullYear(), calendarForm: "", note: null, loading: true }
 
 function iso(value) {
   const d = value instanceof Date ? value : new Date(String(value) + "T12:00:00")
@@ -40,6 +40,17 @@ function calc(row) {
   return { ...row, pause_hours: pause, executed_hours: done, end_time: row.start_time ? addTime(row.start_time, (done + pause) * 60) : "" }
 }
 function jobs() { return s.entries.filter((row) => row.work_date === s.selected).sort((a, b) => String(a.created_at || a.id).localeCompare(String(b.created_at || b.id))) }
+function sameDay(left, right) { return String(left) === String(right) }
+function inRange(value, start, end) { return String(value) >= String(start) && String(value) <= String(end) }
+function employeeName(id) { return s.employees.find((row) => row.id === id)?.username || "Unbekannter Mitarbeiter" }
+function vacationDays(start, end) {
+  let count = 0, cursor = date(start), last = date(end)
+  while (cursor <= last) { const value = iso(cursor); if (weekday(value) && !HOLIDAYS[value]) count += 1; cursor.setDate(cursor.getDate() + 1) }
+  return count
+}
+function approvedVacationDays(employeeId) { return s.vacationRequests.filter((row) => row.employee_id === employeeId && row.status === "approved").reduce((sum, row) => sum + n(row.requested_days), 0) }
+function remainingVacationDays(employeeId) { const person = s.employees.find((row) => row.id === employeeId); return Math.max(0, n(person?.vacation_allowance) - approvedVacationDays(employeeId)) }
+function monthLabel(year, month) { return new Intl.DateTimeFormat("de-DE", { month: "long", year: "numeric" }).format(new Date(year, month, 1)) }
 function currentDay() { return s.days.get(s.selected) || { employee_id: s.employeeId, work_date: s.selected, vacation: 0, sick: 0 } }
 function currentStatus() { const row = currentDay(), name = HOLIDAYS[s.selected] || ""; return { name, vacation: n(row.vacation), sick: n(row.sick), locked: Boolean(name) || n(row.vacation) > 0 || n(row.sick) > 0 } }
 function me() { return s.employees.find((row) => row.id === s.employeeId) || s.profile }
@@ -65,8 +76,12 @@ async function loadData() {
     data(db.from("time_entries").select("*").eq("employee_id", employee).order("created_at")),
     data(db.from("custom_columns").select("*").eq("employee_id", employee).order("position")),
     data(db.from("work_orders").select("*").eq("employee_id", employee).order("work_date", { ascending: false })),
+    data(db.from("materials").select("*").eq("active", true).order("name")),
+    data(db.from("mailbox_messages").select("*").eq("recipient_id", s.profile.id).order("created_at", { ascending: false })),
+    data(db.from("appointments").select("*").order("event_date")),
+    data(db.from("vacation_requests").select("*").order("start_date")),
   ])
-  s.customers = all[0]; s.days = new Map(all[1].map((row) => [row.work_date, row])); s.entries = all[2]; s.columns = all[3]; s.orders = all[4]
+  s.customers = all[0]; s.days = new Map(all[1].map((row) => [row.work_date, row])); s.entries = all[2]; s.columns = all[3]; s.orders = all[4]; s.materials = all[5]; s.messages = all[6]; s.appointments = all[7]; s.vacationRequests = all[8]
   const ids = s.orders.map((row) => row.id)
   s.items = ids.length ? await data(db.from("work_order_items").select("*").in("work_order_id", ids).order("created_at")) : []
 }
@@ -81,7 +96,7 @@ async function boot() {
 
 function note() { return s.note ? "<div class='toast " + (s.note.error ? "error" : "") + "'>" + h(s.note.text) + "</div>" : "" }
 function login() {
-  root.innerHTML = "<main class='login-page'><section class='login-card'><div class='brand-mark'>AZ</div><p class='eyebrow'>GEMEINSAME ZEITERFASSUNG</p><h1>Willkommen zurück</h1><p class='muted'>Melde dich mit deinem Benutzernamen und Passwort an.</p><form data-form='login' class='stack-form'><label>Benutzername<input name='username' autocomplete='username' required autofocus placeholder='z. B. Max.Muster'></label><label>Passwort<input name='password' type='password' autocomplete='current-password' required placeholder='Passwort'></label><button class='primary wide' type='submit'>Anmelden</button></form><p class='login-note'>Mitarbeiterkonten werden vom Chef eingerichtet.</p>" + note() + "</section></main>"
+  root.innerHTML = "<main class='login-page'><section class='login-card'><div class='brand-mark'>AZ</div><p class='eyebrow'>GEMEINSAME ZEITERFASSUNG</p><h1>Willkommen zurück</h1><p class='muted'>Melde dich mit deinem Benutzernamen und Passwort an.</p><form data-form='login' class='stack-form'><label>Benutzername<input name='username' autocomplete='username' required autofocus placeholder='z. B. Max.Muster'></label><label>Passwort<input name='password' type='password' autocomplete='current-password' required placeholder='Passwort'></label><button class='primary wide' type='submit'>Anmelden</button></form><button class='text-button login-help' data-action='forgot-password' type='button'>Passwort vergessen?</button><p class='login-note'>Die Anfrage wird vertraulich an das interne Postfach des Chefs gesendet. Mitarbeiterkonten werden vom Chef eingerichtet.</p>" + note() + "</section></main>"
 }
 function header() {
   const picker = s.profile.role === "chief"
@@ -90,7 +105,8 @@ function header() {
   return "<header class='topbar'><div class='brand'><span class='brand-mark small'>AZ</span><div><strong>Arbeitszeit</strong><small>" + YEAR + " · " + (s.profile.role === "chief" ? "Chefansicht" : "Mitarbeiterkonto") + "</small></div></div><div class='topbar-actions'>" + picker + "<button class='quiet' data-action='logout'>Abmelden</button></div></header>"
 }
 function nav() {
-  return "<nav class='main-nav'>" + [["planner", "Zeiterfassung"], ["customers", "Kunden"], ["orders", "Arbeitsscheine"], ["settings", "Einstellungen"]].map((item) => "<button data-view='" + item[0] + "' class='" + (s.view === item[0] ? "active" : "") + "'>" + item[1] + "</button>").join("") + "</nav>"
+  const unread = s.messages.filter((row) => !row.read_at).length
+  return "<nav class='main-nav'>" + [["planner", "Zeiterfassung"], ["customers", "Kunden"], ["orders", "Arbeitsscheine"], ["calendar", "Kalender"], ["mailbox", "Postfach" + (unread ? " (" + unread + ")" : "")], ["settings", "Einstellungen"]].map((item) => "<button data-view='" + item[0] + "' class='" + (s.view === item[0] ? "active" : "") + "'>" + item[1] + "</button>").join("") + "</nav>"
 }
 function datePicker() {
   const list = [], start = date(s.selected); start.setDate(start.getDate() - 4)
@@ -117,26 +133,82 @@ function planner() {
 function customers() {
   const total = (customer) => s.entries.filter((row) => row.customer_id === customer.id || String(row.customer_name).toLowerCase() === String(customer.name).toLowerCase()).reduce((sum, row) => sum + calc(row).executed_hours, 0)
   const list = s.customers.length ? s.customers.map((row) => "<article class='customer-row'><div><h2>" + h(row.name) + "</h2><p>" + hours(total(row)) + " im Jahr " + YEAR + "</p></div><button class='danger-outline' data-action='delete-customer' data-id='" + h(row.id) + "'>Kunde löschen</button></article>").join("") : "<div class='empty-state'>Noch keine Kunden vorhanden.</div>"
-  return "<main class='page'><section class='hero-small'><p class='eyebrow'>KUNDENLISTE</p><h1>Kunden verwalten</h1><p class='muted'>Die Stunden summieren sich aus allen Einträgen des ausgewählten Mitarbeiters.</p></section><form data-form='customer' class='inline-form'><input name='name' required placeholder='Neuen Kunden eingeben'><button class='primary' type='submit'>Kunde anlegen</button></form><section class='customer-list'>" + list + "</section></main>"
+  return "<main class='page'><section class='hero-small'><p class='eyebrow'>KUNDENLISTE</p><h1>Kunden verwalten</h1><p class='muted'>Die Stunden summieren sich aus allen Einträgen des ausgewählten Mitarbeiters.</p></section><form data-form='customer' class='inline-form labelled-inline'><label>Kundenname<input name='name' required placeholder='Neuen Kunden eingeben'></label><button class='primary' type='submit'>Kunde anlegen</button></form><section class='customer-list'>" + list + "</section></main>"
 }
 function orderCard(order) {
   const lines = s.items.filter((row) => row.work_order_id === order.id), total = lines.reduce((sum, row) => sum + n(row.quantity) * n(row.unit_price), 0)
-  const lineHtml = lines.length ? lines.map((row) => "<div class='material-row'><input data-item-field='position_name' data-id='" + h(row.id) + "' value='" + h(row.position_name) + "'><input data-item-field='quantity' data-id='" + h(row.id) + "' inputmode='decimal' value='" + h(row.quantity) + "'><input data-item-field='unit_price' data-id='" + h(row.id) + "' inputmode='decimal' value='" + h(row.unit_price) + "'><strong>" + euros(n(row.quantity) * n(row.unit_price)) + "</strong><button class='danger-icon' data-action='delete-item' data-id='" + h(row.id) + "'>×</button></div>").join("") : "<p class='muted'>Noch keine Materialien erfasst.</p>"
-  return "<article class='order-card'><div class='order-head'><div><span>" + dayText(order.work_date) + "</span><h2>" + h(order.customer_name || "Ohne Kunden") + "</h2><p>" + h(order.title || "Arbeitsschein") + "</p></div><button class='danger-icon' data-action='delete-order' data-id='" + h(order.id) + "'>×</button></div>" + (order.notes ? "<p class='order-notes'>" + h(order.notes) + "</p>" : "") + "<div class='materials'>" + lineHtml + "</div><form data-form='material' data-order-id='" + h(order.id) + "' class='material-add'><input name='positionName' required placeholder='Material / Position'><input name='quantity' inputmode='decimal' value='1'><input name='unitPrice' inputmode='decimal' value='0'><button class='quiet' type='submit'>+ Position</button></form><div class='order-total'>Gesamt <strong>" + euros(total) + "</strong></div></article>"
+  const lineHtml = lines.length ? lines.map((row) => "<div class='material-row'><label>Material<input value='" + h(row.position_name) + "' disabled></label><label>Menge<input data-item-field='quantity' data-id='" + h(row.id) + "' inputmode='decimal' value='" + h(row.quantity) + "'></label><div class='price-display'><span>Preis/Stück</span><strong>" + euros(row.unit_price) + "</strong></div><div class='line-total'><span>Summe</span><strong>" + euros(n(row.quantity) * n(row.unit_price)) + "</strong></div><button class='danger-icon' data-action='delete-item' data-id='" + h(row.id) + "' aria-label='Position löschen'>×</button></div>").join("") : "<p class='muted'>Noch keine Materialien erfasst.</p>"
+  const materialOptions = s.materials.map((row) => "<option value='" + h(row.id) + "'>" + h(row.name) + " – " + euros(row.unit_price) + "</option>").join("")
+  const addMaterial = s.materials.length ? "<form data-form='material' data-order-id='" + h(order.id) + "' class='material-add'><label>Material<select name='materialId' required><option value=''>Bitte auswählen</option>" + materialOptions + "</select></label><label>Menge<input name='quantity' inputmode='decimal' value='1' required></label><button class='quiet' type='submit'>+ Position</button></form>" : "<p class='muted'>Materialien werden vom Chef im Menü Einstellungen angelegt.</p>"
+  const timing = "<p class='order-time'><span>Beginn: <strong>" + h(order.start_time || "–") + (order.start_time ? " Uhr" : "") + "</strong></span><span>Ende: <strong>" + h(order.end_time || "–") + (order.end_time ? " Uhr" : "") + "</strong></span><span>Ausgeführt: <strong>" + hours(order.executed_hours) + "</strong></span></p>"
+  return "<article class='order-card'><div class='order-head'><div><span>" + dayText(order.work_date) + "</span><h2>" + h(order.customer_name || "Ohne Kunden") + "</h2><p>" + h(order.title || "Arbeitsschein") + "</p></div><button class='danger-icon' data-action='delete-order' data-id='" + h(order.id) + "' aria-label='Arbeitsschein löschen'>×</button></div>" + timing + (order.notes ? "<p class='order-notes'>" + h(order.notes) + "</p>" : "") + "<div class='materials'>" + lineHtml + "</div>" + addMaterial + "<div class='order-total'>Gesamt <strong>" + euros(total) + "</strong></div></article>"
 }
 function orders() {
   const options = s.customers.map((row) => "<option value='" + h(row.name) + "'></option>").join("")
-  return "<main class='page'><section class='hero-small'><p class='eyebrow'>ARBEITSSCHEINE</p><h1>Material und Kosten</h1><p class='muted'>Zu jedem Kunden können Materialpositionen mit Menge und Preis festgehalten werden.</p></section><form data-form='order' class='order-create'><div class='form-grid'><label>Datum<input name='workDate' type='date' value='" + s.selected + "' required></label><label>Kunde<input name='customerName' list='customer-list' required placeholder='Kunde auswählen'></label><label>Titel<input name='title' placeholder='z. B. Reparatur'></label></div><label>Notiz<textarea name='notes' placeholder='Zusätzliche Hinweise'></textarea></label><button class='primary' type='submit'>Arbeitsschein anlegen</button></form><datalist id='customer-list'>" + options + "</datalist><section class='order-list'>" + (s.orders.length ? s.orders.map(orderCard).join("") : "<div class='empty-state'>Noch keine Arbeitsscheine vorhanden.</div>") + "</section></main>"
+  return "<main class='page'><section class='hero-small'><p class='eyebrow'>ARBEITSSCHEINE</p><h1>Material und Kosten</h1><p class='muted'>Ein neuer Arbeitsschein übernimmt Kunden, Arbeitszeit und Stunden automatisch in die Zeiterfassung.</p></section><form data-form='order' class='order-create'><div class='form-grid order-grid'><label>Datum<input name='workDate' type='date' value='" + s.selected + "' required></label><label>Kunde<input name='customerName' list='customer-list' required placeholder='Kunde auswählen'></label><label>Titel<input name='title' placeholder='z. B. Reparatur'></label><label>Berechnung<select name='calculationMode'><option value='hours'>Stunden eingeben</option><option value='end_time'>Endzeit eingeben</option></select></label><label>Arbeitsbeginn<input name='startTime' type='time' value='07:30' required></label><label>Arbeitsende<input name='endTime' type='time'></label><label>Pause (Stunden)<input name='pauseHours' inputmode='decimal' value='0'></label><label>Ausgeführte Stunden<input name='executedHours' inputmode='decimal' value='0'></label></div><label>Notiz<textarea name='notes' placeholder='Zusätzliche Hinweise'></textarea></label><button class='primary' type='submit'>Arbeitsschein anlegen</button></form><datalist id='customer-list'>" + options + "</datalist><section class='order-list'>" + (s.orders.length ? s.orders.map(orderCard).join("") : "<div class='empty-state'>Noch keine Arbeitsscheine vorhanden.</div>") + "</section></main>"
 }
 function settings() {
-  const employee = me(), columns = s.columns.length ? s.columns.map((row) => "<div><span>" + h(row.name) + "</span><button class='danger-outline' data-action='delete-column' data-id='" + h(row.id) + "'>Entfernen</button></div>").join("") : "<p class='muted'>Keine zusätzlichen Spalten.</p>"
-  const staff = s.profile.role !== "chief" ? "" : "<section class='settings-section'><div class='section-title'><div><p class='eyebrow'>CHEFBEREICH</p><h2>Mitarbeiter verwalten</h2><p>Konten, Passwörter und Urlaubsanspruch werden hier sicher verwaltet.</p></div></div><form data-form='new-employee' class='inline-form employee-add'><input name='username' required placeholder='Benutzername'><input name='password' type='password' required placeholder='Startpasswort'><button class='primary' type='submit'>Mitarbeiter hinzufügen</button></form><div class='employee-list'>" + s.employees.filter((row) => row.role === "employee").map((row) => "<form data-form='employee-update' data-id='" + h(row.id) + "' class='employee-row'><strong>" + h(row.username) + "</strong><input name='username' value='" + h(row.username) + "'><input name='password' type='password' placeholder='Neues Passwort (optional)'><input name='vacationAllowance' inputmode='decimal' value='" + h(row.vacation_allowance) + "'><span>Urlaubstage</span><button class='quiet' type='submit'>Speichern</button><button class='danger-outline' type='button' data-action='delete-employee' data-id='" + h(row.id) + "' data-name='" + h(row.username) + "'>Löschen</button></form>").join("") + "</div></section>"
-  return "<main class='page'><section class='hero-small'><p class='eyebrow'>EINSTELLUNGEN</p><h1>" + (s.profile.role === "chief" ? "Daten von " + h(employee?.username) : "Persönliche Einstellungen") + "</h1><p class='muted'>Zusatzspalten ergänzen die Erfassung, ohne feste Berechnungen zu verändern.</p></section><section class='settings-section'><h2>Urlaubsanspruch</h2><p>Verfügbar: <strong>" + n(employee?.vacation_allowance).toLocaleString("de-DE", { minimumFractionDigits: 2 }) + " Tage</strong>. Der Anspruch wird vom Chef gepflegt.</p></section><section class='settings-section'><h2>Zusatzspalten</h2><p>Diese Felder erscheinen bei jeder Kundenzeile des ausgewählten Mitarbeiters.</p><form data-form='column' class='inline-form'><input name='name' required placeholder='Bezeichnung der Zusatzspalte'><button class='primary' type='submit'>Spalte hinzufügen</button></form><div class='column-list'>" + columns + "</div></section>" + staff + "</main>"
+  const employee = me(), chief = s.profile.role === "chief"
+  const columns = s.columns.length ? s.columns.map((row) => "<div><span>" + h(row.name) + "</span>" + (chief ? "<button class='danger-outline' data-action='delete-column' data-id='" + h(row.id) + "'>Entfernen</button>" : "") + "</div>").join("") : "<p class='muted'>Keine zusätzlichen Eingabefelder.</p>"
+  const columnControl = chief ? "<form data-form='column' class='inline-form labelled-inline'><label>Neue Feldbezeichnung<input name='name' required placeholder='z. B. Fahrzeug'></label><button class='primary' type='submit'>Feld hinzufügen</button></form>" : "<p class='muted'>Zusätzliche Felder können nur vom Chef angelegt oder entfernt werden.</p>"
+  const account = "<section class='settings-section'><h2>Mein Benutzerkonto</h2><p>Hier kann jeder sein eigenes Passwort und seinen eigenen Benutzernamen ändern.</p><form data-form='self-account' class='form-grid account-form'><label>Benutzername<input name='username' value='" + h(s.profile.username) + "' required></label><label>Neues Passwort<input name='password' type='password' autocomplete='new-password' placeholder='Leer lassen = unverändert'></label><button class='primary' type='submit'>Konto speichern</button></form></section>"
+  const materialCatalogue = !chief ? "" : "<section class='settings-section'><div class='section-title'><div><p class='eyebrow'>CHEFBEREICH</p><h2>Materialkatalog</h2><p>Preise werden ausschließlich hier gepflegt. Im Arbeitsschein sind sie nur sichtbar.</p></div></div><form data-form='new-material' class='inline-form labelled-inline'><label>Material<input name='name' required placeholder='z. B. Kabel'></label><label>Preis pro Stück (€)<input name='unitPrice' inputmode='decimal' value='0' required></label><button class='primary' type='submit'>Material anlegen</button></form><div class='material-catalogue'>" + (s.materials.length ? s.materials.map((row) => "<form data-form='material-update' data-id='" + h(row.id) + "' class='catalogue-row'><label>Material<input name='name' value='" + h(row.name) + "' required></label><label>Preis pro Stück (€)<input name='unitPrice' inputmode='decimal' value='" + h(row.unit_price) + "' required></label><button class='quiet' type='submit'>Speichern</button><button class='danger-outline' type='button' data-action='delete-material' data-id='" + h(row.id) + "' data-name='" + h(row.name) + "'>Entfernen</button></form>").join("") : "<p class='muted'>Noch kein Material angelegt.</p>") + "</div></section>"
+  const staff = !chief ? "" : "<section class='settings-section'><div class='section-title'><div><p class='eyebrow'>CHEFBEREICH</p><h2>Mitarbeiter verwalten</h2><p>Konten, Passwörter und der gesamte Urlaubsanspruch werden hier sicher verwaltet.</p></div></div><form data-form='new-employee' class='inline-form labelled-inline employee-add'><label>Benutzername<input name='username' required placeholder='z. B. Max.Muster'></label><label>Startpasswort<input name='password' type='password' required></label><button class='primary' type='submit'>Mitarbeiter hinzufügen</button></form><div class='employee-list'>" + (s.employees.filter((row) => row.role === "employee").length ? s.employees.filter((row) => row.role === "employee").map((row) => "<form data-form='employee-update' data-id='" + h(row.id) + "' class='employee-row'><strong>" + h(row.username) + "</strong><label>Benutzername<input name='username' value='" + h(row.username) + "' required></label><label>Neues Passwort<input name='password' type='password' placeholder='Leer lassen = unverändert'></label><label>Urlaubsanspruch (Tage)<input name='vacationAllowance' inputmode='decimal' value='" + h(row.vacation_allowance) + "' required></label><button class='quiet' type='submit'>Speichern</button><button class='danger-outline' type='button' data-action='delete-employee' data-id='" + h(row.id) + "' data-name='" + h(row.username) + "'>Löschen</button></form>").join("") : "<p class='muted'>Noch keine Mitarbeiterkonten angelegt.</p>") + "</div></section>"
+  return "<main class='page'><section class='hero-small'><p class='eyebrow'>EINSTELLUNGEN</p><h1>" + (chief ? "Daten von " + h(employee?.username) : "Persönliche Einstellungen") + "</h1><p class='muted'>Zusatzfelder ergänzen die Erfassung, ohne feste Berechnungen zu verändern.</p></section>" + account + "<section class='settings-section'><h2>Urlaubsanspruch</h2><p>Gesamt: <strong>" + n(employee?.vacation_allowance).toLocaleString("de-DE", { minimumFractionDigits: 2 }) + " Tage</strong> · bereits genehmigt: <strong>" + approvedVacationDays(employee?.id).toLocaleString("de-DE", { minimumFractionDigits: 2 }) + " Tage</strong> · verbleibend: <strong>" + remainingVacationDays(employee?.id).toLocaleString("de-DE", { minimumFractionDigits: 2 }) + " Tage</strong>.</p></section><section class='settings-section'><h2>Zusätzliche Eingabefelder</h2><p>Diese Felder erscheinen bei jeder Kundenzeile des ausgewählten Mitarbeiters.</p>" + columnControl + "<div class='column-list'>" + columns + "</div></section>" + materialCatalogue + staff + "</main>"
+}
+function calendarActivity(day) {
+  const entries = s.entries.filter((row) => sameDay(row.work_date, day))
+  const appointments = s.appointments.filter((row) => row.employee_id === s.employeeId && sameDay(row.event_date, day))
+  const vacation = s.vacationRequests.find((row) => row.employee_id === s.employeeId && row.status !== "rejected" && inRange(day, row.start_date, row.end_date))
+  return { entries, appointments, vacation }
+}
+function calendarForm() {
+  if (!s.calendarForm) return ""
+  if (s.calendarForm === "vacation") {
+    if (s.employeeId !== s.profile.id) return "<section class='calendar-form-card'><p class='muted'>Urlaub beantragt jeder Mitarbeiter in seinem eigenen Konto. Als Chef kannst du eingegangene Anträge im Postfach entscheiden.</p></section>"
+    return "<section class='calendar-form-card'><h2>Urlaub beantragen</h2><form data-form='vacation-request' class='form-grid'><label>Von<input name='startDate' type='date' value='" + s.selected + "' required></label><label>Bis<input name='endDate' type='date' value='" + s.selected + "' required></label><label>Hinweis (optional)<input name='note' placeholder='z. B. Familienurlaub'></label><button class='primary' type='submit'>Antrag senden</button><button class='quiet' type='button' data-action='close-calendar-form'>Abbrechen</button></form></section>"
+  }
+  const options = s.customers.map((row) => "<option value='" + h(row.name) + "'></option>").join("")
+  return "<section class='calendar-form-card'><h2>Kundentermin vormerken</h2><form data-form='appointment' class='form-grid'><label>Datum<input name='eventDate' type='date' value='" + s.selected + "' required></label><label>Kunde<input name='customerName' list='calendar-customer-list' placeholder='Kunde auswählen oder eingeben'></label><label>Titel<input name='title' required placeholder='z. B. Baustellentermin'></label><label>Notiz<input name='notes' placeholder='Optionaler Hinweis'></label><button class='primary' type='submit'>Termin vormerken</button><button class='quiet' type='button' data-action='close-calendar-form'>Abbrechen</button></form><datalist id='calendar-customer-list'>" + options + "</datalist></section>"
+}
+function calendar() {
+  const first = new Date(s.calendarYear, s.calendarMonth, 1), offset = (first.getDay() + 6) % 7, cells = []
+  for (let index = 0; index < 42; index += 1) {
+    const current = new Date(s.calendarYear, s.calendarMonth, 1 - offset + index), value = iso(current), activity = calendarActivity(value)
+    const classes = [current.getMonth() === s.calendarMonth ? "" : "outside", value === s.selected ? "selected" : "", activity.entries.length ? "has-work" : "", activity.appointments.length ? "has-appointment" : "", activity.vacation?.status === "requested" ? "pending-vacation" : "", activity.vacation?.status === "approved" ? "approved-vacation" : ""].filter(Boolean).join(" ")
+    const markers = (activity.entries.length ? "<i class='work-marker' title='Arbeitszeit'></i>" : "") + (activity.appointments.length ? "<i class='appointment-marker' title='Kundentermin'></i>" : "") + (activity.vacation ? "<i class='vacation-marker' title='" + (activity.vacation.status === "requested" ? "Urlaub beantragt" : "Urlaub genehmigt") + "'></i>" : "")
+    cells.push("<button class='calendar-day " + classes + "' data-action='calendar-day' data-date='" + value + "'><strong>" + current.getDate() + "</strong><span>" + markers + "</span></button>")
+  }
+  const details = calendarActivity(s.selected)
+  const workRows = details.entries.map((row) => "<li><strong>" + h(row.customer_name || "Ohne Kunden") + "</strong> · " + h(row.start_time || "–") + "–" + h(calc(row).end_time || "–") + " Uhr · " + hours(calc(row).executed_hours) + "</li>").join("")
+  const appointmentRows = details.appointments.map((row) => "<li><strong>Termin: " + h(row.title) + "</strong>" + (row.customer_name ? " · " + h(row.customer_name) : "") + (row.notes ? " · " + h(row.notes) : "") + " <button class='text-button' data-action='delete-appointment' data-id='" + h(row.id) + "'>Entfernen</button></li>").join("")
+  const vacation = details.vacation ? "<li class='calendar-vacation-text'><strong>" + (details.vacation.status === "requested" ? "Urlaub beantragt" : "Urlaub genehmigt") + "</strong> · " + hours(details.vacation.requested_days).replace("h", " Tage") + "</li>" : ""
+  const detailList = workRows + appointmentRows + vacation || "<li class='muted'>Keine Aktivitäten an diesem Tag.</li>"
+  return "<main class='page'><section class='hero-small calendar-hero'><div><p class='eyebrow'>PERSÖNLICHER KALENDER</p><h1>" + (s.profile.role === "chief" ? "Kalender von " + h(employeeName(s.employeeId)) : "Mein Kalender") + "</h1><p class='muted'>Auf einen Tag tippen, um Arbeitszeiten, Kundentermine und Urlaubszeiten zu sehen.</p></div><div class='calendar-actions'><button class='primary' data-action='open-vacation-form'>Urlaub beantragen</button><button class='quiet' data-action='open-appointment-form'>Kundentermin vormerken</button></div></section>" + calendarForm() + "<section class='calendar-card'><div class='calendar-toolbar'><button class='icon-button' data-action='previous-month' aria-label='Vorheriger Monat'>‹</button><h2>" + monthLabel(s.calendarYear, s.calendarMonth) + "</h2><button class='icon-button' data-action='next-month' aria-label='Nächster Monat'>›</button></div><div class='calendar-weekdays'><span>Mo</span><span>Di</span><span>Mi</span><span>Do</span><span>Fr</span><span>Sa</span><span>So</span></div><div class='calendar-grid'>" + cells.join("") + "</div><p class='calendar-key'><span><i class='work-marker'></i> Arbeitszeit</span><span><i class='appointment-marker'></i> Kundentermin</span><span><i class='vacation-marker'></i> Urlaub beantragt/genehmigt</span></p></section><section class='day-details'><h2>Aktivitäten am " + dayText(s.selected) + "</h2><ul>" + detailList + "</ul></section></main>"
+}
+function overlaps(leftStart, leftEnd, rightStart, rightEnd) { return String(leftStart) <= String(rightEnd) && String(leftEnd) >= String(rightStart) }
+function vacationMessage(message) {
+  const body = message.body || {}, request = s.vacationRequests.find((row) => row.id === body.request_id)
+  if (!request) return "<p class='muted'>Die zugehörigen Daten sind nicht mehr verfügbar.</p>"
+  const otherVacation = s.vacationRequests.filter((row) => row.id !== request.id && row.employee_id !== request.employee_id && row.status !== "rejected" && overlaps(request.start_date, request.end_date, row.start_date, row.end_date))
+  const appointments = s.appointments.filter((row) => inRange(row.event_date, request.start_date, request.end_date))
+  const others = otherVacation.length ? otherVacation.map((row) => h(employeeName(row.employee_id)) + " (" + dayText(row.start_date) + "–" + dayText(row.end_date) + ")").join(", ") : "keine"
+  const dates = appointments.length ? appointments.map((row) => h(employeeName(row.employee_id)) + ": " + h(row.title) + " am " + dayText(row.event_date)).join("; ") : "keine"
+  const controls = s.profile.role === "chief" && request.status === "requested" ? "<div class='message-controls'><button class='primary' data-action='decide-vacation' data-id='" + h(request.id) + "' data-decision='approved'>Genehmigen</button><button class='danger-outline' data-action='decide-vacation' data-id='" + h(request.id) + "' data-decision='rejected'>Ablehnen</button></div>" : "<p><strong>Status:</strong> " + (request.status === "approved" ? "genehmigt" : request.status === "rejected" ? "abgelehnt" : "offen") + "</p>"
+  return "<div class='message-facts'><p><strong>Mitarbeiter:</strong> " + h(employeeName(request.employee_id)) + "</p><p><strong>Zeitraum:</strong> " + dayText(request.start_date) + " bis " + dayText(request.end_date) + " (" + n(request.requested_days).toLocaleString("de-DE", { maximumFractionDigits: 2 }) + " Arbeitstage)</p><p><strong>Resturlaub:</strong> " + remainingVacationDays(request.employee_id).toLocaleString("de-DE", { maximumFractionDigits: 2 }) + " Tage</p><p><strong>Überschneidende Urlaube:</strong> " + others + "</p><p><strong>Vorgemerkte Termine im Zeitraum:</strong> " + dates + "</p></div>" + controls
+}
+function mailbox() {
+  const list = s.messages.length ? s.messages.map((row) => {
+    const body = row.body || {}
+    const content = row.message_type === "vacation_request" ? vacationMessage(row) : row.message_type === "password_help" ? "<p>" + h(body.username || employeeName(row.sender_id)) + " hat Hilfe beim Passwort angefordert. Bitte das Passwort im Chefbetrieb zurücksetzen und dem Mitarbeiter sicher mitteilen.</p>" : row.message_type === "vacation_decision" ? "<p>Dein Urlaubsantrag für " + dayText(body.start_date) + " bis " + dayText(body.end_date) + " wurde " + (body.status === "approved" ? "genehmigt" : "abgelehnt") + ".</p>" : "<p class='muted'>Keine weiteren Angaben.</p>"
+    return "<article class='message-card " + (!row.read_at ? "unread" : "") + "'><div class='message-head'><div><p class='eyebrow'>" + h(row.message_type === "password_help" ? "PASSWORT-HILFE" : row.message_type === "vacation_request" ? "URLAUBSANTRAG" : row.message_type === "vacation_decision" ? "URLAUBSENTSCHEIDUNG" : "NACHRICHT") + "</p><h2>" + h(row.title) + "</h2><small>" + new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" }).format(new Date(row.created_at)) + "</small></div>" + (!row.read_at ? "<button class='quiet' data-action='read-message' data-id='" + h(row.id) + "'>Als gelesen markieren</button>" : "") + "</div>" + content + "</article>"
+  }).join("") : "<div class='empty-state'>Dein Postfach ist leer.</div>"
+  return "<main class='page'><section class='hero-small'><p class='eyebrow'>INTERNES POSTFACH</p><h1>Nachrichten</h1><p class='muted'>Dieses Postfach ist nur innerhalb der App sichtbar und nur für das angemeldete Konto zugänglich.</p></section><section class='message-list'>" + list + "</section></main>"
 }
 function render() {
   if (s.loading) { root.innerHTML = "<div class='loading-card'><div class='loading-mark'>AZ</div><p>Arbeitszeit wird vorbereitet …</p></div>"; return }
   if (!s.session) { login(); return }
-  const page = s.view === "planner" ? planner() : s.view === "customers" ? customers() : s.view === "orders" ? orders() : settings()
+  const page = s.view === "planner" ? planner() : s.view === "customers" ? customers() : s.view === "orders" ? orders() : s.view === "calendar" ? calendar() : s.view === "mailbox" ? mailbox() : settings()
   root.innerHTML = "<div class='app-shell'>" + header() + nav() + page + note() + "</div>"
 }
 
@@ -178,10 +250,33 @@ root.addEventListener("submit", async (event) => {
     if (form.dataset.form === "login") { const result = await db.auth.signInWithPassword({ email: form.username.value.trim().toLowerCase() + "@arbeitszeit.local", password: form.password.value }); if (result.error) throw new Error("Benutzername oder Passwort ist nicht korrekt.") }
     else if (form.dataset.form === "customer") { await customer(form.name.value); tell("Kunde angelegt.") }
     else if (form.dataset.form === "column") { const name = form.name.value.trim(); if (!name) throw new Error("Bitte eine Bezeichnung eingeben."); s.columns.push(await data(db.from("custom_columns").insert({ id: guid(), employee_id: s.employeeId, name, position: s.columns.length }).select().single())); render() }
-    else if (form.dataset.form === "order") { const found = await customer(form.customerName.value); s.orders.unshift(await data(db.from("work_orders").insert({ id: guid(), employee_id: s.employeeId, work_date: form.workDate.value, customer_id: found.id, customer_name: found.name, title: form.title.value.trim(), notes: form.notes.value.trim() }).select().single())); tell("Arbeitsschein angelegt.") }
-    else if (form.dataset.form === "material") { const name = form.positionName.value.trim(); if (!name) throw new Error("Bitte Material oder Position eingeben."); s.items.push(await data(db.from("work_order_items").insert({ id: guid(), work_order_id: form.dataset.orderId, position_name: name, quantity: Math.max(0, n(form.quantity.value)), unit_price: Math.max(0, n(form.unitPrice.value)) }).select().single())); render() }
+    else if (form.dataset.form === "order") {
+      const found = await customer(form.customerName.value), calculationMode = form.calculationMode.value
+      if (calculationMode === "end_time" && !form.endTime.value) throw new Error("Für die Berechnung über die Endzeit bitte ein Arbeitsende eintragen.")
+      const timing = calc({ start_time: form.startTime.value || "07:30", end_time: form.endTime.value || "", pause_hours: Math.max(0, n(form.pauseHours.value)), executed_hours: Math.max(0, n(form.executedHours.value)), calculation_mode: calculationMode })
+      await data(db.from("work_orders").insert({ id: guid(), employee_id: s.employeeId, work_date: form.workDate.value, customer_id: found.id, customer_name: found.name, title: form.title.value.trim(), notes: form.notes.value.trim(), start_time: timing.start_time, end_time: timing.end_time, pause_hours: timing.pause_hours, executed_hours: timing.executed_hours, calculation_mode: timing.calculation_mode }).select().single())
+      await loadData(); tell("Arbeitsschein angelegt und in die Zeiterfassung übernommen.")
+    }
+    else if (form.dataset.form === "material") { if (!form.materialId.value) throw new Error("Bitte ein Material auswählen."); s.items.push(await data(db.from("work_order_items").insert({ id: guid(), work_order_id: form.dataset.orderId, material_id: form.materialId.value, position_name: "Material", quantity: Math.max(0, n(form.quantity.value)), unit_price: 0 }).select().single())); render() }
     else if (form.dataset.form === "new-employee") { await manage({ action: "create", username: form.username.value, password: form.password.value }); tell("Mitarbeiterkonto angelegt.") }
     else if (form.dataset.form === "employee-update") { await manage({ action: "update", employeeId: form.dataset.id, username: form.username.value, password: form.password.value, vacationAllowance: form.vacationAllowance.value }); tell("Mitarbeiter gespeichert.") }
+    else if (form.dataset.form === "self-account") { await manage({ action: "self-update", username: form.username.value, password: form.password.value }); await loadProfile(); await loadEmployees(); tell("Dein Benutzerkonto wurde gespeichert.") }
+    else if (form.dataset.form === "new-material") { const name = form.name.value.trim(); if (!name) throw new Error("Bitte eine Materialbezeichnung eingeben."); await data(db.from("materials").insert({ name, unit_price: Math.max(0, n(form.unitPrice.value)) })); await loadData(); tell("Material angelegt.") }
+    else if (form.dataset.form === "material-update") { const name = form.name.value.trim(); if (!name) throw new Error("Bitte eine Materialbezeichnung eingeben."); await data(db.from("materials").update({ name, unit_price: Math.max(0, n(form.unitPrice.value)) }).eq("id", form.dataset.id)); await loadData(); tell("Material gespeichert.") }
+    else if (form.dataset.form === "vacation-request") {
+      if (form.endDate.value < form.startDate.value) throw new Error("Das Enddatum muss am oder nach dem Startdatum liegen.")
+      const requestedDays = vacationDays(form.startDate.value, form.endDate.value)
+      if (!requestedDays) throw new Error("Der Antrag muss mindestens einen Arbeitstag enthalten.")
+      if (requestedDays > remainingVacationDays(s.profile.id)) throw new Error("Dafür stehen nicht genügend Resturlaubstage zur Verfügung.")
+      await data(db.from("vacation_requests").insert({ employee_id: s.profile.id, start_date: form.startDate.value, end_date: form.endDate.value, requested_days: requestedDays, status: "requested", decision_note: form.note.value.trim() }))
+      s.calendarForm = ""; await loadData(); tell("Urlaubsantrag gesendet. Die Tage sind vorläufig im Kalender markiert.")
+    }
+    else if (form.dataset.form === "appointment") {
+      const name = form.customerName.value.trim(); let found = null
+      if (name) found = await customer(name)
+      await data(db.from("appointments").insert({ employee_id: s.employeeId, event_date: form.eventDate.value, customer_id: found?.id || null, customer_name: found?.name || "", title: form.title.value.trim(), notes: form.notes.value.trim() }))
+      s.calendarForm = ""; await loadData(); tell("Kundentermin vorgemerkt.")
+    }
   } catch (error) { tell(error.message || "Aktion fehlgeschlagen.", true) }
 })
 root.addEventListener("change", async (event) => {
@@ -199,11 +294,25 @@ root.addEventListener("change", async (event) => {
 root.addEventListener("click", async (event) => {
   const button = event.target.closest("button"); if (!button) return
   try {
-    if (button.dataset.view) { s.view = button.dataset.view; render(); return }
+    if (button.dataset.view) { s.view = button.dataset.view; if (s.view === "mailbox" || s.view === "calendar") await loadData(); render(); return }
+    if (button.dataset.action === "forgot-password") {
+      const username = window.prompt("Bitte deinen Benutzernamen eingeben. Der Chef erhält dann eine vertrauliche Nachricht.")
+      if (username === null) return
+      const result = await db.functions.invoke("request-password-help", { body: { username } })
+      if (result.error) throw result.error
+      tell(result.data?.message || "Wenn ein Konto gefunden wurde, ist der Chef informiert worden.")
+      return
+    }
     if (button.dataset.action === "logout") { await db.auth.signOut(); s.session = null; s.profile = null; s.employeeId = null; render(); return }
     if (button.dataset.action === "choose-date") { s.selected = button.dataset.date; render(); return }
     if (button.dataset.action === "previous-date") { s.selected = nextWorkday(-1); render(); return }
     if (button.dataset.action === "next-date") { s.selected = nextWorkday(1); render(); return }
+    if (button.dataset.action === "calendar-day") { s.selected = button.dataset.date; const current = date(s.selected); s.calendarMonth = current.getMonth(); s.calendarYear = current.getFullYear(); render(); return }
+    if (button.dataset.action === "previous-month") { const current = new Date(s.calendarYear, s.calendarMonth - 1, 1); s.calendarMonth = current.getMonth(); s.calendarYear = current.getFullYear(); render(); return }
+    if (button.dataset.action === "next-month") { const current = new Date(s.calendarYear, s.calendarMonth + 1, 1); s.calendarMonth = current.getMonth(); s.calendarYear = current.getFullYear(); render(); return }
+    if (button.dataset.action === "open-vacation-form") { s.calendarForm = "vacation"; render(); return }
+    if (button.dataset.action === "open-appointment-form") { s.calendarForm = "appointment"; render(); return }
+    if (button.dataset.action === "close-calendar-form") { s.calendarForm = ""; render(); return }
     if (button.dataset.action === "add-entry") await addEntry()
     if (button.dataset.action === "delete-entry" && window.confirm("Diese Kundenzeile wirklich löschen?")) { await data(db.from("time_entries").delete().eq("id", button.dataset.id)); s.entries = s.entries.filter((row) => row.id !== button.dataset.id); render() }
     if (button.dataset.action === "open-order") { s.view = "orders"; render(); const field = root.querySelector("[data-form='order'] [name='customerName']"); if (field) { field.value = button.dataset.customer || ""; field.focus() } }
@@ -211,6 +320,17 @@ root.addEventListener("click", async (event) => {
     if (button.dataset.action === "delete-item") { await data(db.from("work_order_items").delete().eq("id", button.dataset.id)); s.items = s.items.filter((row) => row.id !== button.dataset.id); render() }
     if (button.dataset.action === "delete-order" && window.confirm("Diesen Arbeitsschein mit allen Positionen löschen?")) { await data(db.from("work_orders").delete().eq("id", button.dataset.id)); s.orders = s.orders.filter((row) => row.id !== button.dataset.id); s.items = s.items.filter((row) => row.work_order_id !== button.dataset.id); render() }
     if (button.dataset.action === "delete-column" && window.confirm("Zusatzspalte entfernen? Die bisherigen Werte bleiben in den Einträgen gespeichert.")) { await data(db.from("custom_columns").delete().eq("id", button.dataset.id)); s.columns = s.columns.filter((row) => row.id !== button.dataset.id); render() }
+    if (button.dataset.action === "delete-material" && window.confirm("Material „" + button.dataset.name + "“ aus dem Katalog entfernen? Bereits verwendete Preise bleiben in vorhandenen Arbeitsscheinen erhalten.")) { await data(db.from("materials").update({ active: false }).eq("id", button.dataset.id)); await loadData(); tell("Material aus dem Katalog entfernt.") }
+    if (button.dataset.action === "delete-appointment" && window.confirm("Diesen Kundentermin wirklich entfernen?")) { await data(db.from("appointments").delete().eq("id", button.dataset.id)); await loadData(); tell("Kundentermin entfernt.") }
+    if (button.dataset.action === "read-message") { const saved = await data(db.from("mailbox_messages").update({ read_at: new Date().toISOString() }).eq("id", button.dataset.id).select().single()); const index = s.messages.findIndex((row) => row.id === saved.id); if (index >= 0) s.messages[index] = saved; render(); return }
+    if (button.dataset.action === "decide-vacation") {
+      const requested = s.vacationRequests.find((row) => row.id === button.dataset.id); if (!requested) throw new Error("Der Urlaubsantrag wurde nicht gefunden.")
+      const approved = button.dataset.decision === "approved", noteText = window.prompt(approved ? "Optionaler Hinweis zur Genehmigung:" : "Optionaler Grund für die Ablehnung:", "")
+      if (noteText === null) return
+      await data(db.from("vacation_requests").update({ status: button.dataset.decision, decision_note: noteText.trim(), decided_by: s.profile.id, decided_at: new Date().toISOString() }).eq("id", requested.id))
+      await loadData(); tell(approved ? "Urlaubsantrag genehmigt und Mitarbeiter informiert." : "Urlaubsantrag abgelehnt und Mitarbeiter informiert.")
+      return
+    }
     if (button.dataset.action === "delete-employee" && window.confirm("Mitarbeiter „" + button.dataset.name + "“ samt seinen Daten wirklich löschen?")) { await manage({ action: "delete", employeeId: button.dataset.id }); if (s.employeeId === button.dataset.id) { s.employeeId = s.profile.id; await loadData() } tell("Mitarbeiter gelöscht.") }
   } catch (error) { tell(error.message || "Aktion fehlgeschlagen.", true) }
 })

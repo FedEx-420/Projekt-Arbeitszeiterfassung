@@ -1,10 +1,10 @@
-const CACHE_NAME = "arbeitszeit-2026-v4";
+const CACHE_NAME = "arbeitszeit-team-v1";
 const APP_FILES = [
   "./",
   "./index.html",
   "./styles.css",
-  "./app.js?v=4",
-  "./seed-data.json",
+  "./app.js?v=5",
+  "./config.js?v=1",
   "./manifest.webmanifest",
   "./icon.svg",
 ];
@@ -33,3 +33,4 @@ self.addEventListener("fetch", (event) => {
     })),
   );
 });
+

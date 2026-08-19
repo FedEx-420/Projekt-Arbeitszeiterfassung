@@ -56,7 +56,13 @@ function approvedVacationDays(employeeId) { return s.vacationRequests.filter((ro
 function remainingVacationDays(employeeId) { const person = s.employees.find((row) => row.id === employeeId); return Math.max(0, n(person?.vacation_allowance) - approvedVacationDays(employeeId)) }
 function monthLabel(year, month) { return new Intl.DateTimeFormat("de-DE", { month: "long", year: "numeric" }).format(new Date(year, month, 1)) }
 function currentDay() { return s.days.get(s.selected) || { employee_id: s.employeeId, work_date: s.selected, vacation: 0, sick: 0 } }
-function currentStatus() { const row = currentDay(), name = HOLIDAYS[s.selected] || ""; return { name, vacation: n(row.vacation), sick: n(row.sick), locked: Boolean(name) || n(row.vacation) > 0 || n(row.sick) > 0 } }
+function currentStatus() {
+  const row = currentDay(), name = HOLIDAYS[s.selected] || ""
+  const approvedVacation = s.vacationRequests.some((request) => request.employee_id === s.employeeId && request.status === "approved" && inRange(s.selected, request.start_date, request.end_date))
+  const vacation = approvedVacation || n(row.vacation) > 0
+  const sick = n(row.sick) > 0
+  return { name, vacation, sick, locked: Boolean(name) || vacation || sick }
+}
 function me() { return s.employees.find((row) => row.id === s.employeeId) || s.profile }
 function tell(text, error = false) { s.note = { text, error }; render(); setTimeout(() => { if (s.note?.text === text) { s.note = null; render() } }, 4500) }
 async function data(request) { const { data: result, error } = await request; if (error) throw error; return result }
@@ -148,7 +154,8 @@ function planner() {
   const absence = status.name ? "<div class='absence holiday'><strong>" + h(status.name) + "</strong><span>Feiertag in NRW – für diesen Tag können keine Kunden erfasst werden.</span></div>" : (status.vacation || status.sick ? "<div class='absence " + (status.sick ? "sick" : "vacation") + "'><strong>" + (status.sick ? "Krankheit" : "Urlaub") + "</strong><span>Für diesen Tag ist keine Arbeitszeiterfassung vorgesehen.</span></div>" : "")
   const list = rows.length ? rows.map((row, index) => job(row, index, status.locked)).join("") : "<div class='empty-state'>" + (status.locked || !weekday(s.selected) ? "An diesem Tag ist keine Arbeitszeiterfassung möglich." : "Noch kein Kunde erfasst. Mit „+ Kunde“ beginnen.") + "</div>"
   const overtime = Math.abs(balance) < 0.005 ? "–" : (balance > 0 ? "+" : "") + hours(balance)
-  return "<main class='page'><datalist id='customer-list'>" + s.customers.map((row) => "<option value='" + h(row.name) + "'></option>").join("") + "</datalist>" + datePicker() + "<section class='summary-grid'><div class='summary-card'><span>Sollzeit</span><strong>" + hours(goal) + "</strong></div><div class='summary-card'><span>Ausgeführt</span><strong>" + hours(total) + "</strong></div><div class='summary-card'><span>Überstunden</span><strong class='" + (balance > 0.004 ? "positive" : balance < -0.004 ? "negative" : "") + "'>" + overtime + "</strong></div></section><section class='status-card'><div><strong>Abwesenheit</strong><p>Urlaub und Krankheit werden nur hier erfasst – alle Zeiten bleiben unverändert.</p></div><div class='absence-inputs'><label>Urlaub<input id='vacation-input' inputmode='decimal' value='" + h(currentDay().vacation) + "'" + (status.name ? " disabled" : "") + "></label><label>Krankheit<input id='sick-input' inputmode='decimal' value='" + h(currentDay().sick) + "'" + (status.name ? " disabled" : "") + "></label></div></section>" + absence + "<section class='jobs-section'><div class='section-title'><div><h2>Kunden & Zeiten</h2><p>Stunden eingeben oder Beginn und Ende eintragen – die andere Angabe wird berechnet.</p></div><button class='primary' data-action='add-entry'" + (status.locked || !weekday(s.selected) ? " disabled" : "") + ">+ Kunde</button></div>" + list + "</section></main>"
+  const sickAction = !status.name && !status.vacation && !status.sick && weekday(s.selected) ? "<button class='primary' data-action='mark-sick'>Als krank markieren</button>" : ""
+  return "<main class='page'><datalist id='customer-list'>" + s.customers.map((row) => "<option value='" + h(row.name) + "'></option>").join("") + "</datalist>" + datePicker() + "<section class='summary-grid'><div class='summary-card'><span>Sollzeit</span><strong>" + hours(goal) + "</strong></div><div class='summary-card'><span>Ausgeführt</span><strong>" + hours(total) + "</strong></div><div class='summary-card'><span>Überstunden</span><strong class='" + (balance > 0.004 ? "positive" : balance < -0.004 ? "negative" : "") + "'>" + overtime + "</strong></div></section><section class='status-card'><div><strong>Abwesenheit</strong><p>Urlaub wird nur vom Chef verwaltet. Eine Krankmeldung gilt immer für den ganzen Tag.</p></div><div class='absence-overview'><span>Urlaub: <strong>" + (status.vacation ? "markiert" : "nicht markiert") + "</strong></span><span>Krankheit: <strong>" + (status.sick ? "markiert" : "nicht markiert") + "</strong></span>" + sickAction + "</div></section>" + absence + "<section class='jobs-section'><div class='section-title'><div><h2>Kunden & Zeiten</h2><p>Stunden eingeben oder Beginn und Ende eintragen – die andere Angabe wird berechnet.</p></div><button class='primary' data-action='add-entry'" + (status.locked || !weekday(s.selected) ? " disabled" : "") + ">+ Kunde</button></div>" + list + "</section></main>"
 }
 function customers() {
   const total = (customer) => s.entries.filter((row) => row.customer_id === customer.id || String(row.customer_name).toLowerCase() === String(customer.name).toLowerCase()).reduce((sum, row) => sum + calc(row).executed_hours, 0)
@@ -247,11 +254,12 @@ async function customer(value) {
   if (similar && window.confirm("Meintest du „" + similar.name + "“?\nOK: vorhandenen Kunden verwenden\nAbbrechen: neuen Kunden anlegen")) return similar
   const saved = await data(db.from("customers").insert({ id: guid(), employee_id: s.employeeId, name }).select().single()); s.customers.push(saved); s.customers.sort((a, b) => a.name.localeCompare(b.name, "de")); return saved
 }
-async function saveDay(field, value) {
-  const row = { ...currentDay(), employee_id: s.employeeId, work_date: s.selected, [field]: Math.max(0, n(value)) }
-  if (field === "vacation" && row.vacation > 0) row.sick = 0
-  if (field === "sick" && row.sick > 0) row.vacation = 0
-  const saved = await data(db.from("work_days").upsert(row).select().single()); s.days.set(saved.work_date, saved); render()
+async function markSick() {
+  const status = currentStatus()
+  if (status.name || status.vacation || status.sick || !weekday(s.selected)) return
+  const row = { ...currentDay(), employee_id: s.employeeId, work_date: s.selected, sick: 1 }
+  const saved = await data(db.from("work_days").upsert(row).select().single())
+  s.days.set(saved.work_date, saved); render(); tell("Der Tag wurde als krank markiert.")
 }
 async function addEntry() {
   const prior = jobs().at(-1), start = prior ? calc(prior).end_time : "07:30"
@@ -320,8 +328,6 @@ root.addEventListener("change", async (event) => {
     if (el.id === "employee-picker") await pickEmployee(el.value)
     else if (el.id === "date-picker") { s.selected = el.value; render() }
     else if (el.id === "order-work-date") { const start = root.querySelector("#order-start-time"); if (start) start.value = orderStartFor(el.value) }
-    else if (el.id === "vacation-input") await saveDay("vacation", el.value)
-    else if (el.id === "sick-input") await saveDay("sick", el.value)
     else if (el.dataset.entryField) await editEntry(el.dataset.id, el.dataset.entryField, el.value)
     else if (el.dataset.entryCustom) await editEntry(el.dataset.id, "custom", [el.dataset.entryCustom, el.value])
     else if (el.dataset.itemField) { const row = s.items.find((item) => item.id === el.dataset.id); row[el.dataset.itemField] = el.dataset.itemField === "position_name" ? el.value.trim() : Math.max(0, n(el.value)); Object.assign(row, await data(db.from("work_order_items").update({ [el.dataset.itemField]: row[el.dataset.itemField] }).eq("id", row.id).select().single())); render() }
@@ -350,6 +356,7 @@ root.addEventListener("click", async (event) => {
     if (button.dataset.action === "open-appointment-form") { s.calendarForm = "appointment"; render(); return }
     if (button.dataset.action === "close-calendar-form") { s.calendarForm = ""; render(); return }
     if (button.dataset.action === "add-entry") await addEntry()
+    if (button.dataset.action === "mark-sick") await markSick()
     if (button.dataset.action === "delete-entry" && window.confirm("Diese Kundenzeile wirklich löschen?")) { await deleteSavedRecord("time_entries", button.dataset.id); await loadData(); tell("Zeiterfassungszeile gelöscht.") }
     if (button.dataset.action === "open-order") { s.view = "orders"; render(); const field = root.querySelector("[data-form='order'] [name='customerName']"); if (field) { field.value = button.dataset.customer || ""; field.focus() } }
     if (button.dataset.action === "delete-customer") { const row = s.customers.find((item) => item.id === button.dataset.id); if (row && window.confirm("Kunde „" + row.name + "“ wirklich löschen? Bereits erfasste Zeiten bleiben erhalten.")) { await deleteSavedRecord("customers", row.id); await loadData(); tell("Kunde gelöscht.") } }

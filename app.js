@@ -198,7 +198,9 @@ async function loadData() {
     const index = loadedVacations.findIndex((row) => row.id === id)
     if (index < 0) { loadedVacations.push(saved); continue }
     const loaded = loadedVacations[index]
-    if (loaded.status === saved.status || (saved.status === "requested" && loaded.status !== "requested")) s.vacationRequestOverrides.delete(id)
+    // Eine Serverentscheidung (Genehmigung, Ablehnung oder Entfernung) hat immer
+    // Vorrang vor einem nur kurzzeitig zwischengespeicherten Antragsstatus.
+    if (loaded.status === saved.status || loaded.status === "approved" || loaded.status === "rejected") s.vacationRequestOverrides.delete(id)
     else loadedVacations[index] = saved
   }
   loadedVacations.sort((left, right) => String(left.start_date).localeCompare(String(right.start_date)))
@@ -428,10 +430,13 @@ async function removeVacation() {
   if (s.profile.role !== "chief") throw new Error("Urlaubszeiträume können nur vom Chef entfernt werden.")
   const request = s.vacationRequests.find((row) => row.employee_id === s.employeeId && row.status !== "rejected" && inRange(s.selected, row.start_date, row.end_date))
   if (!request) { tell("Für diesen Tag ist kein Urlaubszeitraum vorhanden."); return }
-  await data(db.from("vacation_requests").update({ status: "rejected", decided_by: s.profile.id, decided_at: new Date().toISOString(), decision_note: "Vom Chef entfernt" }).eq("id", request.id).select().single())
-  await loadData()
+  const saved = await data(db.from("vacation_requests").update({ status: "rejected", decided_by: s.profile.id, decided_at: new Date().toISOString(), decision_note: "Vom Chef entfernt" }).eq("id", request.id).select().single())
+  // Sofort aus dem Kalender entfernen und den nächsten Datenabgleich dagegen absichern.
+  s.vacationRequestOverrides.set(saved.id, saved)
+  s.vacationRequests = s.vacationRequests.map((row) => row.id === saved.id ? saved : row)
   render()
   tell("Der Urlaubszeitraum wurde entfernt.")
+  try { await loadData(); render() } catch (_) {}
 }
 async function deleteWorkOrder(orderId) {
   await data(db.from("time_entries").delete().eq("work_order_id", orderId))

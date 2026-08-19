@@ -90,9 +90,22 @@ function reportRowsForPdf() {
   })
 }
 function signedHours(value) { return Math.abs(value) < 0.005 ? "0,00h" : (value > 0 ? "+" : "") + hours(value) }
-function downloadPdf() {
-  const Pdf = window.jspdf?.jsPDF
-  if (!Pdf) throw new Error("Die PDF-Erstellung wird noch geladen. Bitte gleich erneut versuchen.")
+function loadPdfScript(source) {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script"), timeout = window.setTimeout(() => finish(new Error("Zeitüberschreitung beim Laden der PDF-Erstellung.")), 8000)
+    const finish = (error) => { window.clearTimeout(timeout); script.remove(); error ? reject(error) : resolve(window.jspdf.jsPDF) }
+    script.src = source; script.async = true; script.onload = () => window.jspdf?.jsPDF ? finish() : finish(new Error("Die PDF-Bibliothek konnte nicht gestartet werden.")); script.onerror = () => finish(new Error("Die PDF-Bibliothek konnte nicht geladen werden.")); document.head.append(script)
+  })
+}
+async function pdfConstructor() {
+  if (window.jspdf?.jsPDF) return window.jspdf.jsPDF
+  for (const source of ["https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js", "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"]) {
+    try { return await loadPdfScript(source) } catch (_) {}
+  }
+  throw new Error("Die PDF-Erstellung ist gerade nicht erreichbar. Bitte Internetverbindung prüfen und erneut versuchen.")
+}
+async function downloadPdf() {
+  const Pdf = await pdfConstructor()
   const person = me(), rows = reportRowsForPdf(), stats = employeeStatistics(), doc = new Pdf({ orientation: "landscape", unit: "mm", format: "a4" })
   const left = 11, right = 286, columns = [left, 40, 111, 138, 165, 189], widths = [27, 71, 27, 27, 24, 97]
   let y = 31, page = 1

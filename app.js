@@ -11,7 +11,7 @@ const HOLIDAYS = {
 }
 if (!cfg?.supabaseUrl || !cfg?.supabasePublishableKey) throw new Error("App-Konfiguration fehlt.")
 const db = createClient(cfg.supabaseUrl, cfg.supabasePublishableKey)
-const s = { session: null, profile: null, employees: [], employeeId: null, view: "planner", selected: workday(new Date()), customers: [], days: new Map(), entries: [], columns: [], orders: [], items: [], materials: [], messages: [], appointments: [], vacationRequests: [], calendarMonth: new Date().getMonth(), calendarYear: new Date().getFullYear(), calendarForm: "", customerChannel: null, customerSyncTimer: null, note: null, loading: true }
+const s = { session: null, profile: null, employees: [], employeeId: null, view: "planner", selected: workday(new Date()), customers: [], days: new Map(), entries: [], columns: [], orders: [], items: [], materials: [], messages: [], appointments: [], vacationRequests: [], calendarMonth: new Date().getMonth(), calendarYear: new Date().getFullYear(), calendarForm: "", customerChannel: null, customerSyncTimer: null, teamChannel: null, teamSyncTimer: null, note: null, loading: true }
 
 function iso(value) {
   const d = value instanceof Date ? value : new Date(String(value) + "T12:00:00")
@@ -56,6 +56,14 @@ function approvedVacationDays(employeeId) { return s.vacationRequests.filter((ro
 function remainingVacationDays(employeeId) { const person = s.employees.find((row) => row.id === employeeId); return Math.max(0, n(person?.vacation_allowance) - approvedVacationDays(employeeId)) }
 function monthLabel(year, month) { return new Intl.DateTimeFormat("de-DE", { month: "long", year: "numeric" }).format(new Date(year, month, 1)) }
 function currentDay() { return s.days.get(s.selected) || { employee_id: s.employeeId, work_date: s.selected, vacation: 0, sick: 0 } }
+function employeeStatistics() {
+  const totals = new Map()
+  s.entries.forEach((row) => totals.set(row.work_date, (totals.get(row.work_date) || 0) + calc(row).executed_hours))
+  const executed = [...totals.values()].reduce((sum, value) => sum + value, 0)
+  const overtime = [...totals.entries()].reduce((sum, entry) => sum + entry[1] - target(entry[0]), 0)
+  const sick = [...s.days.values()].filter((row) => n(row.sick) > 0).length
+  return { executed, overtime, sick, vacation: approvedVacationDays(s.employeeId) }
+}
 function currentStatus() {
   const row = currentDay(), name = HOLIDAYS[s.selected] || ""
   const approvedVacation = s.vacationRequests.some((request) => request.employee_id === s.employeeId && request.status === "approved" && inRange(s.selected, request.start_date, request.end_date))
@@ -111,11 +119,26 @@ function syncCustomersAcrossDevices() {
     })
     .subscribe()
 }
+function syncTeamDataAcrossDevices() {
+  if (s.teamChannel) db.removeChannel(s.teamChannel)
+  if (!s.session) return
+  const refresh = () => {
+    window.clearTimeout(s.teamSyncTimer)
+    s.teamSyncTimer = window.setTimeout(async () => { try { await loadData(); render() } catch (_) {} }, 250)
+  }
+  s.teamChannel = db.channel("team-sync-" + s.session.user.id)
+    .on("postgres_changes", { event: "*", schema: "public", table: "vacation_requests" }, refresh)
+    .on("postgres_changes", { event: "*", schema: "public", table: "mailbox_messages" }, refresh)
+    .on("postgres_changes", { event: "*", schema: "public", table: "work_days" }, refresh)
+    .on("postgres_changes", { event: "*", schema: "public", table: "time_entries" }, refresh)
+    .on("postgres_changes", { event: "*", schema: "public", table: "work_orders" }, refresh)
+    .subscribe()
+}
 async function boot() {
   s.loading = true; render()
   const result = await db.auth.getSession(); s.session = result.data.session
-  if (!s.session) { if (s.customerChannel) { db.removeChannel(s.customerChannel); s.customerChannel = null } s.loading = false; render(); return }
-  try { await loadProfile(); await loadEmployees(); await loadData(); syncCustomersAcrossDevices() }
+  if (!s.session) { if (s.customerChannel) { db.removeChannel(s.customerChannel); s.customerChannel = null } if (s.teamChannel) { db.removeChannel(s.teamChannel); s.teamChannel = null } s.loading = false; render(); return }
+  try { await loadProfile(); await loadEmployees(); await loadData(); syncCustomersAcrossDevices(); syncTeamDataAcrossDevices() }
   catch (error) { await db.auth.signOut(); s.session = null; s.profile = null; s.note = { text: "Anmeldung konnte nicht geladen werden: " + error.message, error: true } }
   s.loading = false; render()
 }
@@ -181,19 +204,23 @@ function orders() {
 }
 function settings() {
   const employee = me(), chief = s.profile.role === "chief"
+  const stats = employeeStatistics()
   const columns = s.columns.length ? s.columns.map((row) => "<div><span>" + h(row.name) + "</span>" + (chief ? "<button class='danger-outline' data-action='delete-column' data-id='" + h(row.id) + "'>Entfernen</button>" : "") + "</div>").join("") : "<p class='muted'>Keine zusätzlichen Eingabefelder.</p>"
   const columnControl = chief ? "<form data-form='column' class='inline-form labelled-inline'><label>Neue Feldbezeichnung<input name='name' required placeholder='z. B. Fahrzeug'></label><button class='primary' type='submit'>Feld hinzufügen</button></form>" : "<p class='muted'>Zusätzliche Felder können nur vom Chef angelegt oder entfernt werden.</p>"
   const ownVacation = chief ? "<label>Mein Urlaubsanspruch (Tage)<input name='vacationAllowance' inputmode='decimal' value='" + h(s.profile.vacation_allowance) + "' required></label>" : ""
   const account = "<section class='settings-section'><h2>Mein Benutzerkonto</h2><p>Hier kann jeder sein eigenes Passwort und seinen eigenen Benutzernamen ändern." + (chief ? " Als Chef kannst du außerdem deinen eigenen Urlaubsanspruch pflegen." : "") + "</p><form data-form='self-account' class='form-grid account-form'><label>Benutzername<input name='username' value='" + h(s.profile.username) + "' required></label><label>Neues Passwort<input name='password' type='password' autocomplete='new-password' placeholder='Leer lassen = unverändert'></label>" + ownVacation + "<button class='primary' type='submit'>Konto speichern</button></form></section>"
+  const statsPanel = "<section class='settings-section'><h2>Statistik von " + h(employee?.username) + "</h2><div class='summary-grid person-stats'><div class='summary-card'><span>Ausgeführt gesamt</span><strong>" + hours(stats.executed) + "</strong></div><div class='summary-card'><span>Überstunden</span><strong class='" + (stats.overtime > 0.004 ? "positive" : stats.overtime < -0.004 ? "negative" : "") + "'>" + (Math.abs(stats.overtime) < .005 ? "–" : (stats.overtime > 0 ? "+" : "") + hours(stats.overtime)) + "</strong></div><div class='summary-card'><span>Krankheitstage</span><strong>" + stats.sick + "</strong></div><div class='summary-card'><span>Urlaubstage</span><strong>" + stats.vacation + "</strong></div></div></section>"
   const materialCatalogue = !chief ? "" : "<section class='settings-section'><div class='section-title'><div><p class='eyebrow'>CHEFBEREICH</p><h2>Materialkatalog</h2><p>Preise werden ausschließlich hier gepflegt. Im Arbeitsschein sind sie nur sichtbar.</p></div></div><form data-form='new-material' class='inline-form labelled-inline'><label>Material<input name='name' required placeholder='z. B. Kabel'></label><label>Preis pro Stück (€)<input name='unitPrice' inputmode='decimal' value='0' required></label><button class='primary' type='submit'>Material anlegen</button></form><div class='material-catalogue'>" + (s.materials.length ? s.materials.map((row) => "<form data-form='material-update' data-id='" + h(row.id) + "' class='catalogue-row'><label>Material<input name='name' value='" + h(row.name) + "' required></label><label>Preis pro Stück (€)<input name='unitPrice' inputmode='decimal' value='" + h(row.unit_price) + "' required></label><button class='quiet' type='submit'>Speichern</button><button class='danger-outline' type='button' data-action='delete-material' data-id='" + h(row.id) + "' data-name='" + h(row.name) + "'>Entfernen</button></form>").join("") : "<p class='muted'>Noch kein Material angelegt.</p>") + "</div></section>"
+  const overview = !chief ? "" : "<section class='settings-section'><p class='eyebrow'>CHEFBEREICH</p><h2>Person auswählen</h2><p>Öffne die Daten und Statistik einer Person.</p><div class='person-list'>" + s.employees.map((row) => "<button class='person-card' data-action='open-person-statistics' data-id='" + h(row.id) + "'><span>" + h(row.role === "chief" ? "Chef" : "Mitarbeiter") + "</span><strong>" + h(row.username) + "</strong><small>Statistik öffnen ›</small></button>").join("") + "</div></section>"
   const staff = !chief ? "" : "<section class='settings-section'><div class='section-title'><div><p class='eyebrow'>CHEFBEREICH</p><h2>Mitarbeiter verwalten</h2><p>Konten, Passwörter und der gesamte Urlaubsanspruch werden hier sicher verwaltet.</p></div></div><form data-form='new-employee' class='inline-form labelled-inline employee-add'><label>Benutzername<input name='username' required placeholder='z. B. Max.Muster'></label><label>Startpasswort<input name='password' type='password' required></label><button class='primary' type='submit'>Mitarbeiter hinzufügen</button></form><div class='employee-list'>" + (s.employees.filter((row) => row.role === "employee").length ? s.employees.filter((row) => row.role === "employee").map((row) => "<form data-form='employee-update' data-id='" + h(row.id) + "' class='employee-row'><strong>" + h(row.username) + "</strong><label>Benutzername<input name='username' value='" + h(row.username) + "' required></label><label>Neues Passwort<input name='password' type='password' placeholder='Leer lassen = unverändert'></label><label>Urlaubsanspruch (Tage)<input name='vacationAllowance' inputmode='decimal' value='" + h(row.vacation_allowance) + "' required></label><button class='quiet' type='submit'>Speichern</button><button class='danger-outline' type='button' data-action='delete-employee' data-id='" + h(row.id) + "' data-name='" + h(row.username) + "'>Löschen</button></form>").join("") : "<p class='muted'>Noch keine Mitarbeiterkonten angelegt.</p>") + "</div></section>"
-  return "<main class='page'><section class='hero-small'><p class='eyebrow'>EINSTELLUNGEN</p><h1>" + (chief ? "Daten von " + h(employee?.username) : "Persönliche Einstellungen") + "</h1><p class='muted'>Zusatzfelder ergänzen die Erfassung, ohne feste Berechnungen zu verändern.</p></section>" + account + "<section class='settings-section'><h2>Urlaubsanspruch</h2><p>Gesamt: <strong>" + n(employee?.vacation_allowance).toLocaleString("de-DE", { minimumFractionDigits: 2 }) + " Tage</strong> · bereits genehmigt: <strong>" + approvedVacationDays(employee?.id).toLocaleString("de-DE", { minimumFractionDigits: 2 }) + " Tage</strong> · verbleibend: <strong>" + remainingVacationDays(employee?.id).toLocaleString("de-DE", { minimumFractionDigits: 2 }) + " Tage</strong>.</p></section><section class='settings-section'><h2>Zusätzliche Eingabefelder Zeiterfassung</h2><p>Diese Felder erscheinen bei jeder Kundenzeile des ausgewählten Mitarbeiters.</p>" + columnControl + "<div class='column-list'>" + columns + "</div></section>" + materialCatalogue + staff + "</main>"
+  return "<main class='page'><section class='hero-small'><p class='eyebrow'>EINSTELLUNGEN</p><h1>" + (chief ? "Daten von " + h(employee?.username) : "Persönliche Einstellungen") + "</h1><p class='muted'>Zusatzfelder ergänzen die Erfassung, ohne feste Berechnungen zu verändern.</p></section>" + overview + account + statsPanel + "<section class='settings-section'><h2>Urlaubsanspruch</h2><p>Gesamt: <strong>" + n(employee?.vacation_allowance).toLocaleString("de-DE", { minimumFractionDigits: 2 }) + " Tage</strong> · bereits genehmigt: <strong>" + approvedVacationDays(employee?.id).toLocaleString("de-DE", { minimumFractionDigits: 2 }) + " Tage</strong> · verbleibend: <strong>" + remainingVacationDays(employee?.id).toLocaleString("de-DE", { minimumFractionDigits: 2 }) + " Tage</strong>.</p></section><section class='settings-section'><h2>Zusätzliche Eingabefelder Zeiterfassung</h2><p>Diese Felder erscheinen bei jeder Kundenzeile des ausgewählten Mitarbeiters.</p>" + columnControl + "<div class='column-list'>" + columns + "</div></section>" + materialCatalogue + staff + "</main>"
 }
 function calendarActivity(day) {
   const entries = s.entries.filter((row) => sameDay(row.work_date, day))
   const appointments = s.appointments.filter((row) => row.employee_id === s.employeeId && sameDay(row.event_date, day))
   const vacation = s.vacationRequests.find((row) => row.employee_id === s.employeeId && row.status !== "rejected" && inRange(day, row.start_date, row.end_date))
-  return { entries, appointments, vacation }
+  const sick = n(s.days.get(day)?.sick) > 0
+  return { entries, appointments, vacation, sick }
 }
 function calendarForm() {
   if (!s.calendarForm) return ""
@@ -208,16 +235,17 @@ function calendar() {
   const first = new Date(s.calendarYear, s.calendarMonth, 1), offset = (first.getDay() + 6) % 7, cells = []
   for (let index = 0; index < 42; index += 1) {
     const current = new Date(s.calendarYear, s.calendarMonth, 1 - offset + index), value = iso(current), activity = calendarActivity(value)
-    const classes = [current.getMonth() === s.calendarMonth ? "" : "outside", value === s.selected ? "selected" : "", activity.entries.length ? "has-work" : "", activity.appointments.length ? "has-appointment" : "", activity.vacation?.status === "requested" ? "pending-vacation" : "", activity.vacation?.status === "approved" ? "approved-vacation" : ""].filter(Boolean).join(" ")
-    const markers = (activity.entries.length ? "<i class='work-marker' title='Arbeitszeit'></i>" : "") + (activity.appointments.length ? "<i class='appointment-marker' title='Kundentermin'></i>" : "") + (activity.vacation ? "<i class='vacation-marker' title='" + (activity.vacation.status === "requested" ? "Urlaub beantragt" : "Urlaub genehmigt") + "'></i>" : "")
+    const classes = [current.getMonth() === s.calendarMonth ? "" : "outside", value === s.selected ? "selected" : "", activity.entries.length ? "has-work" : "", activity.appointments.length ? "has-appointment" : "", activity.vacation?.status === "requested" ? "pending-vacation" : "", activity.vacation?.status === "approved" ? "approved-vacation" : "", activity.sick ? "sick-day" : ""].filter(Boolean).join(" ")
+    const markers = (activity.entries.length ? "<i class='work-marker' title='Arbeitszeit'></i>" : "") + (activity.appointments.length ? "<i class='appointment-marker' title='Kundentermin'></i>" : "") + (activity.vacation ? "<i class='vacation-marker' title='" + (activity.vacation.status === "requested" ? "Urlaub beantragt" : "Urlaub genehmigt") + "'></i>" : "") + (activity.sick ? "<i class='sick-marker' title='Krank gemeldet'></i>" : "")
     cells.push("<button class='calendar-day " + classes + "' data-action='calendar-day' data-date='" + value + "'><strong>" + current.getDate() + "</strong><span>" + markers + "</span></button>")
   }
   const details = calendarActivity(s.selected)
   const workRows = details.entries.map((row) => "<li><strong>" + h(row.customer_name || "Ohne Kunden") + "</strong> · " + h(row.start_time || "–") + "–" + h(calc(row).end_time || "–") + " Uhr · " + hours(calc(row).executed_hours) + "</li>").join("")
   const appointmentRows = details.appointments.map((row) => "<li><strong>Termin: " + h(row.title) + "</strong>" + (row.customer_name ? " · " + h(row.customer_name) : "") + (row.notes ? " · " + h(row.notes) : "") + " <button class='text-button' data-action='delete-appointment' data-id='" + h(row.id) + "'>Entfernen</button></li>").join("")
   const vacation = details.vacation ? "<li class='calendar-vacation-text'><strong>" + (details.vacation.status === "requested" ? "Urlaub beantragt" : "Urlaub genehmigt") + "</strong> · " + hours(details.vacation.requested_days).replace("h", " Tage") + "</li>" : ""
-  const detailList = workRows + appointmentRows + vacation || "<li class='muted'>Keine Aktivitäten an diesem Tag.</li>"
-  return "<main class='page'><section class='hero-small calendar-hero'><div><p class='eyebrow'>PERSÖNLICHER KALENDER</p><h1>" + (s.profile.role === "chief" ? "Kalender von " + h(employeeName(s.employeeId)) : "Mein Kalender") + "</h1><p class='muted'>Auf einen Tag tippen, um Arbeitszeiten, Kundentermine und Urlaubszeiten zu sehen.</p></div><div class='calendar-actions'><button class='primary' data-action='open-vacation-form'>Urlaub beantragen</button><button class='quiet' data-action='open-appointment-form'>Kundentermin vormerken</button></div></section>" + calendarForm() + "<section class='calendar-card'><div class='calendar-toolbar'><button class='icon-button' data-action='previous-month' aria-label='Vorheriger Monat'>‹</button><h2>" + monthLabel(s.calendarYear, s.calendarMonth) + "</h2><button class='icon-button' data-action='next-month' aria-label='Nächster Monat'>›</button></div><div class='calendar-weekdays'><span>Mo</span><span>Di</span><span>Mi</span><span>Do</span><span>Fr</span><span>Sa</span><span>So</span></div><div class='calendar-grid'>" + cells.join("") + "</div><p class='calendar-key'><span><i class='work-marker'></i> Arbeitszeit</span><span><i class='appointment-marker'></i> Kundentermin</span><span><i class='vacation-marker'></i> Urlaub beantragt/genehmigt</span></p></section><section class='day-details'><h2>Aktivitäten am " + dayText(s.selected) + "</h2><ul>" + detailList + "</ul></section></main>"
+  const sickness = details.sick ? "<li class='calendar-sick-text'><strong>Krank gemeldet</strong> · ganzer Arbeitstag</li>" : ""
+  const detailList = workRows + appointmentRows + vacation + sickness || "<li class='muted'>Keine Aktivitäten an diesem Tag.</li>"
+  return "<main class='page'><section class='hero-small calendar-hero'><div><p class='eyebrow'>PERSÖNLICHER KALENDER</p><h1>" + (s.profile.role === "chief" ? "Kalender von " + h(employeeName(s.employeeId)) : "Mein Kalender") + "</h1><p class='muted'>Auf einen Tag tippen, um Arbeitszeiten, Kundentermine, Urlaub und Krankheit zu sehen.</p></div><div class='calendar-actions'><button class='primary' data-action='open-vacation-form'>Urlaub beantragen</button><button class='quiet' data-action='open-appointment-form'>Kundentermin vormerken</button></div></section>" + calendarForm() + "<section class='calendar-card'><div class='calendar-toolbar'><button class='icon-button' data-action='previous-month' aria-label='Vorheriger Monat'>‹</button><h2>" + monthLabel(s.calendarYear, s.calendarMonth) + "</h2><button class='icon-button' data-action='next-month' aria-label='Nächster Monat'>›</button></div><div class='calendar-weekdays'><span>Mo</span><span>Di</span><span>Mi</span><span>Do</span><span>Fr</span><span>Sa</span><span>So</span></div><div class='calendar-grid'>" + cells.join("") + "</div><p class='calendar-key'><span><i class='work-marker'></i> Arbeitszeit</span><span><i class='appointment-marker'></i> Kundentermin</span><span><i class='vacation-marker'></i> Urlaub beantragt/genehmigt</span><span><i class='sick-marker'></i> Krank gemeldet</span></p></section><section class='day-details'><h2>Aktivitäten am " + dayText(s.selected) + "</h2><ul>" + detailList + "</ul></section></main>"
 }
 function overlaps(leftStart, leftEnd, rightStart, rightEnd) { return String(leftStart) <= String(rightEnd) && String(leftEnd) >= String(rightStart) }
 function vacationMessage(message) {
@@ -260,6 +288,10 @@ async function markSick() {
   const row = { ...currentDay(), employee_id: s.employeeId, work_date: s.selected, sick: 1 }
   const saved = await data(db.from("work_days").upsert(row).select().single())
   s.days.set(saved.work_date, saved); render(); tell("Der Tag wurde als krank markiert.")
+}
+async function deleteWorkOrder(orderId) {
+  await data(db.from("time_entries").delete().eq("work_order_id", orderId))
+  await deleteSavedRecord("work_orders", orderId)
 }
 async function addEntry() {
   const prior = jobs().at(-1), start = prior ? calc(prior).end_time : "07:30"
@@ -345,7 +377,7 @@ root.addEventListener("click", async (event) => {
       tell(result.data?.message || "Wenn ein Konto gefunden wurde, ist der Chef informiert worden.")
       return
     }
-    if (button.dataset.action === "logout") { if (s.customerChannel) { await db.removeChannel(s.customerChannel); s.customerChannel = null } await db.auth.signOut(); s.session = null; s.profile = null; s.employeeId = null; render(); return }
+    if (button.dataset.action === "logout") { if (s.customerChannel) { await db.removeChannel(s.customerChannel); s.customerChannel = null } if (s.teamChannel) { await db.removeChannel(s.teamChannel); s.teamChannel = null } await db.auth.signOut(); s.session = null; s.profile = null; s.employeeId = null; render(); return }
     if (button.dataset.action === "choose-date") { s.selected = button.dataset.date; render(); return }
     if (button.dataset.action === "previous-date") { s.selected = nextWorkday(-1); render(); return }
     if (button.dataset.action === "next-date") { s.selected = nextWorkday(1); render(); return }
@@ -355,6 +387,7 @@ root.addEventListener("click", async (event) => {
     if (button.dataset.action === "open-vacation-form") { s.calendarForm = "vacation"; render(); return }
     if (button.dataset.action === "open-appointment-form") { s.calendarForm = "appointment"; render(); return }
     if (button.dataset.action === "close-calendar-form") { s.calendarForm = ""; render(); return }
+    if (button.dataset.action === "open-person-statistics") { await pickEmployee(button.dataset.id); s.view = "settings"; render(); return }
     if (button.dataset.action === "add-entry") await addEntry()
     if (button.dataset.action === "mark-sick") await markSick()
     if (button.dataset.action === "delete-entry" && window.confirm("Diese Kundenzeile wirklich löschen?")) { await deleteSavedRecord("time_entries", button.dataset.id); await loadData(); tell("Zeiterfassungszeile gelöscht.") }
@@ -362,7 +395,7 @@ root.addEventListener("click", async (event) => {
     if (button.dataset.action === "delete-customer") { const row = s.customers.find((item) => item.id === button.dataset.id); if (row && window.confirm("Kunde „" + row.name + "“ wirklich löschen? Bereits erfasste Zeiten bleiben erhalten.")) { await deleteSavedRecord("customers", row.id); await loadData(); tell("Kunde gelöscht.") } }
     if (button.dataset.action === "delete-customer-field") { const row = s.customers.find((item) => item.id === button.dataset.id); if (row && window.confirm("Das zusätzliche Kundendatenfeld „" + button.dataset.key + "“ wirklich entfernen?")) { const fields = { ...(row.custom_fields || {}) }; delete fields[button.dataset.key]; Object.assign(row, await data(db.from("customers").update({ custom_fields: fields }).eq("id", row.id).select().single())); tell("Kundendatenfeld entfernt.") } }
     if (button.dataset.action === "delete-item") { await data(db.from("work_order_items").delete().eq("id", button.dataset.id)); s.items = s.items.filter((row) => row.id !== button.dataset.id); render() }
-    if (button.dataset.action === "delete-order" && window.confirm("Diesen Arbeitsschein mit allen Positionen löschen?")) { await deleteSavedRecord("work_orders", button.dataset.id); await loadData(); tell("Arbeitsschein gelöscht.") }
+    if (button.dataset.action === "delete-order" && window.confirm("Diesen Arbeitsschein mit allen Positionen und dem zugehörigen Zeiterfassungseintrag löschen?")) { await deleteWorkOrder(button.dataset.id); await loadData(); tell("Arbeitsschein gelöscht.") }
     if (button.dataset.action === "delete-column" && window.confirm("Zusatzspalte entfernen? Die bisherigen Werte bleiben in den Einträgen gespeichert.")) { await data(db.from("custom_columns").delete().eq("id", button.dataset.id)); s.columns = s.columns.filter((row) => row.id !== button.dataset.id); render() }
     if (button.dataset.action === "delete-material" && window.confirm("Material „" + button.dataset.name + "“ aus dem Katalog entfernen? Bereits verwendete Preise bleiben in vorhandenen Arbeitsscheinen erhalten.")) { await data(db.from("materials").update({ active: false }).eq("id", button.dataset.id)); await loadData(); tell("Material aus dem Katalog entfernt.") }
     if (button.dataset.action === "delete-appointment" && window.confirm("Diesen Kundentermin wirklich entfernen?")) { await data(db.from("appointments").delete().eq("id", button.dataset.id)); await loadData(); tell("Kundentermin entfernt.") }

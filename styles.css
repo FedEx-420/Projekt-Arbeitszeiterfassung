@@ -71,7 +71,7 @@ p { line-height: 1.45; }
 .summary-card span { display: block; color: #d9ecea; font-size: .78rem; font-weight: 700; }.summary-card strong { display: block; margin-top: .22rem; font-size: 1.3rem; }
 .positive { color: #60e5ab !important; }.negative { color: #ffaaa4 !important; }
 .status-card { display: flex; justify-content: space-between; gap: 1rem; align-items: center; padding: 1rem 1.15rem; margin-bottom: 1rem; }
-.status-card p { margin: .2rem 0 0; color: #6e8690; font-size: .85rem; }.absence-inputs { display: flex; gap: .55rem; }.absence-inputs label { min-width: 105px; }
+.status-card p { margin: .2rem 0 0; color: #6e8690; font-size: .85rem; }.absence-overview { display: grid; grid-template-columns: repeat(2, auto); gap: .35rem .8rem; align-items: center; color: #58717a; font-size: .82rem; }.absence-overview strong { color: #153346; }.absence-overview button { grid-column: 1 / -1; }
 .absence { display: flex; gap: .8rem; align-items: center; padding: 1rem 1.15rem; margin-bottom: 1rem; border-radius: 14px; }
 .absence.holiday { color: #74431d; background: #fff3d8; }.absence.vacation { color: #255b85; background: #dff0ff; }.absence.sick { color: #8a3037; background: #ffe5e6; }
 .jobs-section { padding: 1.1rem; }.section-title { display: flex; justify-content: space-between; gap: 1rem; align-items: center; margin-bottom: 1rem; }.section-title p { margin-bottom: 0; color: #6e8690; font-size: .85rem; }
@@ -96,7 +96,7 @@ p { line-height: 1.45; }
   .topbar { align-items: flex-start; }.topbar-actions { flex-direction: column; align-items: flex-end; }.employee-picker select { min-width: 125px; }
   .date-panel { grid-template-columns: 1fr; }.date-controls { justify-content: space-between; }.date-controls input { flex: 1; }
   .summary-grid { gap: .45rem; }.summary-card { padding: .75rem; }.summary-card strong { font-size: 1rem; }
-  .status-card, .section-title, .customer-row, .customer-head { align-items: stretch; flex-direction: column; }.absence-inputs { width: 100%; }.absence-inputs label { flex: 1; }
+  .status-card, .section-title, .customer-row, .customer-head { align-items: stretch; flex-direction: column; }.absence-overview { grid-template-columns: 1fr; width: 100%; }.absence-overview button { width: 100%; }
   .job-head { flex-wrap: wrap; }.job-index { margin-bottom: 0; }.customer-cell { min-width: calc(100% - 40px); }.job-grid { grid-template-columns: repeat(2, 1fr); }
   .inline-form { flex-direction: column; }.form-grid, .account-form { grid-template-columns: 1fr; }.material-row { grid-template-columns: 1fr 70px 1fr; }.material-row .price-display { grid-column: 1 / 2; }.material-row .line-total { grid-column: 2 / 3; }.material-row .danger-icon { grid-column: 3; justify-self: end; }.material-add { grid-template-columns: 1fr 80px; }.material-add button { grid-column: 1 / -1; }.catalogue-row, .employee-row { grid-template-columns: 1fr 1fr; }.employee-row strong { grid-column: 1 / -1; }.employee-row label:nth-of-type(2) { grid-column: 1 / -1; }.catalogue-row button, .employee-row button { width: 100%; }
   .calendar-hero, .message-head { align-items: stretch; flex-direction: column; }.calendar-actions, .message-controls { flex-direction: column; }.calendar-actions button, .message-controls button { width: 100%; }.calendar-day { min-height: 57px; padding: .3rem; border-radius: 8px; }.calendar-weekdays { font-size: .64rem; }.calendar-key { font-size: .7rem; }.customer-field-values > div, .customer-field-add { grid-template-columns: 1fr; }.customer-field-values .text-button { justify-self: start; }

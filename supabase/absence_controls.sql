@@ -1,4 +1,5 @@
--- Vacation and sickness values can be managed only by a chief account.
+-- Vacation values can only be managed by a chief. Employees may add one
+-- sickness day for themselves, including on a vacation or public holiday.
 create or replace function app_private.prevent_employee_vacation_changes()
 returns trigger
 language plpgsql
@@ -22,8 +23,9 @@ begin
 
   if auth.uid() is not null
      and not (select app_private.is_chief())
-     and coalesce(new.sick, 0) is distinct from old_sick then
-    raise exception 'Krankheitstage können nur vom Chef eingetragen oder entfernt werden.';
+     and coalesce(new.sick, 0) is distinct from old_sick
+     and not (old_sick = 0 and coalesce(new.sick, 0) = 1) then
+    raise exception 'Mitarbeiter können Krankheitstage nur für sich hinzufügen; entfernen kann nur der Chef.';
   end if;
 
   return new;

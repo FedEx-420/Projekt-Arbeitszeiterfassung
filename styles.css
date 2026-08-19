@@ -53,6 +53,7 @@ p { line-height: 1.45; }
   background: #fff; border: 1px solid #d7e4e4; border-radius: 18px; box-shadow: 0 6px 20px #1234460c;
 }
 .date-panel { display: grid; grid-template-columns: 1fr auto; gap: 1rem; padding: 1.25rem; }
+.date-panel h1 { color: #000; }
 .eyebrow { margin-bottom: .35rem; color: #178165; font-weight: 850; letter-spacing: .1em; font-size: .68rem; }
 .date-controls { display: flex; align-items: center; gap: .4rem; }
 .date-controls input { min-width: 145px; }

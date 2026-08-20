@@ -496,7 +496,10 @@ async function downloadPdf(employeeId) {
   const line = text => { if (y > 278) { pdf.addPage(); y = 18 } pdf.text(String(text).slice(0, 120), 14, y); y += 7 }
   line(`Arbeitszeit · ${profile?.username || ''}`); line(`Erstellt am ${new Date().toLocaleDateString('de-DE')}`); y += 4
   entries.forEach(entry => line(`${dateText(entry.work_date)} · ${entry.customer_name || '–'} · ${hours(entry.executed_hours)} · Überstunden ${hours(num(entry.executed_hours) - workTarget(entry.work_date))}`))
-  y += 4; line(`Gesamtstunden: ${hours(total.executed)}`); line(`Überstunden: ${hours(total.overtime)}`); line(`Krankheitstage: ${total.sick}`); line(`Resturlaub: ${total.remaining} Tage`)
+  const sickness = own(state.data.days, employeeId).filter(row => num(row.sick) > 0).map(row => row.work_date)
+  const vacations = own(state.data.vacations, employeeId).filter(row => row.status !== 'rejected')
+  y += 4; line(`Gesamtstunden: ${hours(total.executed)}`); line(`Überstunden: ${hours(total.overtime)}`); line(`Krankheitstage: ${total.sick}${sickness.length ? ` (${sickness.map(shortDate).join(', ')})` : ''}`); line(`Resturlaub: ${total.remaining} Tage`)
+  vacations.forEach(row => line(`Urlaub ${row.status === 'approved' ? 'genehmigt' : 'angefragt'}: ${dateText(row.start_date)} bis ${dateText(row.end_date)} · ${num(row.requested_days)} Tage`))
   pdf.save(`Arbeitszeit-${profile?.username || 'Daten'}.pdf`)
 }
 
@@ -580,4 +583,6 @@ root.addEventListener('click', event => {
 })
 
 db.auth.onAuthStateChange(() => load().catch(error => notify(error.message || 'Anmeldung konnte nicht aktualisiert werden.', true)))
+window.addEventListener('visibilitychange', () => { if (!document.hidden && state.session) load().catch(() => {}) })
+setInterval(() => { if (state.session && !state.busy) load().catch(() => {}) }, 30000)
 load().catch(error => notify(error.message || 'App konnte nicht geladen werden.', true))

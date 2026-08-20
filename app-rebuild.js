@@ -25,6 +25,7 @@ const state = {
   data: emptyData(),
   view: 'time',
   selectedEmployeeId: null,
+  selectedBusinessId: null,
   selectedCustomerId: null,
   date: today(),
   month: new Date().getMonth(),
@@ -39,7 +40,7 @@ const state = {
 }
 
 function emptyData() {
-  return { customers: [], workDays: [], entries: [], orders: [], items: [], documents: [], materials: [], messages: [], appointments: [], vacations: [], columns: [] }
+  return { customers: [], workDays: [], entries: [], orders: [], items: [], documents: [], materials: [], messages: [], appointments: [], vacations: [], columns: [], payslips: [] }
 }
 
 const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char])
@@ -50,10 +51,19 @@ const timeText = value => value ? `${String(value).slice(0, 5)} Uhr` : '–'
 const dateText = value => new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: 'long', year: 'numeric' }).format(new Date(`${value}T12:00:00`))
 const shortDate = value => new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit' }).format(new Date(`${value}T12:00:00`))
 const same = (a, b) => String(a ?? '') === String(b ?? '')
-const isChief = () => state.profile?.role === 'chief'
+const isAdmin = () => state.profile?.role === 'administrator'
+const isBusiness = () => state.profile?.role === 'business'
+const isChief = () => isAdmin() || isBusiness()
 const activeEmployeeId = () => isChief() ? (state.selectedEmployeeId || state.profile?.id) : state.profile?.id
 const person = id => state.people.find(row => row.id === id) || state.profile
 const employeeName = id => person(id)?.username || 'Unbekannt'
+const businesses = () => state.people.filter(row => row.role === 'business')
+const businessIdOf = row => row?.business_id || (row?.role === 'business' ? row.id : '')
+const activeBusinessId = () => isAdmin() ? (state.selectedBusinessId || businessIdOf(person(activeEmployeeId())) || businesses()[0]?.id || '') : (businessIdOf(state.profile) || '')
+const peopleForBusiness = businessId => state.people.filter(row => same(businessIdOf(row), businessId))
+const managedPeople = () => peopleForBusiness(activeBusinessId())
+const managedEmployees = () => managedPeople().filter(row => row.role === 'employee')
+const roleLabel = role => role === 'administrator' ? 'Administrator' : role === 'business' ? 'Geschäftskonto' : 'Mitarbeiter'
 const dateObject = value => new Date(`${value}T12:00:00`)
 const isoDate = value => value.toISOString().slice(0, 10)
 const shiftDate = (value, days) => { const result = dateObject(value); result.setDate(result.getDate() + days); return isoDate(result) }
@@ -147,31 +157,39 @@ async function loadData() {
     return
   }
   state.profile = await api(db.from('profiles').select('*').eq('id', state.session.user.id).single())
-  const [people, customers, workDays, entries, orders, items, documents, materials, messages, appointments, vacations, columns] = await Promise.all([
-    optional(db.from('profiles').select('*').order('username')),
+  const people = await optional(db.from('profiles').select('*').order('username'))
+  state.people = people?.length ? people : [state.profile]
+  if (isAdmin() && !businesses().some(row => same(row.id, state.selectedBusinessId))) state.selectedBusinessId = businesses()[0]?.id || null
+  if (isAdmin()) {
+    const available = peopleForBusiness(state.selectedBusinessId)
+    if (!available.some(row => same(row.id, state.selectedEmployeeId))) state.selectedEmployeeId = available[0]?.id || state.profile.id
+  } else if (!peopleForBusiness(activeBusinessId()).some(row => same(row.id, state.selectedEmployeeId))) {
+    state.selectedEmployeeId = state.profile.id
+  }
+  const businessId = activeBusinessId()
+  const [customers, workDays, entries, orders, items, documents, materials, messages, appointments, vacations, columns, payslips] = await Promise.all([
     optional(db.from('customers').select('*').order('name')),
     optional(db.from('work_days').select('*').order('work_date', { ascending: false })),
     optional(db.from('time_entries').select('*').order('work_date', { ascending: false }).order('created_at')),
     optional(db.from('work_orders').select('*').order('work_date', { ascending: false }).order('created_at')),
     optional(db.from('work_order_items').select('*').order('created_at')),
     optional(db.from('work_order_documents').select('*').order('created_at')),
-    optional(db.from('materials').select('*').eq('active', true).order('name')),
+    optional(db.from('materials').select('*').eq('active', true).eq('business_id', businessId).order('name')),
     optional(db.from('mailbox_messages').select('*').order('created_at', { ascending: false })),
     optional(db.from('appointments').select('*').order('event_date')),
     optional(db.from('vacation_requests').select('*').order('created_at', { ascending: false })),
     optional(db.from('custom_columns').select('*').order('position').order('created_at')),
+    optional(db.from('employee_payslips').select('*').order('created_at', { ascending: false })),
   ])
-  state.people = people?.length ? people : [state.profile]
-  state.data = { customers, workDays, entries, orders, items, documents, materials, messages, appointments, vacations, columns }
-  if (!state.people.some(row => same(row.id, state.selectedEmployeeId))) state.selectedEmployeeId = state.profile.id
+  state.data = { customers, workDays, entries, orders, items, documents, materials, messages, appointments, vacations, columns, payslips }
   setupRealtime()
   render()
 }
 
 function setupRealtime() {
   if (state.channel || !state.profile) return
-  const tables = ['profiles', 'customers', 'work_days', 'time_entries', 'work_orders', 'work_order_items', 'work_order_documents', 'materials', 'mailbox_messages', 'appointments', 'vacation_requests', 'custom_columns']
-  let channel = db.channel(`arbeitszeit-v300-${state.profile.id}`)
+  const tables = ['profiles', 'customers', 'work_days', 'time_entries', 'work_orders', 'work_order_items', 'work_order_documents', 'materials', 'mailbox_messages', 'appointments', 'vacation_requests', 'custom_columns', 'employee_payslips']
+  let channel = db.channel(`arbeitszeit-v400-${state.profile.id}`)
   tables.forEach(table => { channel = channel.on('postgres_changes', { event: '*', schema: 'public', table }, () => scheduleRefresh()) })
   state.channel = channel.subscribe()
 }
@@ -302,7 +320,13 @@ function weekStrip() {
 
 function employeePicker() {
   if (!isChief()) return ''
-  return `<label class="select-label">Mitarbeiter<select data-action="employee-picker">${state.people.map(row => `<option value="${row.id}" ${same(row.id, activeEmployeeId()) ? 'selected' : ''}>${escapeHtml(row.username)}${row.role === 'chief' ? ' · Chef' : ''}</option>`).join('')}</select></label>`
+  const available = managedPeople()
+  return `<label class="select-label">Mitarbeiter<select data-action="employee-picker">${available.map(row => `<option value="${row.id}" ${same(row.id, activeEmployeeId()) ? 'selected' : ''}>${escapeHtml(row.username)} · ${roleLabel(row.role)}</option>`).join('')}</select></label>`
+}
+
+function businessPicker() {
+  if (!isAdmin()) return ''
+  return `<label class="select-label">Geschäftskonto<select data-action="business-picker">${businesses().map(row => `<option value="${row.id}" ${same(row.id, activeBusinessId()) ? 'selected' : ''}>${escapeHtml(row.username)}</option>`).join('')}</select></label>`
 }
 
 function metrics(employeeId = activeEmployeeId()) {
@@ -411,7 +435,8 @@ function inboxView() {
 function messageCard(message) {
   const open = same(message.id, state.openMessageId)
   const body = message.body || {}
-  return `<article class="card message ${message.read_at ? '' : 'unread'}"><div class="card-head"><div><h3>${escapeHtml(message.title)}</h3><p>${new Intl.DateTimeFormat('de-DE', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(message.created_at))}</p></div>${message.read_at ? '' : '<span class="unread-dot">Neu</span>'}</div><button type="button" class="link" data-action="message-open" data-id="${message.id}">${open ? 'Nachricht schließen' : 'Nachricht öffnen'}</button>${open ? `<div class="subsection"><p>${escapeHtml(Object.entries(body).map(([key, value]) => `${key.replace(/_/g, ' ')}: ${Array.isArray(value) ? value.length : value}`).join('\n'))}</p>${message.message_type === 'vacation_request' && isChief() ? `<div class="card-actions"><button type="button" class="primary" data-action="vacation-approve" data-id="${body.request_id}">Genehmigen</button><button type="button" class="danger ghost" data-action="vacation-reject" data-id="${body.request_id}">Ablehnen</button></div>` : ''}</div>` : ''}<div class="card-actions">${message.deleted_at ? `<button type="button" class="secondary" data-action="message-restore" data-id="${message.id}">Wiederherstellen</button>` : `<button type="button" class="danger ghost" data-action="message-delete" data-id="${message.id}">Löschen</button>`}</div></article>`
+  const details = Object.entries(body).filter(([key]) => key !== 'payslip_id' && key !== 'file_name').map(([key, value]) => `${key.replace(/_/g, ' ')}: ${Array.isArray(value) ? value.length : value}`).join('\n')
+  return `<article class="card message ${message.read_at ? '' : 'unread'}"><div class="card-head"><div><h3>${escapeHtml(message.title)}</h3><p>${new Intl.DateTimeFormat('de-DE', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(message.created_at))}</p></div>${message.read_at ? '' : '<span class="unread-dot">Neu</span>'}</div><button type="button" class="link" data-action="message-open" data-id="${message.id}">${open ? 'Nachricht schließen' : 'Nachricht öffnen'}</button>${open ? `<div class="subsection">${details ? `<p>${escapeHtml(details)}</p>` : ''}${body.payslip_id ? `<div class="card-actions"><button type="button" class="primary" data-action="payslip-open" data-id="${body.payslip_id}">${escapeHtml(body.file_name || 'Lohnabrechnung')} herunterladen</button></div>` : ''}${message.message_type === 'vacation_request' && isChief() ? `<div class="card-actions"><button type="button" class="primary" data-action="vacation-approve" data-id="${body.request_id}">Genehmigen</button><button type="button" class="danger ghost" data-action="vacation-reject" data-id="${body.request_id}">Ablehnen</button></div>` : ''}</div>` : ''}<div class="card-actions">${message.deleted_at ? `<button type="button" class="secondary" data-action="message-restore" data-id="${message.id}">Wiederherstellen</button>` : `<button type="button" class="danger ghost" data-action="message-delete" data-id="${message.id}">Löschen</button>`}</div></article>`
 }
 
 function assignmentsView() {
@@ -427,7 +452,9 @@ function billingCustomersView() {
 }
 
 function billingEmployeesView() {
-  return page('Abrechnungen Mitarbeiter', 'STUNDENÜBERSICHT', `<section class="cards">${state.people.map(row => { const value = statusMetrics(row.id); return `<article class="card"><h2>${escapeHtml(row.username)}</h2><p>Ausgeführt: <strong>${hours(value.executed)}</strong></p><p>Überstunden: <strong class="${value.overtime > 0 ? 'positive' : value.overtime < 0 ? 'negative' : ''}">${value.overtime === 0 ? '–' : hours(value.overtime)}</strong></p><p>Krankheit: ${value.sick} Tage · Resturlaub: ${value.remaining} Tage</p><button type="button" class="secondary" data-action="pdf" data-id="${row.id}">Daten als PDF herunterladen</button></article>` }).join('')}</section>`)
+  const people = managedEmployees()
+  const payslips = state.data.payslips.filter(row => same(row.business_id, activeBusinessId()))
+  return page('Lohnabrechnungen', 'VERTRAULICHE DATEIEN FÜR MITARBEITER', `${businessPicker()}<section class="split"><div><h2>Neue Lohnabrechnung</h2>${people.length ? `<form class="card form-grid" data-form="payslip-create"><label>Mitarbeiter<select name="employeeId" required>${people.map(row => `<option value="${row.id}">${escapeHtml(row.username)}</option>`).join('')}</select></label><label class="wide">Datei<input name="file" type="file" required></label><div class="form-actions"><button class="primary">Datei bereitstellen</button></div><p class="muted">Nur der ausgewählte Mitarbeiter erhält eine Nachricht und kann die Datei öffnen.</p></form>` : '<p class="empty">Für dieses Geschäftskonto sind noch keine Mitarbeiter vorhanden.</p>'}</div><div><h2>Bereitgestellte Dateien</h2>${payslips.length ? payslips.map(row => `<article class="card employee-card"><h3>${escapeHtml(row.file_name)}</h3><p>Für ${escapeHtml(employeeName(row.employee_id))} · ${new Intl.DateTimeFormat('de-DE', { dateStyle: 'medium' }).format(new Date(row.created_at))}</p><div class="card-actions"><button type="button" class="secondary" data-action="payslip-open" data-id="${row.id}">Datei öffnen</button><button type="button" class="danger ghost" data-action="payslip-delete" data-id="${row.id}">Entfernen</button></div></article>`).join('') : '<p class="empty">Noch keine Lohnabrechnungen bereitgestellt.</p>'}</div></section>`)
 }
 
 function invoicesView() {
@@ -444,19 +471,32 @@ function materialManager() {
 
 function employeeManager() {
   if (!isChief()) return ''
-  return `<section class="split"><div><h2>Mitarbeiterkonten</h2>${state.people.map(row => `<article class="card employee-card"><h3>${escapeHtml(row.username)}${row.role === 'chief' ? ' · Chef' : ''}</h3><p>${hours(statusMetrics(row.id).executed)} · ${statusMetrics(row.id).sick} Krankheitstage · ${statusMetrics(row.id).remaining} Resturlaub</p><div class="card-actions"><button type="button" class="secondary" data-action="settings-employee" data-id="${row.id}">Statistik & Einstellungen</button>${row.role === 'employee' ? `<button type="button" class="danger ghost" data-action="employee-delete" data-id="${row.id}">Mitarbeiter löschen</button>` : ''}</div></article>`).join('')}</div><div><h2>Mitarbeiter hinzufügen</h2><form class="card form-grid" data-form="employee-create"><label>Benutzername<input name="username" required></label><label>Passwort<input name="password" type="password" required></label><fieldset class="permissions"><legend>Sichtbare Menüs</legend>${[['time', 'Zeiterfassung'], ['customers', 'Kunden'], ['orders', 'Arbeitsscheine'], ['calendar', 'Kalender']].map(([key, label]) => `<label class="check"><input type="checkbox" name="permission-${key}" checked> ${label}</label>`).join('')}</fieldset><div class="form-actions"><button class="primary">Mitarbeiter anlegen</button></div></form></div></section>`
+  const people = managedPeople()
+  return `<section class="split"><div><h2>Mitarbeiterkonten</h2>${people.map(row => { const value = statusMetrics(row.id); return `<article class="card employee-card"><h3>${escapeHtml(row.username)} · ${roleLabel(row.role)}</h3><p>${hours(value.executed)} · ${value.sick} Krankheitstage · ${value.remaining} Resturlaub</p><div class="card-actions"><button type="button" class="secondary" data-action="settings-employee" data-id="${row.id}">Statistik & Einstellungen</button>${row.role === 'employee' ? `<button type="button" class="danger ghost" data-action="employee-delete" data-id="${row.id}">Mitarbeiter löschen</button>` : ''}</div></article>` }).join('')}</div><div><h2>Mitarbeiter hinzufügen</h2><form class="card form-grid" data-form="employee-create">${isAdmin() ? `<label>Geschäftskonto<select name="businessId" required>${businesses().map(row => `<option value="${row.id}" ${same(row.id, activeBusinessId()) ? 'selected' : ''}>${escapeHtml(row.username)}</option>`).join('')}</select></label>` : ''}<label>Benutzername<input name="username" required></label><label>Passwort<input name="password" type="password" required></label>${permissionControls()}<div class="form-actions"><button class="primary">Mitarbeiter anlegen</button></div></form></div></section>`
+}
+
+function permissionControls(value = {}) {
+  return `<fieldset class="permissions"><legend>Sichtbare Menüs</legend>${[['time', 'Zeiterfassung'], ['customers', 'Kunden'], ['orders', 'Arbeitsscheine'], ['calendar', 'Kalender']].map(([key, label]) => `<label class="check"><input type="checkbox" name="permission-${key}" ${value[key] !== false ? 'checked' : ''}> ${label}</label>`).join('')}</fieldset>`
+}
+
+function businessManager() {
+  if (!isAdmin()) return ''
+  return `<section class="split"><div><h2>Geschäftskonten</h2>${businesses().map(row => `<article class="card employee-card"><h3>${escapeHtml(row.username)}</h3><p>Geschäftskonto · ${peopleForBusiness(row.id).filter(person => person.role === 'employee').length} Mitarbeiter</p><div class="card-actions"><button type="button" class="secondary" data-action="settings-business" data-id="${row.id}">Konto verwalten</button></div></article>`).join('') || '<p class="empty">Noch keine Geschäftskonten.</p>'}</div><div><h2>Geschäftskonto hinzufügen</h2><form class="card form-grid" data-form="business-create"><label>Benutzername<input name="username" required></label><label>Passwort<input name="password" type="password" required></label><div class="form-actions"><button class="primary">Geschäftskonto anlegen</button></div></form></div></section>`
 }
 
 function accountSettings() {
-  const selected = person(activeEmployeeId()), selectedIsChief = selected?.role === 'chief'
+  const selected = person(activeEmployeeId())
   const columns = own(state.data.columns, selected?.id)
-  const canChangeSelected = isChief() && same(selected?.id, activeEmployeeId())
   const data = statusMetrics(selected?.id)
-  return `<section class="split"><div><h2>Mein Benutzerkonto</h2><form class="card form-grid" data-form="account-update"><input type="hidden" name="employeeId" value="${selected?.id || ''}"><label>Benutzername<input name="username" value="${escapeHtml(selected?.username || '')}" ${!selectedIsChief && !isChief() ? 'readonly' : ''}></label>${selectedIsChief && isChief() ? `<label>Neues Passwort<input name="password" type="password" placeholder="nur bei Änderung ausfüllen"></label>` : ''}${isChief() ? `<label>Vorhandene Urlaubstage<input name="vacationAllowance" inputmode="decimal" value="${number(selected?.vacation_allowance)}"></label>` : ''}${selected?.role === 'employee' && isChief() ? `<label>Neues Passwort<input name="password" type="password" placeholder="optional"></label><fieldset class="permissions"><legend>Sichtbare Menüs</legend>${[['time', 'Zeiterfassung'], ['customers', 'Kunden'], ['orders', 'Arbeitsscheine'], ['calendar', 'Kalender']].map(([key, label]) => `<label class="check"><input type="checkbox" name="permission-${key}" ${(selected.menu_permissions || {})[key] !== false && (key !== 'time' || (selected.menu_permissions || {}).planner !== false) ? 'checked' : ''}> ${label}</label>`).join('')}</fieldset>` : ''}<div class="form-actions"><button class="primary">Speichern</button><button type="button" class="secondary" data-action="pdf" data-id="${selected?.id}">Daten als PDF herunterladen</button></div></form></div><div><h2>Statistik</h2>${metrics(selected?.id)}<p class="notice">${escapeHtml(selected?.username || '')}: ${hours(data.executed)} ausgeführt, ${data.sick} Krankheitstage und ${data.remaining} Resturlaubstage.</p><h2>Zusätzliche Eingabefelder Zeiterfassung</h2>${isChief() ? `<form class="inline-form" data-form="column-create"><input type="hidden" name="employeeId" value="${selected?.id || ''}"><label>Überschrift<input name="name" required></label><button class="secondary">Hinzufügen</button></form>` : ''}${columns.length ? `<div class="material-list">${columns.map(row => `<p>${escapeHtml(row.name)}${isChief() ? `<button type="button" class="link danger" data-action="column-delete" data-id="${row.id}">Löschen</button>` : ''}</p>`).join('')}</div>` : '<p class="empty">Keine zusätzlichen Felder.</p>'}</div></section>${canChangeSelected ? '' : ''}`
+  const editableEmployee = selected?.role === 'employee' && isChief()
+  const editableBusiness = selected?.role === 'business' && isAdmin()
+  const editableSelf = same(selected?.id, state.profile?.id) && isChief()
+  const form = editableEmployee ? `<form class="card form-grid" data-form="employee-update"><input type="hidden" name="employeeId" value="${selected.id}"><label>Benutzername<input name="username" value="${escapeHtml(selected.username)}" required></label><label>Neues Passwort<input name="password" type="password" placeholder="nur bei Änderung ausfüllen"></label><label>Vorhandene Urlaubstage<input name="vacationAllowance" inputmode="decimal" value="${number(selected.vacation_allowance)}"></label>${permissionControls(selected.menu_permissions || {})}<div class="form-actions"><button class="primary">Speichern</button><button type="button" class="secondary" data-action="pdf" data-id="${selected.id}">Daten als PDF herunterladen</button></div></form>` : editableBusiness ? `<form class="card form-grid" data-form="business-update"><input type="hidden" name="businessId" value="${selected.id}"><label>Benutzername<input name="username" value="${escapeHtml(selected.username)}" required></label><label>Neues Passwort<input name="password" type="password" placeholder="nur bei Änderung ausfüllen"></label><label>Vorhandene Urlaubstage<input name="vacationAllowance" inputmode="decimal" value="${number(selected.vacation_allowance)}"></label><div class="form-actions"><button class="primary">Speichern</button><button type="button" class="secondary" data-action="pdf" data-id="${selected.id}">Daten als PDF herunterladen</button></div></form>` : editableSelf ? `<form class="card form-grid" data-form="self-update"><label>Benutzername<input name="username" value="${escapeHtml(selected?.username || '')}" required></label><label>Neues Passwort<input name="password" type="password" placeholder="nur bei Änderung ausfüllen"></label><label>Vorhandene Urlaubstage<input name="vacationAllowance" inputmode="decimal" value="${number(selected?.vacation_allowance)}"></label><div class="form-actions"><button class="primary">Speichern</button><button type="button" class="secondary" data-action="pdf" data-id="${selected?.id}">Daten als PDF herunterladen</button></div></form>` : `<article class="card"><h3>Benutzerkonto</h3><p>Mitarbeiter können ihre Zugangsdaten nicht selbst ändern.</p><div class="card-actions"><button type="button" class="secondary" data-action="pdf" data-id="${selected?.id}">Daten als PDF herunterladen</button></div></article>`
+  return `<section class="split"><div><h2>${same(selected?.id, state.profile?.id) ? 'Mein Benutzerkonto' : 'Benutzerkonto'}</h2>${form}</div><div><h2>Statistik</h2>${metrics(selected?.id)}<p class="notice">${escapeHtml(selected?.username || '')}: ${hours(data.executed)} ausgeführt, ${data.sick} Krankheitstage und ${data.remaining} Resturlaubstage.</p><h2>Zusätzliche Eingabefelder Zeiterfassung</h2>${isChief() ? `<form class="inline-form" data-form="column-create"><input type="hidden" name="employeeId" value="${selected?.id || ''}"><label>Überschrift<input name="name" required></label><button class="secondary">Hinzufügen</button></form>` : ''}${columns.length ? `<div class="material-list">${columns.map(row => `<p>${escapeHtml(row.name)}${isChief() ? `<button type="button" class="link danger" data-action="column-delete" data-id="${row.id}">Löschen</button>` : ''}</p>`).join('')}</div>` : '<p class="empty">Keine zusätzlichen Felder.</p>'}</div></section>`
 }
 
 function settingsView() {
-  return page('Einstellungen', 'VERWALTUNG', `${isChief() ? `<section class="card"><h2>Mitarbeiter auswählen</h2>${employeePicker()}</section>` : ''}${accountSettings()}${materialManager()}${employeeManager()}`)
+  return page('Einstellungen', 'VERWALTUNG', `${isAdmin() ? `<section class="card"><h2>Geschäftskonto auswählen</h2>${businessPicker()}</section>` : ''}${isChief() ? `<section class="card"><h2>Mitarbeiter auswählen</h2>${employeePicker()}</section>` : ''}${accountSettings()}${materialManager()}${employeeManager()}${businessManager()}`)
 }
 
 function customerOrdersView() {
@@ -468,13 +508,13 @@ function customerOrdersView() {
 
 function navigation() {
   const items = [['time', 'Zeiterfassung'], ['customers', 'Kunden'], ['orders', 'Arbeitsscheine'], ['calendar', 'Kalender'], ['inbox', 'Postfach']]
-  if (isChief()) items.push(['assignments', 'Aufträge Mitarbeiter'], ['billing-customers', 'Abrechnungen Kunden'], ['billing-employees', 'Abrechnungen Mitarbeiter'], ['invoices', 'Rechnungen'])
+  if (isChief()) items.push(['assignments', 'Aufträge Mitarbeiter'], ['billing-customers', 'Abrechnungen Kunden'], ['billing-employees', 'Lohnabrechnungen'], ['invoices', 'Rechnungen'])
   items.push(['settings', 'Einstellungen'])
   return items.filter(([view]) => isAllowed(view)).map(([view, label]) => `<button type="button" data-action="nav" data-view="${view}" class="${state.view === view ? 'selected' : ''}">${label}</button>`).join('')
 }
 
 function loginView() {
-  return `<main class="login"><form class="login-card" data-form="login"><div class="logo">AZ</div><p class="eyebrow">ARBEITSZEIT</p><h1>Willkommen</h1><p>Bitte mit Benutzername und Passwort anmelden.</p><label>Benutzername<input name="username" autocomplete="username" required></label><label>Passwort<input name="password" type="password" autocomplete="current-password" required></label><button class="primary">Anmelden</button><button type="button" class="link" data-action="password-help">Passwort vergessen?</button></form></main>`
+  return `<main class="login"><form class="login-card" data-form="login"><div class="logo">AZ</div><p class="eyebrow">ARBEITSZEIT</p><h1>Willkommen</h1><p>Bitte mit Benutzername und Passwort anmelden.</p><label>Benutzername<input name="username" autocomplete="username" required></label><label>Passwort<input name="password" type="password" autocomplete="current-password" required></label><button class="primary">Anmelden</button><button type="button" class="link" data-action="password-help">Passwort vergessen?</button><button type="button" class="link" data-action="administrator-bootstrap">Administrator einrichten</button></form></main>`
 }
 
 function appView() {
@@ -498,6 +538,8 @@ async function ensureCustomer(name) {
 async function ensureMaterial(name, requestedPrice = 0) {
   const clean = String(name || '').trim()
   if (!clean) throw new Error('Bitte einen Artikel eingeben.')
+  const businessId = activeBusinessId()
+  if (!businessId) throw new Error('Bitte zuerst ein Geschäftskonto auswählen.')
   const exact = state.data.materials.find(row => normalize(row.name) === normalize(clean))
   if (exact) return exact
   const similar = state.data.materials.find(row => normalize(row.name).includes(normalize(clean)) || normalize(clean).includes(normalize(row.name)))
@@ -505,7 +547,7 @@ async function ensureMaterial(name, requestedPrice = 0) {
   const { data: restored, error: restoreError } = await db.rpc('reactivate_material_for_team', { p_name: clean })
   if (!restoreError && restored) return restored
   if (restoreError && !/permission|not found|P0002/i.test(restoreError.message || '')) throw restoreError
-  return await api(db.from('materials').insert({ name: clean, unit_price: Math.max(0, number(requestedPrice)), active: true }).select().single())
+  return await api(db.from('materials').insert({ business_id: businessId, name: clean, unit_price: Math.max(0, number(requestedPrice)), active: true }).select().single())
 }
 
 function customFieldsFrom(form) {
@@ -567,6 +609,27 @@ async function uploadDocuments(form) {
   }
 }
 
+async function uploadPayslip(form) {
+  if (!isChief()) throw new Error('Nur Administratoren oder Geschäftskonten können Lohnabrechnungen bereitstellen.')
+  const employee = person(String(form.get('employeeId') || ''))
+  const file = form.get('file')
+  if (!employee || employee.role !== 'employee') throw new Error('Bitte einen Mitarbeiter auswählen.')
+  if (!file || !file.size) throw new Error('Bitte eine Datei auswählen.')
+  const businessId = businessIdOf(employee)
+  if (!same(businessId, activeBusinessId())) throw new Error('Der Mitarbeiter gehört nicht zum ausgewählten Geschäftskonto.')
+  const safeName = String(file.name || 'Lohnabrechnung').replace(/[^A-Za-z0-9._-]/g, '_')
+  const filePath = `${businessId}/${employee.id}/${crypto.randomUUID()}-${safeName}`
+  const { error: uploadError } = await db.storage.from('employee-payslips').upload(filePath, file, { contentType: file.type || undefined, upsert: false })
+  if (uploadError) throw uploadError
+  try {
+    const payslip = await api(db.from('employee_payslips').insert({ business_id: businessId, employee_id: employee.id, uploaded_by: state.profile.id, file_path: filePath, file_name: String(file.name || safeName), mime_type: file.type || null }).select().single())
+    await api(db.from('mailbox_messages').insert({ recipient_id: employee.id, sender_id: state.profile.id, message_type: 'payslip', title: 'Neue Lohnabrechnung', body: { payslip_id: payslip.id, file_name: payslip.file_name } }))
+  } catch (error) {
+    await db.storage.from('employee-payslips').remove([filePath])
+    throw error
+  }
+}
+
 function vacation(action, payload = {}) {
   return db.functions.invoke('vacation-workflow', { body: { action, ...payload } }).then(response => { if (response.error || response.data?.error) throw new Error(response.error?.message || response.data?.error); return response.data })
 }
@@ -594,6 +657,19 @@ function downloadDocument(id) {
   return db.storage.from('work-order-documents').createSignedUrl(doc.file_path, 60).then(({ data, error }) => { if (error) throw error; window.open(data.signedUrl, '_blank', 'noopener') })
 }
 
+function downloadPayslip(id) {
+  const payslip = state.data.payslips.find(row => same(row.id, id))
+  if (!payslip) throw new Error('Die Lohnabrechnung wurde nicht gefunden oder ist nicht mehr verfügbar.')
+  return db.storage.from('employee-payslips').createSignedUrl(payslip.file_path, 60).then(({ data, error }) => { if (error) throw error; window.open(data.signedUrl, '_blank', 'noopener') })
+}
+
+async function deletePayslip(id) {
+  const payslip = state.data.payslips.find(row => same(row.id, id))
+  if (!payslip) throw new Error('Die Lohnabrechnung wurde nicht gefunden.')
+  await api(db.from('employee_payslips').delete().eq('id', id))
+  await db.storage.from('employee-payslips').remove([payslip.file_path])
+}
+
 function downloadPdf(employeeId) {
   const value = statusMetrics(employeeId), profile = person(employeeId), entries = own(state.data.entries, employeeId).sort((a, b) => String(a.work_date).localeCompare(String(b.work_date)))
   if (!window.jspdf?.jsPDF) throw new Error('Die PDF-Erstellung wird noch geladen. Bitte kurz erneut versuchen.')
@@ -607,6 +683,16 @@ function downloadPdf(employeeId) {
   days.forEach(row => line(`${dateText(row.work_date)} | Krankheitstag`))
   own(state.data.vacations, employeeId).filter(row => row.status === 'approved').forEach(row => line(`${dateText(row.start_date)} bis ${dateText(row.end_date)} | Urlaub (${row.requested_days} Tage)`))
   pdf.save(`Arbeitszeit-${profile?.username || 'Bericht'}.pdf`)
+}
+
+function formPermissions(data) {
+  return Object.fromEntries(['time', 'customers', 'orders', 'calendar'].map(key => [key, data.get(`permission-${key}`) === 'on']))
+}
+
+async function manageAccount(payload) {
+  const response = await db.functions.invoke('account-management', { body: payload })
+  if (response.error || response.data?.error) throw new Error(response.error?.message || response.data?.error)
+  return response.data
 }
 
 root.addEventListener('submit', event => {
@@ -634,13 +720,18 @@ root.addEventListener('submit', event => {
   if (type === 'appointment-create') return perform('Kundentermin vorgemerkt.', async () => { const customer = data.get('customer') ? await ensureCustomer(data.get('customer')) : null; await api(db.from('appointments').insert({ employee_id: activeEmployeeId(), event_date: data.get('date'), customer_id: customer?.id || null, customer_name: customer?.name || '', title: String(data.get('title') || '').trim(), notes: String(data.get('notes') || '').trim() })) })
   if (type === 'material-create') return perform('Artikel gespeichert.', () => ensureMaterial(data.get('name'), data.get('price') || 0))
   if (type === 'column-create') return perform('Eingabefeld hinzugefügt.', () => api(db.from('custom_columns').insert({ employee_id: data.get('employeeId'), name: String(data.get('name') || '').trim(), position: own(state.data.columns, data.get('employeeId')).length })))
-  if (type === 'employee-create') return perform('Mitarbeiter angelegt.', async () => { const response = await db.functions.invoke('manage-employees', { body: { action: 'create', username: data.get('username'), password: data.get('password') } }); if (response.error || response.data?.error) throw new Error(response.error?.message || response.data?.error); const id = response.data?.employee?.id; if (id) { const permissions = Object.fromEntries(['time', 'customers', 'orders', 'calendar'].map(key => [key, data.get(`permission-${key}`) === 'on'])); await db.functions.invoke('manage-employees', { body: { action: 'update', employeeId: id, menuPermissions: permissions } }) } })
-  if (type === 'account-update') return perform('Einstellungen gespeichert.', async () => { const employeeId = String(data.get('employeeId') || state.profile.id); const payload = { action: same(employeeId, state.profile.id) ? 'self-update' : 'update', employeeId, username: data.get('username'), password: data.get('password'), vacationAllowance: data.get('vacationAllowance') }; if (isChief() && !same(employeeId, state.profile.id)) payload.menuPermissions = Object.fromEntries(['time', 'customers', 'orders', 'calendar'].map(key => [key, data.get(`permission-${key}`) === 'on'])); const response = await db.functions.invoke('manage-employees', { body: payload }); if (response.error || response.data?.error) throw new Error(response.error?.message || response.data?.error) })
+  if (type === 'payslip-create') return perform('Lohnabrechnung bereitgestellt und Mitarbeiter benachrichtigt.', () => uploadPayslip(data))
+  if (type === 'business-create') return perform('Geschäftskonto angelegt.', () => manageAccount({ action: 'business-create', username: data.get('username'), password: data.get('password') }))
+  if (type === 'business-update') return perform('Geschäftskonto gespeichert.', () => manageAccount({ action: 'business-update', businessId: data.get('businessId'), username: data.get('username'), password: data.get('password'), vacationAllowance: data.get('vacationAllowance') }))
+  if (type === 'employee-create') return perform('Mitarbeiter angelegt.', () => manageAccount({ action: 'employee-create', businessId: data.get('businessId') || activeBusinessId(), username: data.get('username'), password: data.get('password'), menuPermissions: formPermissions(data) }))
+  if (type === 'employee-update') return perform('Mitarbeiterkonto gespeichert.', () => manageAccount({ action: 'employee-update', employeeId: data.get('employeeId'), username: data.get('username'), password: data.get('password'), vacationAllowance: data.get('vacationAllowance'), menuPermissions: formPermissions(data) }))
+  if (type === 'self-update') return perform('Mein Benutzerkonto gespeichert.', () => manageAccount({ action: 'self-update', username: data.get('username'), password: data.get('password'), vacationAllowance: data.get('vacationAllowance') }))
 })
 
 root.addEventListener('change', event => {
   const target = event.target
   if (target.matches('[data-action="employee-picker"]')) { state.selectedEmployeeId = target.value; render(); return }
+  if (target.matches('[data-action="business-picker"]')) { state.selectedBusinessId = target.value; state.selectedEmployeeId = peopleForBusiness(target.value)[0]?.id || state.profile.id; loadData().catch(error => notify(error?.message || 'Geschäftskonto konnte nicht geladen werden.', true)); return }
   if (target.matches('[data-action="order-invoiced"]')) { const id = target.dataset.id; perform(target.checked ? 'Arbeitsschein als abgerechnet markiert.' : 'Arbeitsschein wieder geöffnet.', () => api(db.from('work_orders').update({ invoiced: target.checked }).eq('id', id))); return }
   if (target.matches('input[name="start"], input[name="end"]')) { synchroniseTimeForm(target.closest('form'), 'time'); return }
   if (target.matches('select[name="hours"]')) { synchroniseTimeForm(target.closest('form'), 'hours'); return }
@@ -664,6 +755,8 @@ root.addEventListener('click', event => {
   if (action === 'order-delete') { if (window.confirm('Arbeitsschein, Material und zugehörige Zeiterfassung wirklich löschen?')) perform('Arbeitsschein gelöscht.', () => deleteOrder(button.dataset.id)); return }
   if (action === 'item-delete') { if (window.confirm('Materialposition löschen?')) perform('Materialposition gelöscht.', () => api(db.from('work_order_items').delete().eq('id', button.dataset.id))); return }
   if (action === 'document-open') return perform('', () => downloadDocument(button.dataset.id))
+  if (action === 'payslip-open') return perform('', () => downloadPayslip(button.dataset.id))
+  if (action === 'payslip-delete') { if (window.confirm('Lohnabrechnung wirklich entfernen?')) perform('Lohnabrechnung entfernt.', () => deletePayslip(button.dataset.id)); return }
   if (action === 'document-delete') { if (window.confirm('Dokument löschen?')) perform('Dokument gelöscht.', async () => { const doc = state.data.documents.find(row => same(row.id, button.dataset.id)); await api(db.from('work_order_documents').delete().eq('id', button.dataset.id)); if (doc) await db.storage.from('work-order-documents').remove([doc.file_path]) }); return }
   if (action === 'customer-delete') { if (window.confirm('Kunde wirklich löschen?')) perform('Kunde gelöscht.', () => api(db.from('customers').delete().eq('id', button.dataset.id))); return }
   if (action === 'customer-orders') { state.selectedCustomerId = button.dataset.id; state.view = 'customerOrders'; render(); return }
@@ -674,12 +767,14 @@ root.addEventListener('click', event => {
   if (action === 'message-restore') return perform('Nachricht wiederhergestellt.', () => api(db.from('mailbox_messages').update({ deleted_at: null }).eq('id', button.dataset.id)))
   if (action === 'vacation-approve' || action === 'vacation-reject') return perform(action === 'vacation-approve' ? 'Urlaub genehmigt.' : 'Urlaub abgelehnt.', () => vacation('decide', { requestId: button.dataset.id, status: action === 'vacation-approve' ? 'approved' : 'rejected' }))
   if (action === 'settings-employee') { state.selectedEmployeeId = button.dataset.id; state.view = 'settings'; render(); return }
-  if (action === 'employee-delete') { if (window.confirm('Mitarbeiterkonto wirklich löschen?')) perform('Mitarbeiter gelöscht.', async () => { const response = await db.functions.invoke('manage-employees', { body: { action: 'delete', employeeId: button.dataset.id } }); if (response.error || response.data?.error) throw new Error(response.error?.message || response.data?.error) }); return }
+  if (action === 'settings-business') { state.selectedBusinessId = button.dataset.id; state.selectedEmployeeId = button.dataset.id; state.view = 'settings'; render(); return }
+  if (action === 'employee-delete') { if (window.confirm('Mitarbeiterkonto wirklich löschen?')) perform('Mitarbeiter gelöscht.', () => manageAccount({ action: 'employee-delete', employeeId: button.dataset.id })); return }
   if (action === 'column-delete') { if (window.confirm('Eingabefeld löschen?')) perform('Eingabefeld gelöscht.', () => api(db.from('custom_columns').delete().eq('id', button.dataset.id))); return }
   if (action === 'material-delete') { if (window.confirm('Artikel aus der Materialliste entfernen?')) perform('Artikel entfernt.', () => api(db.from('materials').update({ active: false }).eq('id', button.dataset.id))); return }
   if (action === 'material-price') { const material = state.data.materials.find(row => same(row.id, button.dataset.id)); const value = window.prompt(`Preis für ${material?.name || 'Artikel'} (€):`, String(material?.unit_price ?? 0)); if (value !== null) perform('Preis aktualisiert.', async () => { const price = number(value); if (price < 0) throw new Error('Der Preis darf nicht negativ sein.'); const { error } = await db.rpc('update_material_price_for_open_orders', { p_material_id: material.id, p_unit_price: price }); if (error) throw error }); return }
   if (action === 'pdf') return perform('', () => downloadPdf(button.dataset.id))
-  if (action === 'password-help') { const username = window.prompt('Bitte Benutzernamen eingeben:'); if (username !== null) perform('Wenn ein Konto gefunden wurde, wurde der Chef informiert.', async () => { const response = await db.functions.invoke('request-password-help', { body: { username } }); if (response.error || response.data?.error) throw new Error(response.error?.message || response.data?.error) }); return }
+  if (action === 'password-help') { const username = window.prompt('Bitte Benutzernamen eingeben:'); if (username !== null) perform('Wenn ein Konto gefunden wurde, wurde das zuständige Geschäftskonto informiert.', async () => { const response = await db.functions.invoke('request-password-help', { body: { username } }); if (response.error || response.data?.error) throw new Error(response.error?.message || response.data?.error) }); return }
+  if (action === 'administrator-bootstrap') { const username = window.prompt('Benutzername für das erste Administratorkonto:'); if (username === null) return; const password = window.prompt('Passwort für das erste Administratorkonto (mindestens 8 Zeichen):'); if (password === null) return; return perform('Administratorkonto eingerichtet. Du kannst dich jetzt anmelden.', async () => { const response = await db.functions.invoke('account-bootstrap', { body: { action: 'bootstrap', username, password } }); if (response.error || response.data?.error) throw new Error(response.error?.message || response.data?.error) }) }
 })
 
 db.auth.onAuthStateChange(() => loadData().catch(error => notify(error?.message || 'Die Anmeldung konnte nicht aktualisiert werden.', true)))

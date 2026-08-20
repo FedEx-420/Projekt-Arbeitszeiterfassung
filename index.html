@@ -8,18 +8,16 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Arbeitszeit" />
     <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="apple-touch-icon" href="icon.svg" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="styles-new.css?v=103" />
-    <link rel="stylesheet" href="styles-week.css?v=103" />
-    <link rel="stylesheet" href="styles-104.css?v=104" />
+    <link rel="apple-touch-icon" href="icon.svg" />
+    <link rel="stylesheet" href="styles-rebuild.css?v=201" />
     <title>Arbeitszeit</title>
   </head>
   <body>
-    <div id="app" aria-live="polite"><main class="loading">Arbeitszeit wird vorbereitet …</main></div>
+    <div id="app" aria-live="polite"><main class="boot-error">Arbeitszeit wird vorbereitet …</main></div>
     <script src="config.js?v=1"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
-    <script type="module" src="app-new.js?v=108"></script>
-    <script>if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./service-worker.js"));</script>
+    <script type="module" src="app-rebuild.js?v=201"></script>
+    <script>if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('./service-worker.js'));</script>
   </body>
 </html>

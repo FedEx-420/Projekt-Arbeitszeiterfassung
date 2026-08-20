@@ -198,6 +198,7 @@ async function loadData() {
     const index = loadedVacations.findIndex((row) => row.id === id)
     if (index < 0) { loadedVacations.push(saved); continue }
     const loaded = loadedVacations[index]
+    if (saved._localPendingRemoval && loaded.status !== "rejected") { loadedVacations[index] = saved; continue }
     // Eine Serverentscheidung (Genehmigung, Ablehnung oder Entfernung) hat immer
     // Vorrang vor einem nur kurzzeitig zwischengespeicherten Antragsstatus.
     if (loaded.status === saved.status || loaded.status === "approved" || loaded.status === "rejected") s.vacationRequestOverrides.delete(id)
@@ -400,12 +401,31 @@ function render() {
 
 async function pickEmployee(employeeId) { if (employeeId === s.employeeId) return; s.employeeId = employeeId; s.loading = true; render(); try { await loadData() } catch (error) { tell(error.message, true) } s.loading = false; render() }
 function nextWorkday(direction) { const d = date(s.selected); do { d.setDate(d.getDate() + direction) } while (!weekday(iso(d))); return iso(d) }
-async function customer(value) {
+function customerDraft(value) {
   const name = String(value || "").trim(); if (!name) throw new Error("Bitte einen Kundennamen eingeben.")
-  const found = s.customers.find((row) => row.name.localeCompare(name, "de", { sensitivity: "accent" }) === 0); if (found) return found
+  const found = s.customers.find((row) => row.name.localeCompare(name, "de", { sensitivity: "accent" }) === 0); if (found) return { customer: found, saved: Promise.resolve(found) }
   const similar = s.customers.find((row) => row.name.toLowerCase().includes(name.toLowerCase()) || name.toLowerCase().includes(row.name.toLowerCase()))
-  if (similar && window.confirm("Meintest du „" + similar.name + "“?\nOK: vorhandenen Kunden verwenden\nAbbrechen: neuen Kunden anlegen")) return similar
-  const saved = await data(db.from("customers").insert({ id: guid(), employee_id: s.employeeId, name }).select().single()); s.customers.push(saved); s.customers.sort((a, b) => a.name.localeCompare(b.name, "de")); return saved
+  if (similar && window.confirm("Meintest du „" + similar.name + "“?\nOK: vorhandenen Kunden verwenden\nAbbrechen: neuen Kunden anlegen")) return { customer: similar, saved: Promise.resolve(similar) }
+  const customer = { id: guid(), employee_id: s.employeeId, name, custom_fields: {} }
+  s.customers.push(customer); s.customers.sort((a, b) => a.name.localeCompare(b.name, "de")); render()
+  const saved = data(db.from("customers").insert(customer).select().single()).then((row) => { Object.assign(customer, row); return customer }).catch((error) => {
+    s.customers = s.customers.filter((row) => row.id !== customer.id); render(); throw error
+  })
+  return { customer, saved }
+}
+async function customer(value) { return customerDraft(value).saved }
+function refreshInBackground() { loadData().then(() => render()).catch(() => {}) }
+async function removeCollectionRow(collection, id, request) {
+  const rows = s[collection], index = rows.findIndex((row) => row.id === id), row = rows[index]
+  if (!row) return
+  rows.splice(index, 1); render()
+  try { await request(); refreshInBackground() }
+  catch (error) { rows.splice(index, 0, row); render(); throw error }
+}
+async function addCollectionRow(collection, row, request) {
+  s[collection].push(row); render()
+  try { Object.assign(row, await request()); refreshInBackground(); return row }
+  catch (error) { s[collection] = s[collection].filter((item) => item.id !== row.id); render(); throw error }
 }
 async function setSick(value) {
   const status = currentStatus(), existing = s.days.get(s.selected)
@@ -413,16 +433,22 @@ async function setSick(value) {
   if (!weekday(s.selected) && !status.vacation && !status.name) throw new Error("Krankheitstage können an Arbeits-, Urlaubs- und Feiertagen erfasst werden.")
   if (value && status.sick) { tell("Der Tag ist bereits als krank markiert."); return }
   if (!value && !existing) { tell("Für diesen Tag ist keine Krankmeldung vorhanden."); return }
-  const saved = await data(db.from("work_days").upsert({ employee_id: s.employeeId, work_date: s.selected, sick: value }, { onConflict: "employee_id,work_date" }).select().single())
-  s.dayStatusOverrides.set(saved.employee_id + ":" + saved.work_date, saved)
-  s.days.set(saved.work_date, saved)
+  const prior = existing ? { ...existing } : null, draft = { ...(existing || {}), employee_id: s.employeeId, work_date: s.selected, sick: value }
+  s.dayStatusOverrides.set(draft.employee_id + ":" + draft.work_date, draft); s.days.set(draft.work_date, draft); render()
+  let saved
+  try {
+    saved = await data(db.from("work_days").upsert({ employee_id: s.employeeId, work_date: s.selected, sick: value }, { onConflict: "employee_id,work_date" }).select().single())
+    s.dayStatusOverrides.set(saved.employee_id + ":" + saved.work_date, saved); s.days.set(saved.work_date, saved)
+  } catch (error) {
+    s.dayStatusOverrides.delete(draft.employee_id + ":" + draft.work_date)
+    if (prior) s.days.set(prior.work_date, prior); else s.days.delete(draft.work_date)
+    render(); throw error
+  }
   const message = value
     ? (s.profile.role === "chief" ? "Der Krankheitstag wurde gespeichert und sofort angezeigt." : "Deine Krankmeldung wurde gespeichert und sofort angezeigt.")
     : "Die Krankmeldung wurde entfernt und der Tag wird wieder als nicht krank angezeigt."
   tell(message)
-  // Die sichtbare Rückmeldung darf nicht von einem späteren Gesamtabgleich abhängen.
-  // Der Abgleich hält parallel geänderte Daten anderer Geräte anschließend aktuell.
-  try { await loadData(); render() } catch (_) {}
+  refreshInBackground()
 }
 async function markSick() { await setSick(1) }
 async function removeSick() { await setSick(0) }
@@ -430,32 +456,58 @@ async function removeVacation() {
   if (s.profile.role !== "chief") throw new Error("Urlaubszeiträume können nur vom Chef entfernt werden.")
   const request = s.vacationRequests.find((row) => row.employee_id === s.employeeId && row.status !== "rejected" && inRange(s.selected, row.start_date, row.end_date))
   if (!request) { tell("Für diesen Tag ist kein Urlaubszeitraum vorhanden."); return }
-  const saved = await data(db.from("vacation_requests").update({ status: "rejected", decided_by: s.profile.id, decided_at: new Date().toISOString(), decision_note: "Vom Chef entfernt" }).eq("id", request.id).select().single())
-  // Sofort aus dem Kalender entfernen und den nächsten Datenabgleich dagegen absichern.
-  s.vacationRequestOverrides.set(saved.id, saved)
-  s.vacationRequests = s.vacationRequests.map((row) => row.id === saved.id ? saved : row)
+  const prior = { ...request }, draft = { ...request, status: "rejected", decided_by: s.profile.id, decided_at: new Date().toISOString(), decision_note: "Vom Chef entfernt", _localPendingRemoval: true }
+  s.vacationRequestOverrides.set(draft.id, draft); s.vacationRequests = s.vacationRequests.map((row) => row.id === draft.id ? draft : row)
   render()
-  tell("Der Urlaubszeitraum wurde entfernt.")
-  try { await loadData(); render() } catch (_) {}
+  try {
+    const saved = await data(db.from("vacation_requests").update({ status: "rejected", decided_by: s.profile.id, decided_at: draft.decided_at, decision_note: "Vom Chef entfernt" }).eq("id", request.id).select().single())
+    s.vacationRequestOverrides.set(saved.id, saved); s.vacationRequests = s.vacationRequests.map((row) => row.id === saved.id ? saved : row)
+    tell("Der Urlaubszeitraum wurde entfernt."); refreshInBackground()
+  } catch (error) { s.vacationRequestOverrides.delete(prior.id); s.vacationRequests = s.vacationRequests.map((row) => row.id === prior.id ? prior : row); render(); throw error }
 }
 async function deleteWorkOrder(orderId) {
-  await data(db.from("time_entries").delete().eq("work_order_id", orderId))
-  await deleteSavedRecord("work_orders", orderId)
+  const index = s.orders.findIndex((row) => row.id === orderId), order = s.orders[index]
+  if (!order) return
+  const entries = s.entries.filter((row) => row.work_order_id === orderId), items = s.items.filter((row) => row.work_order_id === orderId)
+  s.orders.splice(index, 1); s.entries = s.entries.filter((row) => row.work_order_id !== orderId); s.items = s.items.filter((row) => row.work_order_id !== orderId); render()
+  try { await deleteSavedRecord("work_orders", orderId); refreshInBackground() }
+  catch (error) { s.orders.splice(index, 0, order); s.entries.push(...entries); s.items.push(...items); render(); throw error }
 }
 async function addEntry() {
   const prior = jobs().at(-1), start = prior ? calc(prior).end_time : "07:30"
   const row = { id: guid(), employee_id: s.employeeId, work_date: s.selected, customer_id: null, customer_name: "", start_time: start || "07:30", end_time: start || "07:30", pause_hours: 0, executed_hours: 0, calculation_mode: "hours", custom_fields: {} }
-  s.entries.push(await data(db.from("time_entries").insert(row).select().single())); render()
+  s.entries.push(row); render()
+  try { Object.assign(row, await data(db.from("time_entries").insert(row).select().single())); refreshInBackground() }
+  catch (error) { s.entries = s.entries.filter((entry) => entry.id !== row.id); render(); throw error }
+}
+async function deleteEntry(entryId) {
+  const index = s.entries.findIndex((row) => row.id === entryId), entry = s.entries[index]
+  if (!entry) return
+  s.entries.splice(index, 1); render()
+  try { await deleteSavedRecord("time_entries", entryId); refreshInBackground() }
+  catch (error) { s.entries.splice(index, 0, entry); render(); throw error }
+}
+async function addWorkOrder(order, customerSaved) {
+  const preview = { ...order, id: "preview-" + order.id, work_order_id: order.id, custom_fields: {} }
+  s.orders.unshift(order); s.entries.push(preview); render()
+  try {
+    if (customerSaved) { const savedCustomer = await customerSaved; order.customer_id = savedCustomer.id; order.customer_name = savedCustomer.name; preview.customer_id = savedCustomer.id; preview.customer_name = savedCustomer.name }
+    Object.assign(order, await data(db.from("work_orders").insert(order).select().single())); refreshInBackground()
+  }
+  catch (error) { s.orders = s.orders.filter((row) => row.id !== order.id); s.entries = s.entries.filter((row) => row.id !== preview.id); render(); throw error }
 }
 async function editEntry(entryId, field, value) {
   const row = s.entries.find((item) => item.id === entryId); if (!row) return
+  const prior = { ...row, custom_fields: { ...(row.custom_fields || {}) } }
   if (field === "customer_name") { if (!String(value).trim()) { row.customer_name = ""; row.customer_id = null } else { const found = await customer(value); row.customer_name = found.name; row.customer_id = found.id } }
   else if (field === "custom") row.custom_fields = { ...(row.custom_fields || {}), [value[0]]: value[1] }
   else if (field === "executed_hours") { row.executed_hours = Math.max(0, n(value)); row.calculation_mode = "hours" }
   else if (field === "end_time") { row.end_time = value; row.calculation_mode = "end_time" }
   else if (field === "pause_hours") row.pause_hours = Math.max(0, n(value))
   else if (field === "start_time") row.start_time = value
-  Object.assign(row, await data(db.from("time_entries").upsert(calc(row)).select().single())); render()
+  render()
+  try { Object.assign(row, await data(db.from("time_entries").upsert(calc(row)).select().single())); refreshInBackground() }
+  catch (error) { Object.assign(row, prior); row.custom_fields = prior.custom_fields; render(); throw error }
 }
 async function manage(payload) { const result = await db.functions.invoke("manage-employees", { body: payload }); if (result.error) throw result.error; if (result.data?.error) throw new Error(result.data.error); await loadEmployees() }
 
@@ -463,17 +515,17 @@ root.addEventListener("submit", async (event) => {
   const form = event.target.closest("form"); if (!form) return; event.preventDefault()
   try {
     if (form.dataset.form === "login") { const result = await db.auth.signInWithPassword({ email: form.username.value.trim().toLowerCase() + "@arbeitszeit.local", password: form.password.value }); if (result.error) throw new Error("Benutzername oder Passwort ist nicht korrekt.") }
-    else if (form.dataset.form === "customer") { await customer(form.name.value); tell("Kunde angelegt.") }
-    else if (form.dataset.form === "column") { const name = form.name.value.trim(); if (!name) throw new Error("Bitte eine Bezeichnung eingeben."); s.columns.push(await data(db.from("custom_columns").insert({ id: guid(), employee_id: s.employeeId, name, position: s.columns.length }).select().single())); render() }
+    else if (form.dataset.form === "customer") { const draft = customerDraft(form.name.value); await draft.saved; tell("Kunde angelegt.") }
+    else if (form.dataset.form === "column") { const name = form.name.value.trim(); if (!name) throw new Error("Bitte eine Bezeichnung eingeben."); const row = { id: guid(), employee_id: s.employeeId, name, position: s.columns.length }; await addCollectionRow("columns", row, () => data(db.from("custom_columns").insert(row).select().single())) }
     else if (form.dataset.form === "order") {
-      const found = await customer(form.customerName.value), hasEndTime = Boolean(form.endTime.value), hasHours = String(form.executedHours.value || "").trim() !== ""
+      const customer = customerDraft(form.customerName.value), found = customer.customer, hasEndTime = Boolean(form.endTime.value), hasHours = String(form.executedHours.value || "").trim() !== ""
       if (!hasEndTime && !hasHours) throw new Error("Bitte entweder das Arbeitsende oder die ausgeführten Stunden eintragen.")
       const calculationMode = hasEndTime ? "end_time" : "hours"
       const timing = calc({ start_time: form.startTime.value || "07:30", end_time: form.endTime.value || "", pause_hours: Math.max(0, n(form.pauseHours.value)), executed_hours: hasHours ? Math.max(0, n(form.executedHours.value)) : 0, calculation_mode: calculationMode })
-      await data(db.from("work_orders").insert({ id: guid(), employee_id: s.employeeId, work_date: form.workDate.value, customer_id: found.id, customer_name: found.name, title: form.title.value.trim(), notes: form.notes.value.trim(), start_time: timing.start_time, end_time: timing.end_time, pause_hours: timing.pause_hours, executed_hours: timing.executed_hours, calculation_mode: timing.calculation_mode }).select().single())
-      await loadData(); tell("Arbeitsschein angelegt und in die Zeiterfassung übernommen.")
+      const order = { id: guid(), employee_id: s.employeeId, work_date: form.workDate.value, customer_id: found.id, customer_name: found.name, title: form.title.value.trim(), notes: form.notes.value.trim(), start_time: timing.start_time, end_time: timing.end_time, pause_hours: timing.pause_hours, executed_hours: timing.executed_hours, calculation_mode: timing.calculation_mode }
+      await addWorkOrder(order, customer.saved); tell("Arbeitsschein angelegt und sofort in die Zeiterfassung übernommen.")
     }
-    else if (form.dataset.form === "material") { if (!form.materialId.value) throw new Error("Bitte ein Material auswählen."); s.items.push(await data(db.from("work_order_items").insert({ id: guid(), work_order_id: form.dataset.orderId, material_id: form.materialId.value, position_name: "Material", quantity: Math.max(0, n(form.quantity.value)), unit_price: 0 }).select().single())); render() }
+    else if (form.dataset.form === "material") { const material = s.materials.find((row) => row.id === form.materialId.value); if (!material) throw new Error("Bitte ein Material auswählen."); const row = { id: guid(), work_order_id: form.dataset.orderId, material_id: material.id, position_name: material.name, quantity: Math.max(0, n(form.quantity.value)), unit_price: material.unit_price }; await addCollectionRow("items", row, () => data(db.from("work_order_items").insert(row).select().single())) }
     else if (form.dataset.form === "new-employee") { await manage({ action: "create", username: form.username.value, password: form.password.value }); tell("Mitarbeiterkonto angelegt.") }
     else if (form.dataset.form === "employee-update") { await manage({ action: "update", employeeId: form.dataset.id, username: form.username.value, password: form.password.value, vacationAllowance: form.vacationAllowance.value, menuPermissions: { planner: form.planner.checked, customers: form.customers.checked, orders: form.orders.checked, calendar: form.calendar.checked } }); tell("Mitarbeiter gespeichert.") }
     else if (form.dataset.form === "self-account") { await manage({ action: "self-update", username: form.username.value, password: form.password.value, vacationAllowance: form.vacationAllowance?.value }); await loadProfile(); await loadEmployees(); tell("Dein Benutzerkonto wurde gespeichert.") }
@@ -482,28 +534,30 @@ root.addEventListener("submit", async (event) => {
       if (!row) throw new Error("Der Kunde wurde nicht gefunden.")
       if (!fieldName || !fieldValue) throw new Error("Bitte Feldbezeichnung und Wert eintragen.")
       if (fieldName.length > 80 || fieldValue.length > 300) throw new Error("Die Feldbezeichnung darf maximal 80, der Wert maximal 300 Zeichen enthalten.")
-      Object.assign(row, await data(db.from("customers").update({ custom_fields: { ...(row.custom_fields || {}), [fieldName]: fieldValue } }).eq("id", row.id).select().single()))
-      tell("Kundendaten gespeichert.")
+      const previous = { ...(row.custom_fields || {}) }, fields = { ...previous, [fieldName]: fieldValue }; row.custom_fields = fields; render()
+      try { Object.assign(row, await data(db.from("customers").update({ custom_fields: fields }).eq("id", row.id).select().single())); tell("Kundendaten gespeichert."); refreshInBackground() }
+      catch (error) { row.custom_fields = previous; render(); throw error }
     }
-    else if (form.dataset.form === "new-material") { const name = form.name.value.trim(); if (!name) throw new Error("Bitte eine Materialbezeichnung eingeben."); await data(db.from("materials").insert({ name, unit_price: Math.max(0, n(form.unitPrice.value)) })); await loadData(); tell("Material angelegt.") }
-    else if (form.dataset.form === "material-update") { const name = form.name.value.trim(); if (!name) throw new Error("Bitte eine Materialbezeichnung eingeben."); await data(db.from("materials").update({ name, unit_price: Math.max(0, n(form.unitPrice.value)) }).eq("id", form.dataset.id)); await loadData(); tell("Material gespeichert.") }
+    else if (form.dataset.form === "new-material") { const name = form.name.value.trim(); if (!name) throw new Error("Bitte eine Materialbezeichnung eingeben."); const row = { id: guid(), name, unit_price: Math.max(0, n(form.unitPrice.value)), active: true }; await addCollectionRow("materials", row, () => data(db.from("materials").insert(row).select().single())); tell("Material angelegt.") }
+    else if (form.dataset.form === "material-update") { const row = s.materials.find((item) => item.id === form.dataset.id), name = form.name.value.trim(); if (!row || !name) throw new Error("Bitte eine Materialbezeichnung eingeben."); const previous = { ...row }; row.name = name; row.unit_price = Math.max(0, n(form.unitPrice.value)); render(); try { Object.assign(row, await data(db.from("materials").update({ name: row.name, unit_price: row.unit_price }).eq("id", row.id).select().single())); tell("Material gespeichert."); refreshInBackground() } catch (error) { Object.assign(row, previous); render(); throw error } }
     else if (form.dataset.form === "vacation-request") {
       if (form.endDate.value < form.startDate.value) throw new Error("Das Enddatum muss am oder nach dem Startdatum liegen.")
       const requestedDays = vacationDays(form.startDate.value, form.endDate.value)
       if (!requestedDays) throw new Error("Der Antrag muss mindestens einen Arbeitstag enthalten.")
       if (requestedDays > remainingVacationDays(s.profile.id)) throw new Error("Dafür stehen nicht genügend Resturlaubstage zur Verfügung.")
-      const saved = await data(db.from("vacation_requests").insert({ employee_id: s.profile.id, start_date: form.startDate.value, end_date: form.endDate.value, requested_days: requestedDays, status: "requested", decision_note: form.note.value.trim() }).select().single())
-      s.vacationRequestOverrides.set(saved.id, saved)
-      s.vacationRequests = s.vacationRequests.filter((row) => row.id !== saved.id).concat(saved).sort((left, right) => String(left.start_date).localeCompare(String(right.start_date)))
-      s.calendarForm = ""
-      tell(saved.status === "approved" ? "Dein Urlaub wurde automatisch genehmigt und im Kalender markiert. Die Bestätigung liegt in deinem Postfach." : "Urlaubsantrag gesendet. Die Tage sind vorläufig im Kalender markiert und der Chef wurde benachrichtigt.")
-      try { await loadData(); render() } catch (_) {}
+      const request = { id: guid(), employee_id: s.profile.id, start_date: form.startDate.value, end_date: form.endDate.value, requested_days: requestedDays, status: "requested", decision_note: form.note.value.trim() }
+      s.vacationRequestOverrides.set(request.id, request); s.vacationRequests.push(request); s.vacationRequests.sort((left, right) => String(left.start_date).localeCompare(String(right.start_date))); s.calendarForm = ""; render()
+      try {
+        const saved = await data(db.from("vacation_requests").insert(request).select().single())
+        Object.assign(request, saved); s.vacationRequestOverrides.set(saved.id, request)
+        tell(saved.status === "approved" ? "Dein Urlaub wurde automatisch genehmigt und im Kalender markiert. Die Bestätigung liegt in deinem Postfach." : "Urlaubsantrag gesendet. Die Tage sind vorläufig im Kalender markiert und der Chef wurde benachrichtigt.")
+        refreshInBackground()
+      } catch (error) { s.vacationRequestOverrides.delete(request.id); s.vacationRequests = s.vacationRequests.filter((row) => row.id !== request.id); render(); throw error }
     }
     else if (form.dataset.form === "appointment") {
-      const name = form.customerName.value.trim(); let found = null
-      if (name) found = await customer(name)
-      await data(db.from("appointments").insert({ employee_id: s.employeeId, event_date: form.eventDate.value, customer_id: found?.id || null, customer_name: found?.name || "", title: form.title.value.trim(), notes: form.notes.value.trim() }))
-      s.calendarForm = ""; await loadData(); tell("Kundentermin vorgemerkt.")
+      const name = form.customerName.value.trim(), draft = name ? customerDraft(name) : null, found = draft?.customer
+      const row = { id: guid(), employee_id: s.employeeId, event_date: form.eventDate.value, customer_id: found?.id || null, customer_name: found?.name || "", title: form.title.value.trim(), notes: form.notes.value.trim() }
+      s.calendarForm = ""; await addCollectionRow("appointments", row, async () => { if (draft) { const savedCustomer = await draft.saved; row.customer_id = savedCustomer.id; row.customer_name = savedCustomer.name } return data(db.from("appointments").insert(row).select().single()) }); tell("Kundentermin vorgemerkt.")
     }
   } catch (error) { tell(error.message || "Aktion fehlgeschlagen.", true) }
 })
@@ -515,7 +569,7 @@ root.addEventListener("change", async (event) => {
     else if (el.id === "order-work-date") { const start = root.querySelector("#order-start-time"); if (start) start.value = orderStartFor(el.value) }
     else if (el.dataset.entryField) await editEntry(el.dataset.id, el.dataset.entryField, el.value)
     else if (el.dataset.entryCustom) await editEntry(el.dataset.id, "custom", [el.dataset.entryCustom, el.value])
-    else if (el.dataset.itemField) { const row = s.items.find((item) => item.id === el.dataset.id); row[el.dataset.itemField] = el.dataset.itemField === "position_name" ? el.value.trim() : Math.max(0, n(el.value)); Object.assign(row, await data(db.from("work_order_items").update({ [el.dataset.itemField]: row[el.dataset.itemField] }).eq("id", row.id).select().single())); render() }
+    else if (el.dataset.itemField) { const row = s.items.find((item) => item.id === el.dataset.id), previous = { ...row }; row[el.dataset.itemField] = el.dataset.itemField === "position_name" ? el.value.trim() : Math.max(0, n(el.value)); render(); try { Object.assign(row, await data(db.from("work_order_items").update({ [el.dataset.itemField]: row[el.dataset.itemField] }).eq("id", row.id).select().single())); refreshInBackground() } catch (error) { Object.assign(row, previous); render(); throw error } }
   } catch (error) { tell(error.message || "Änderung konnte nicht gespeichert werden.", true) }
 })
 root.addEventListener("click", async (event) => {
@@ -547,15 +601,15 @@ root.addEventListener("click", async (event) => {
     if (button.dataset.action === "remove-sick") await removeSick()
     if (button.dataset.action === "remove-vacation" && window.confirm("Diesen gesamten Urlaubszeitraum wirklich entfernen?")) await removeVacation()
     if (button.dataset.action === "download-pdf") { downloadPdf(); return }
-    if (button.dataset.action === "delete-entry" && window.confirm("Diese Kundenzeile wirklich löschen?")) { await deleteSavedRecord("time_entries", button.dataset.id); await loadData(); tell("Zeiterfassungszeile gelöscht.") }
+    if (button.dataset.action === "delete-entry" && window.confirm("Diese Kundenzeile wirklich löschen?")) { await deleteEntry(button.dataset.id); tell("Zeiterfassungszeile gelöscht.") }
     if (button.dataset.action === "open-order") { if (!canUse("orders")) throw new Error("Das Menü Arbeitsscheine wurde vom Chef nicht freigegeben."); s.view = "orders"; render(); const field = root.querySelector("[data-form='order'] [name='customerName']"); if (field) { field.value = button.dataset.customer || ""; field.focus() } }
-    if (button.dataset.action === "delete-customer") { const row = s.customers.find((item) => item.id === button.dataset.id); if (row && window.confirm("Kunde „" + row.name + "“ wirklich löschen? Bereits erfasste Zeiten bleiben erhalten.")) { await deleteSavedRecord("customers", row.id); await loadData(); tell("Kunde gelöscht.") } }
-    if (button.dataset.action === "delete-customer-field") { const row = s.customers.find((item) => item.id === button.dataset.id); if (row && window.confirm("Das zusätzliche Kundendatenfeld „" + button.dataset.key + "“ wirklich entfernen?")) { const fields = { ...(row.custom_fields || {}) }; delete fields[button.dataset.key]; Object.assign(row, await data(db.from("customers").update({ custom_fields: fields }).eq("id", row.id).select().single())); tell("Kundendatenfeld entfernt.") } }
-    if (button.dataset.action === "delete-item") { await data(db.from("work_order_items").delete().eq("id", button.dataset.id)); s.items = s.items.filter((row) => row.id !== button.dataset.id); render() }
-    if (button.dataset.action === "delete-order" && window.confirm("Diesen Arbeitsschein mit allen Positionen und dem zugehörigen Zeiterfassungseintrag löschen?")) { await deleteWorkOrder(button.dataset.id); await loadData(); tell("Arbeitsschein gelöscht.") }
-    if (button.dataset.action === "delete-column" && window.confirm("Zusatzspalte entfernen? Die bisherigen Werte bleiben in den Einträgen gespeichert.")) { await data(db.from("custom_columns").delete().eq("id", button.dataset.id)); s.columns = s.columns.filter((row) => row.id !== button.dataset.id); render() }
-    if (button.dataset.action === "delete-material" && window.confirm("Material „" + button.dataset.name + "“ aus dem Katalog entfernen? Bereits verwendete Preise bleiben in vorhandenen Arbeitsscheinen erhalten.")) { await data(db.from("materials").update({ active: false }).eq("id", button.dataset.id)); await loadData(); tell("Material aus dem Katalog entfernt.") }
-    if (button.dataset.action === "delete-appointment" && window.confirm("Diesen Kundentermin wirklich entfernen?")) { await data(db.from("appointments").delete().eq("id", button.dataset.id)); await loadData(); tell("Kundentermin entfernt.") }
+    if (button.dataset.action === "delete-customer") { const row = s.customers.find((item) => item.id === button.dataset.id); if (row && window.confirm("Kunde „" + row.name + "“ wirklich löschen? Bereits erfasste Zeiten bleiben erhalten.")) { await removeCollectionRow("customers", row.id, () => deleteSavedRecord("customers", row.id)); tell("Kunde gelöscht.") } }
+    if (button.dataset.action === "delete-customer-field") { const row = s.customers.find((item) => item.id === button.dataset.id); if (row && window.confirm("Das zusätzliche Kundendatenfeld „" + button.dataset.key + "“ wirklich entfernen?")) { const previous = { ...(row.custom_fields || {}) }, fields = { ...previous }; delete fields[button.dataset.key]; row.custom_fields = fields; render(); try { Object.assign(row, await data(db.from("customers").update({ custom_fields: fields }).eq("id", row.id).select().single())); refreshInBackground(); tell("Kundendatenfeld entfernt.") } catch (error) { row.custom_fields = previous; render(); throw error } } }
+    if (button.dataset.action === "delete-item") { await removeCollectionRow("items", button.dataset.id, () => deleteSavedRecord("work_order_items", button.dataset.id)) }
+    if (button.dataset.action === "delete-order" && window.confirm("Diesen Arbeitsschein mit allen Positionen und dem zugehörigen Zeiterfassungseintrag löschen?")) { await deleteWorkOrder(button.dataset.id); tell("Arbeitsschein gelöscht.") }
+    if (button.dataset.action === "delete-column" && window.confirm("Zusatzspalte entfernen? Die bisherigen Werte bleiben in den Einträgen gespeichert.")) { await removeCollectionRow("columns", button.dataset.id, () => deleteSavedRecord("custom_columns", button.dataset.id)) }
+    if (button.dataset.action === "delete-material" && window.confirm("Material „" + button.dataset.name + "“ aus dem Katalog entfernen? Bereits verwendete Preise bleiben in vorhandenen Arbeitsscheinen erhalten.")) { await removeCollectionRow("materials", button.dataset.id, () => data(db.from("materials").update({ active: false }).eq("id", button.dataset.id).select().single())); tell("Material aus dem Katalog entfernt.") }
+    if (button.dataset.action === "delete-appointment" && window.confirm("Diesen Kundentermin wirklich entfernen?")) { await removeCollectionRow("appointments", button.dataset.id, () => deleteSavedRecord("appointments", button.dataset.id)); tell("Kundentermin entfernt.") }
     if (button.dataset.action === "choose-mailbox-folder") { s.mailboxFolder = button.dataset.folder; render(); return }
     if (button.dataset.action === "open-message") { const saved = await data(db.from("mailbox_messages").update({ read_at: new Date().toISOString() }).eq("id", button.dataset.id).select().single()); const index = s.messages.findIndex((row) => row.id === saved.id); if (index >= 0) s.messages[index] = saved; s.mailboxFolder = "read"; render(); return }
     if (button.dataset.action === "decide-vacation") {

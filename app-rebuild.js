@@ -78,8 +78,10 @@ function minutes(value) {
 
 function quarterTime(value, label) {
   const result = minutes(String(value ?? '').slice(0, 5))
-  if (result === null || result % 15 !== 0) throw new Error(`${label} muss in 15-Minuten-Schritten eingegeben werden.`)
-  return String(value).slice(0, 5)
+  if (result === null) throw new Error(`${label} ist ungültig.`)
+  const rounded = Math.round(result / 15) * 15
+  const normalized = rounded === 1440 ? 0 : rounded
+  return `${String(Math.floor(normalized / 60)).padStart(2, '0')}:${String(normalized % 60).padStart(2, '0')}`
 }
 
 function addMinutes(value, amount) {
@@ -206,6 +208,11 @@ function calculateTimes(values, defaultStart = nextStart()) {
   const endProvided = String(values.end || '').trim() !== ''
   const hoursProvided = String(values.hours || '').trim() !== ''
   if (!endProvided && !hoursProvided) throw new Error('Bitte Endzeit oder Arbeitsstunden auswählen.')
+  const useHours = (values.source === 'hours' && hoursProvided) || !endProvided
+  if (useHours) {
+    const executed = quarterNumber(values.hours, 'Die Arbeitsstunden')
+    return { start_time: start, end_time: addMinutes(start, Math.round((executed + pause) * 60)), pause_hours: pause, executed_hours: executed, calculation_mode: 'hours' }
+  }
   if (endProvided) {
     const end = quarterTime(values.end, 'Die Endzeit')
     const startMinutes = minutes(start), endMinutes = minutes(end)
@@ -214,8 +221,55 @@ function calculateTimes(values, defaultStart = nextStart()) {
     if (executed < 0) throw new Error('Die Endzeit liegt vor dem Arbeitsbeginn.')
     return { start_time: start, end_time: end, pause_hours: pause, executed_hours: executed, calculation_mode: 'end_time' }
   }
-  const executed = quarterNumber(values.hours, 'Die Arbeitsstunden')
-  return { start_time: start, end_time: addMinutes(start, Math.round((executed + pause) * 60)), pause_hours: pause, executed_hours: executed, calculation_mode: 'hours' }
+  throw new Error('Bitte Endzeit oder Arbeitsstunden auswählen.')
+}
+
+function field(form, name) { return form?.querySelector(`[name="${name}"]`) }
+
+function roundFormTimes(form) {
+  ;['start', 'end'].forEach(name => {
+    const input = field(form, name)
+    if (input?.value) input.value = quarterTime(input.value, name === 'start' ? 'Der Arbeitsbeginn' : 'Die Endzeit')
+  })
+}
+
+function syncHoursFromTimes(form) {
+  roundFormTimes(form)
+  const start = field(form, 'start')?.value
+  const end = field(form, 'end')?.value
+  if (!start || !end) return
+  const pause = quarterNumber(field(form, 'pause')?.value || 0, 'Die Pause')
+  const startMinutes = minutes(start), endMinutes = minutes(end)
+  const totalMinutes = (endMinutes < startMinutes ? endMinutes + 1440 : endMinutes) - startMinutes
+  const executed = Math.max(0, Math.round((totalMinutes / 60 - pause) * 4) / 4)
+  const duration = field(form, 'hours')
+  if (duration) duration.value = String(executed)
+  const source = field(form, 'source')
+  if (source) source.value = 'time'
+}
+
+function syncEndFromHours(form) {
+  roundFormTimes(form)
+  const start = field(form, 'start')?.value
+  const duration = field(form, 'hours')?.value
+  if (!start || duration === '') return
+  const pause = quarterNumber(field(form, 'pause')?.value || 0, 'Die Pause')
+  const executed = quarterNumber(duration, 'Die Arbeitsstunden')
+  const end = field(form, 'end')
+  if (end) end.value = addMinutes(start, Math.round((executed + pause) * 60))
+  const source = field(form, 'source')
+  if (source) source.value = 'hours'
+}
+
+function synchroniseTimeForm(form, mode) {
+  try {
+    if (mode === 'time') syncHoursFromTimes(form)
+    else if (mode === 'hours') syncEndFromHours(form)
+    else if (field(form, 'source')?.value === 'time') syncHoursFromTimes(form)
+    else syncEndFromHours(form)
+  } catch (error) {
+    notify(error?.message || 'Die Zeit konnte nicht berechnet werden.', true)
+  }
 }
 
 function isAllowed(view) {
@@ -277,7 +331,7 @@ function timeForm(entry = null) {
   const columns = own(state.data.columns)
   const custom = value.custom_fields || {}
   const formName = entry ? 'time-update' : 'time-create'
-  return `<form class="card form-grid" data-form="${formName}"><input type="hidden" name="id" value="${entry?.id || ''}"><label>Kunde<input name="customer" list="customers" value="${escapeHtml(value.customer_name)}" required></label><label>Arbeitsbeginn<input name="start" type="time" step="900" value="${String(value.start_time || nextStart()).slice(0, 5)}" required></label><label>Arbeitsende<input name="end" type="time" step="900" value="${entry?.calculation_mode === 'end_time' ? String(value.end_time || '').slice(0, 5) : ''}"></label><label>Pause${pauseOptions(value.pause_hours)}</label><label>Arbeitsstunden${durationOptions(entry?.calculation_mode === 'hours' ? value.executed_hours : '')}</label>${columns.map(column => `<label>${escapeHtml(column.name)}<input name="custom-${column.id}" value="${escapeHtml(custom[column.id] || '')}"></label>`).join('')}<div class="form-actions"><button class="primary" ${locked ? 'disabled' : ''}>${entry ? 'Zeiteintrag speichern' : 'Zeiteintrag hinzufügen'}</button>${entry ? `<button type="button" class="danger ghost" data-action="time-delete" data-id="${entry.id}">Löschen</button>` : ''}</div></form>`
+  return `<form class="card form-grid" data-form="${formName}"><input type="hidden" name="id" value="${entry?.id || ''}"><input type="hidden" name="source" value="${entry?.calculation_mode === 'end_time' ? 'time' : 'hours'}"><label>Kunde<input name="customer" list="customers" value="${escapeHtml(value.customer_name)}" required></label><label>Arbeitsbeginn<input name="start" type="time" step="60" value="${String(value.start_time || nextStart()).slice(0, 5)}" required></label><label>Arbeitsende<input name="end" type="time" step="60" value="${String(value.end_time || '').slice(0, 5)}"></label><label>Pause${pauseOptions(value.pause_hours)}</label><label>Arbeitsstunden${durationOptions(value.executed_hours)}</label>${columns.map(column => `<label>${escapeHtml(column.name)}<input name="custom-${column.id}" value="${escapeHtml(custom[column.id] || '')}"></label>`).join('')}<div class="form-actions"><button class="primary" ${locked ? 'disabled' : ''}>${entry ? 'Zeiteintrag speichern' : 'Zeiteintrag hinzufügen'}</button>${entry ? `<button type="button" class="danger ghost" data-action="time-delete" data-id="${entry.id}">Löschen</button>` : ''}</div></form>`
 }
 
 function timeView() {
@@ -303,7 +357,7 @@ function customersView() {
 }
 
 function orderEditForm(order) {
-  return `<details class="subsection"><summary>Arbeitsschein bearbeiten</summary><form class="form-grid" data-form="order-update"><input type="hidden" name="id" value="${order.id}"><label>Kunde<input name="customer" list="customers" value="${escapeHtml(order.customer_name)}" required></label><label>Bezeichnung<input name="title" value="${escapeHtml(order.title)}"></label><label>Arbeitsbeginn<input name="start" type="time" step="900" value="${String(order.start_time || '').slice(0, 5)}" required></label><label>Arbeitsende<input name="end" type="time" step="900" value="${order.calculation_mode === 'end_time' ? String(order.end_time || '').slice(0, 5) : ''}"></label><label>Pause${pauseOptions(order.pause_hours)}</label><label>Arbeitsstunden${durationOptions(order.calculation_mode === 'hours' ? order.executed_hours : '')}</label><label class="wide">Notiz<textarea name="notes" rows="3">${escapeHtml(order.notes)}</textarea></label><label class="wide">Dokumentation<textarea name="documentation" rows="4">${escapeHtml(order.documentation)}</textarea></label><div class="form-actions"><button class="primary">Speichern</button></div></form></details>`
+  return `<details class="subsection"><summary>Arbeitsschein bearbeiten</summary><form class="form-grid" data-form="order-update"><input type="hidden" name="id" value="${order.id}"><input type="hidden" name="source" value="${order.calculation_mode === 'end_time' ? 'time' : 'hours'}"><label>Kunde<input name="customer" list="customers" value="${escapeHtml(order.customer_name)}" required></label><label>Bezeichnung<input name="title" value="${escapeHtml(order.title)}"></label><label>Arbeitsbeginn<input name="start" type="time" step="60" value="${String(order.start_time || '').slice(0, 5)}" required></label><label>Arbeitsende<input name="end" type="time" step="60" value="${String(order.end_time || '').slice(0, 5)}"></label><label>Pause${pauseOptions(order.pause_hours)}</label><label>Arbeitsstunden${durationOptions(order.executed_hours)}</label><label class="wide">Notiz<textarea name="notes" rows="3">${escapeHtml(order.notes)}</textarea></label><label class="wide">Dokumentation<textarea name="documentation" rows="4">${escapeHtml(order.documentation)}</textarea></label><div class="form-actions"><button class="primary">Speichern</button></div></form></details>`
 }
 
 function orderCard(order, compact = false) {
@@ -315,7 +369,7 @@ function orderCard(order, compact = false) {
 
 function orderForm() {
   const locked = dayState().locked
-  return `<form class="card form-grid" data-form="order-create"><label>Kunde<input name="customer" list="customers" required></label><label>Bezeichnung<input name="title" placeholder="z. B. Reparatur"></label><label>Arbeitsbeginn<input name="start" type="time" step="900" value="${nextStart()}" required></label><label>Arbeitsende<input name="end" type="time" step="900"></label><label>Pause${pauseOptions(0)}</label><label>Arbeitsstunden${durationOptions('', 16, 'oder Ende eintragen')}</label><label class="wide">Notiz<textarea name="notes" rows="3"></textarea></label><label class="wide">Dokumentation<textarea name="documentation" rows="4" placeholder="Arbeitsfortschritt, Besonderheiten …"></textarea></label><div class="form-actions"><button class="primary" ${locked ? 'disabled' : ''}>Arbeitsschein anlegen</button></div></form>`
+  return `<form class="card form-grid" data-form="order-create"><input type="hidden" name="source" value="hours"><label>Kunde<input name="customer" list="customers" required></label><label>Bezeichnung<input name="title" placeholder="z. B. Reparatur"></label><label>Arbeitsbeginn<input name="start" type="time" step="60" value="${nextStart()}" required></label><label>Arbeitsende<input name="end" type="time" step="60"></label><label>Pause${pauseOptions(0)}</label><label>Arbeitsstunden${durationOptions('', 16, 'oder Ende eintragen')}</label><label class="wide">Notiz<textarea name="notes" rows="3"></textarea></label><label class="wide">Dokumentation<textarea name="documentation" rows="4" placeholder="Arbeitsfortschritt, Besonderheiten …"></textarea></label><div class="form-actions"><button class="primary" ${locked ? 'disabled' : ''}>Arbeitsschein anlegen</button></div></form>`
 }
 
 function ordersView() {
@@ -588,8 +642,9 @@ root.addEventListener('change', event => {
   const target = event.target
   if (target.matches('[data-action="employee-picker"]')) { state.selectedEmployeeId = target.value; render(); return }
   if (target.matches('[data-action="order-invoiced"]')) { const id = target.dataset.id; perform(target.checked ? 'Arbeitsschein als abgerechnet markiert.' : 'Arbeitsschein wieder geöffnet.', () => api(db.from('work_orders').update({ invoiced: target.checked }).eq('id', id))); return }
-  if (target.matches('input[name="end"]') && target.value) { const form = target.closest('form'); const duration = form?.querySelector('select[name="hours"]'); if (duration) duration.value = '' }
-  if (target.matches('select[name="hours"]') && target.value) { const form = target.closest('form'); const end = form?.querySelector('input[name="end"]'); if (end) end.value = '' }
+  if (target.matches('input[name="start"], input[name="end"]')) { synchroniseTimeForm(target.closest('form'), 'time'); return }
+  if (target.matches('select[name="hours"]')) { synchroniseTimeForm(target.closest('form'), 'hours'); return }
+  if (target.matches('select[name="pause"]')) { synchroniseTimeForm(target.closest('form')); return }
 })
 
 root.addEventListener('click', event => {

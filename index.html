@@ -3,32 +3,21 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#083344" />
+    <meta name="theme-color" content="#0f766e" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Arbeitszeit" />
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="apple-touch-icon" href="icon.svg" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="styles.css" />
-    <title>Arbeitszeit · Team</title>
+    <link rel="stylesheet" href="styles-new.css?v=100" />
+    <title>Arbeitszeit</title>
   </head>
   <body>
-    <div id="app" class="app-shell" aria-live="polite">
-      <div class="loading-card">
-        <div class="loading-mark">AZ</div>
-        <p>Arbeitszeit wird vorbereitet …</p>
-      </div>
-    </div>
-    <input id="restore-file" type="file" accept="application/json" hidden />
+    <div id="app" aria-live="polite"><main class="loading">Arbeitszeit wird vorbereitet …</main></div>
     <script src="config.js?v=1"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
-    <script type="module" src="app.js?v=22"></script>
-    <script>
-      if ("serviceWorker" in navigator) {
-        window.addEventListener("load", () => navigator.serviceWorker.register("./service-worker.js"));
-      }
-    </script>
+    <script type="module" src="app-new.js?v=100"></script>
+    <script>if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./service-worker.js"));</script>
   </body>
 </html>
-

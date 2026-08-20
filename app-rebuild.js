@@ -22,6 +22,7 @@ const state = {
   month: new Date().getMonth(),
   year: new Date().getFullYear(),
   folder: 'all',
+  menuOpen: false,
   busy: false,
   toast: null,
   channel: null,
@@ -352,13 +353,13 @@ function assignmentDetailView() {
 function navigation() {
   const items = [['time', 'Zeiterfassung'], ['customers', 'Kunden'], ['orders', 'Arbeitsscheine'], ['calendar', 'Kalender'], ['inbox', 'Postfach'], ['settings', 'Einstellungen']]
   if (isChief()) items.splice(5, 0, ['assignments', 'Aufträge Mitarbeiter'])
-  return `<nav>${items.filter(([view]) => permitted(view)).map(([view, label]) => `<button data-action="nav" data-view="${view}" class="${state.view === view ? 'selected' : ''}">${label}</button>`).join('')}</nav>`
+  return items.filter(([view]) => permitted(view)).map(([view, label]) => `<button data-action="nav" data-view="${view}" class="${state.view === view ? 'selected' : ''}">${label}</button>`).join('')
 }
 
 function appView() {
   if (!state.session || !state.profile) return loginView()
   const view = state.view === 'customers-orders' ? customerOrdersView : state.view === 'assignment-detail' ? assignmentDetailView : ({ time: timeView, customers: customerView, orders: orderView, calendar: calendarView, inbox: inboxView, settings: settingsView, assignments: assignmentsView }[state.view] || timeView)
-  return `<div class="app-shell"><header><div class="brand"><span>AZ</span><div><strong>Arbeitszeit</strong><small>${esc(state.profile.username)}</small></div></div>${navigation()}<button class="logout" data-action="logout">Abmelden</button></header>${view()}${state.toast ? `<div class="toast ${state.toast.error ? 'error' : ''}">${esc(state.toast.message)}</div>` : ''}${state.busy ? '<div class="busy">Wird gespeichert …</div>' : ''}</div>`
+  return `<div class="app-shell"><header class="app-header"><div class="brand"><span>AZ</span><div><strong>Arbeitszeit</strong><small>${esc(state.profile.username)}</small></div></div><div class="header-actions"><button class="menu-toggle" data-action="menu-toggle" aria-expanded="${state.menuOpen}">☰ <span>Menü</span></button><button class="logout" data-action="logout">Abmelden</button></div></header><button class="menu-backdrop ${state.menuOpen ? 'open' : ''}" data-action="menu-close" aria-label="Menü schließen"></button><aside class="side-nav ${state.menuOpen ? 'open' : ''}" aria-label="Hauptmenü"><div class="side-nav-head"><strong>Navigation</strong><button class="menu-close" data-action="menu-close" aria-label="Menü schließen">×</button></div><nav>${navigation()}</nav></aside>${view()}${state.toast ? `<div class="toast ${state.toast.error ? 'error' : ''}">${esc(state.toast.message)}</div>` : ''}${state.busy ? '<div class="busy">Wird gespeichert …</div>' : ''}</div>`
 }
 
 function loginView() {
@@ -549,7 +550,9 @@ root.addEventListener('click', event => {
   if (!button) return
   const action = button.dataset.action
   if (!action) return
-  if (action === 'nav') { state.view = button.dataset.view; state.customerId = null; render(); return }
+  if (action === 'menu-toggle') { state.menuOpen = !state.menuOpen; render(); return }
+  if (action === 'menu-close') { state.menuOpen = false; render(); return }
+  if (action === 'nav') { state.view = button.dataset.view; state.customerId = null; state.menuOpen = false; render(); return }
   if (action === 'logout') { run('', () => db.auth.signOut()); return }
   if (action === 'date' || action === 'calendar-date') { state.date = button.dataset.date; const date = dateObject(state.date); state.month = date.getMonth(); state.year = date.getFullYear(); render(); return }
   if (action === 'month-prev') { const date = new Date(state.year, state.month - 1, 1); state.year = date.getFullYear(); state.month = date.getMonth(); render(); return }

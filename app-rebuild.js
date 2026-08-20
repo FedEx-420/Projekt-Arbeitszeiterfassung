@@ -496,7 +496,7 @@ function accountSettings() {
 }
 
 function settingsView() {
-  return page('Einstellungen', 'VERWALTUNG', `${isAdmin() ? `<section class="card"><h2>Geschäftskonto auswählen</h2>${businessPicker()}</section>` : ''}${isChief() ? `<section class="card"><h2>Mitarbeiter auswählen</h2>${employeePicker()}</section>` : ''}${accountSettings()}${materialManager()}${employeeManager()}${businessManager()}`)
+  return page('Einstellungen', 'VERWALTUNG', `${isAdmin() ? `<section class="card"><h2>Geschäftskonto auswählen</h2>${businessPicker()}<div class="card-actions"><button type="button" class="secondary" data-action="settings-self">Mein Administratorkonto</button></div></section>` : ''}${isChief() ? `<section class="card"><h2>Mitarbeiter auswählen</h2>${employeePicker()}</section>` : ''}${accountSettings()}${materialManager()}${employeeManager()}${businessManager()}`)
 }
 
 function customerOrdersView() {
@@ -768,6 +768,7 @@ root.addEventListener('click', event => {
   if (action === 'vacation-approve' || action === 'vacation-reject') return perform(action === 'vacation-approve' ? 'Urlaub genehmigt.' : 'Urlaub abgelehnt.', () => vacation('decide', { requestId: button.dataset.id, status: action === 'vacation-approve' ? 'approved' : 'rejected' }))
   if (action === 'settings-employee') { state.selectedEmployeeId = button.dataset.id; state.view = 'settings'; render(); return }
   if (action === 'settings-business') { state.selectedBusinessId = button.dataset.id; state.selectedEmployeeId = button.dataset.id; state.view = 'settings'; render(); return }
+  if (action === 'settings-self') { state.selectedEmployeeId = state.profile.id; state.view = 'settings'; render(); return }
   if (action === 'employee-delete') { if (window.confirm('Mitarbeiterkonto wirklich löschen?')) perform('Mitarbeiter gelöscht.', () => manageAccount({ action: 'employee-delete', employeeId: button.dataset.id })); return }
   if (action === 'column-delete') { if (window.confirm('Eingabefeld löschen?')) perform('Eingabefeld gelöscht.', () => api(db.from('custom_columns').delete().eq('id', button.dataset.id))); return }
   if (action === 'material-delete') { if (window.confirm('Artikel aus der Materialliste entfernen?')) perform('Artikel entfernt.', () => api(db.from('materials').update({ active: false }).eq('id', button.dataset.id))); return }
@@ -781,3 +782,4 @@ db.auth.onAuthStateChange(() => loadData().catch(error => notify(error?.message 
 window.addEventListener('visibilitychange', () => { if (!document.hidden && state.session && !state.busy) loadData().catch(() => {}) })
 setInterval(() => { if (state.session && !state.busy) loadData().catch(() => {}) }, 30000)
 loadData().catch(error => notify(error?.message || 'Die App konnte nicht geladen werden.', true))
+

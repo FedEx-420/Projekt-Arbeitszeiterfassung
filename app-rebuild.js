@@ -454,7 +454,7 @@ function billingCustomersView() {
 function billingEmployeesView() {
   const people = managedEmployees()
   const payslips = state.data.payslips.filter(row => same(row.business_id, activeBusinessId()))
-  return page('Lohnabrechnungen', 'VERTRAULICHE DATEIEN FÜR MITARBEITER', `${businessPicker()}<section class="split"><div><h2>Neue Lohnabrechnung</h2>${people.length ? `<form class="card form-grid" data-form="payslip-create"><label>Mitarbeiter<select name="employeeId" required>${people.map(row => `<option value="${row.id}">${escapeHtml(row.username)}</option>`).join('')}</select></label><label class="wide">Datei<input name="file" type="file" required></label><div class="form-actions"><button class="primary">Datei bereitstellen</button></div><p class="muted">Nur der ausgewählte Mitarbeiter erhält eine Nachricht und kann die Datei öffnen.</p></form>` : '<p class="empty">Für dieses Geschäftskonto sind noch keine Mitarbeiter vorhanden.</p>'}</div><div><h2>Bereitgestellte Dateien</h2>${payslips.length ? payslips.map(row => `<article class="card employee-card"><h3>${escapeHtml(row.file_name)}</h3><p>Für ${escapeHtml(employeeName(row.employee_id))} · ${new Intl.DateTimeFormat('de-DE', { dateStyle: 'medium' }).format(new Date(row.created_at))}</p><div class="card-actions"><button type="button" class="secondary" data-action="payslip-open" data-id="${row.id}">Datei öffnen</button><button type="button" class="danger ghost" data-action="payslip-delete" data-id="${row.id}">Entfernen</button></div></article>`).join('') : '<p class="empty">Noch keine Lohnabrechnungen bereitgestellt.</p>'}</div></section>`)
+  return page('Lohnabrechnungen', 'VERTRAULICHE DATEIEN FÜR MITARBEITER', `${businessPicker()}<section class="split"><div><h2>Neue Lohnabrechnung</h2>${people.length ? `<form class="card form-grid" data-form="payslip-create"><label>Mitarbeiter<select name="employeeId" required>${people.map(row => `<option value="${row.id}">${escapeHtml(row.username)}</option>`).join('')}</select></label><label class="wide">Datei<input name="file" type="file" required></label><div class="form-actions"><button class="primary">Datei bereitstellen</button></div><p class="muted">Nur der ausgewählte Mitarbeiter erhält eine Nachricht und kann die Datei öffnen.</p></form>` : '<p class="empty">Für dieses Geschäftskonto sind noch keine Mitarbeiter vorhanden.</p>'}</div><div><h2>Bereitgestellte Dateien</h2>${payslips.length ? payslips.map(row => `<article class="card employee-card"><h3>${escapeHtml(row.file_name)}</h3><p>Für ${escapeHtml(employeeName(row.employee_id))} · ${new Intl.DateTimeFormat('de-DE', { dateStyle: 'medium' }).format(new Date(row.created_at))}</p><div class="card-actions"><button type="button" class="secondary" data-action="payslip-open" data-id="${row.id}">Datei öffnen</button></div></article>`).join('') : '<p class="empty">Noch keine Lohnabrechnungen bereitgestellt.</p>'}</div></section>`)
 }
 
 function invoicesView() {
@@ -621,11 +621,12 @@ async function uploadPayslip(form) {
   const filePath = `${businessId}/${employee.id}/${crypto.randomUUID()}-${safeName}`
   const { error: uploadError } = await db.storage.from('employee-payslips').upload(filePath, file, { contentType: file.type || undefined, upsert: false })
   if (uploadError) throw uploadError
+  const payslip = await api(db.from('employee_payslips').insert({ business_id: businessId, employee_id: employee.id, uploaded_by: state.profile.id, file_path: filePath, file_name: String(file.name || safeName), mime_type: file.type || null }).select().single())
   try {
-    const payslip = await api(db.from('employee_payslips').insert({ business_id: businessId, employee_id: employee.id, uploaded_by: state.profile.id, file_path: filePath, file_name: String(file.name || safeName), mime_type: file.type || null }).select().single())
     await api(db.from('mailbox_messages').insert({ recipient_id: employee.id, sender_id: state.profile.id, message_type: 'payslip', title: 'Neue Lohnabrechnung', body: { payslip_id: payslip.id, file_name: payslip.file_name } }))
   } catch (error) {
-    await db.storage.from('employee-payslips').remove([filePath])
+    const { error: removeError } = await db.storage.from('employee-payslips').remove([filePath])
+    if (!removeError) await api(db.from('employee_payslips').delete().eq('id', payslip.id))
     throw error
   }
 }
@@ -661,13 +662,6 @@ function downloadPayslip(id) {
   const payslip = state.data.payslips.find(row => same(row.id, id))
   if (!payslip) throw new Error('Die Lohnabrechnung wurde nicht gefunden oder ist nicht mehr verfügbar.')
   return db.storage.from('employee-payslips').createSignedUrl(payslip.file_path, 60).then(({ data, error }) => { if (error) throw error; window.open(data.signedUrl, '_blank', 'noopener') })
-}
-
-async function deletePayslip(id) {
-  const payslip = state.data.payslips.find(row => same(row.id, id))
-  if (!payslip) throw new Error('Die Lohnabrechnung wurde nicht gefunden.')
-  await api(db.from('employee_payslips').delete().eq('id', id))
-  await db.storage.from('employee-payslips').remove([payslip.file_path])
 }
 
 function downloadPdf(employeeId) {
@@ -756,7 +750,6 @@ root.addEventListener('click', event => {
   if (action === 'item-delete') { if (window.confirm('Materialposition löschen?')) perform('Materialposition gelöscht.', () => api(db.from('work_order_items').delete().eq('id', button.dataset.id))); return }
   if (action === 'document-open') return perform('', () => downloadDocument(button.dataset.id))
   if (action === 'payslip-open') return perform('', () => downloadPayslip(button.dataset.id))
-  if (action === 'payslip-delete') { if (window.confirm('Lohnabrechnung wirklich entfernen?')) perform('Lohnabrechnung entfernt.', () => deletePayslip(button.dataset.id)); return }
   if (action === 'document-delete') { if (window.confirm('Dokument löschen?')) perform('Dokument gelöscht.', async () => { const doc = state.data.documents.find(row => same(row.id, button.dataset.id)); await api(db.from('work_order_documents').delete().eq('id', button.dataset.id)); if (doc) await db.storage.from('work-order-documents').remove([doc.file_path]) }); return }
   if (action === 'customer-delete') { if (window.confirm('Kunde wirklich löschen?')) perform('Kunde gelöscht.', () => api(db.from('customers').delete().eq('id', button.dataset.id))); return }
   if (action === 'customer-orders') { state.selectedCustomerId = button.dataset.id; state.view = 'customerOrders'; render(); return }
@@ -782,4 +775,3 @@ db.auth.onAuthStateChange(() => loadData().catch(error => notify(error?.message 
 window.addEventListener('visibilitychange', () => { if (!document.hidden && state.session && !state.busy) loadData().catch(() => {}) })
 setInterval(() => { if (state.session && !state.busy) loadData().catch(() => {}) }, 30000)
 loadData().catch(error => notify(error?.message || 'Die App konnte nicht geladen werden.', true))
-

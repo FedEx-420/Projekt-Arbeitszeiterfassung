@@ -1,5 +1,5 @@
-const CACHE = 'arbeitszeit-rebuild-v402'
-const FILES = ['./', './index.html', './styles-rebuild.css?v=402', './app-rebuild.js?v=402', './config.js?v=1', './manifest.webmanifest', './icon.svg']
+const CACHE = 'arbeitszeit-rebuild-v403'
+const FILES = ['./', './index.html', './styles-rebuild.css?v=403', './app-rebuild.js?v=403', './config.js?v=1', './manifest.webmanifest', './icon.svg']
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(FILES)))

@@ -26,6 +26,7 @@ const state = {
   view: 'time',
   selectedEmployeeId: null,
   selectedBusinessId: null,
+  selectedSettingsAccountId: null,
   selectedCustomerId: null,
   date: today(),
   month: new Date().getMonth(),
@@ -54,19 +55,24 @@ const same = (a, b) => String(a ?? '') === String(b ?? '')
 const isAdmin = () => state.profile?.role === 'administrator'
 const isBusiness = () => state.profile?.role === 'business'
 const isChief = () => isAdmin() || isBusiness()
-// Administrators are intentionally not a work-time account. They select an employee
-// within a business before viewing or editing that employee's work data.
-const activeEmployeeId = () => isAdmin() ? (state.selectedEmployeeId || '') : isBusiness() ? (state.selectedEmployeeId || state.profile?.id) : state.profile?.id
-const person = id => state.people.find(row => row.id === id) || state.profile
-const employeeName = id => person(id)?.username || 'Unbekannt'
+const person = id => state.people.find(row => same(row.id, id)) || null
+const selectedEmployee = () => {
+  const selected = person(state.selectedEmployeeId)
+  return selected?.role === 'employee' ? selected : null
+}
+// Administrators are never used as an employee profile. They explicitly choose an
+// employee only when they want to inspect that person's work data.
+const activeEmployeeId = () => isAdmin() ? (selectedEmployee()?.id || '') : isBusiness() ? (state.selectedEmployeeId || state.profile?.id || '') : (state.profile?.id || '')
+const employeeName = id => person(id)?.username || (isAdmin() ? 'Kein Mitarbeiter ausgewählt' : 'Unbekannt')
 const businesses = () => state.people.filter(row => row.role === 'business')
 const businessIdOf = row => row?.business_id || (row?.role === 'business' ? row.id : '')
-const activeBusinessId = () => isAdmin() ? (state.selectedBusinessId || businessIdOf(person(activeEmployeeId())) || businesses()[0]?.id || '') : (businessIdOf(state.profile) || '')
+const activeBusinessId = () => isAdmin() ? (state.selectedBusinessId || businesses()[0]?.id || '') : (businessIdOf(state.profile) || '')
 const peopleForBusiness = businessId => state.people.filter(row => same(businessIdOf(row), businessId))
 const managedPeople = () => peopleForBusiness(activeBusinessId())
 const managedEmployees = () => managedPeople().filter(row => row.role === 'employee')
 const roleLabel = role => role === 'administrator' ? 'Administrator' : role === 'business' ? 'Geschäftskonto' : 'Mitarbeiter'
 const activeBusiness = () => state.people.find(row => same(row.id, activeBusinessId()) && row.role === 'business') || null
+const settingsAccount = () => person(state.selectedSettingsAccountId) || state.profile
 const companyName = () => activeBusiness()?.company_name || activeBusiness()?.username || 'Zeiterfassung'
 const companyLogoUrl = () => {
   const path = activeBusiness()?.company_logo_path
@@ -172,9 +178,11 @@ async function loadData() {
   if (isAdmin() && !businesses().some(row => same(row.id, state.selectedBusinessId))) state.selectedBusinessId = businesses()[0]?.id || null
   if (isAdmin()) {
     const available = peopleForBusiness(state.selectedBusinessId).filter(row => row.role === 'employee')
-    if (!available.some(row => same(row.id, state.selectedEmployeeId))) state.selectedEmployeeId = available[0]?.id || null
+    if (!available.some(row => same(row.id, state.selectedEmployeeId))) state.selectedEmployeeId = null
+    if (!person(state.selectedSettingsAccountId)) state.selectedSettingsAccountId = state.profile.id
   } else if (!peopleForBusiness(activeBusinessId()).some(row => same(row.id, state.selectedEmployeeId))) {
     state.selectedEmployeeId = state.profile.id
+    if (!person(state.selectedSettingsAccountId)) state.selectedSettingsAccountId = state.profile.id
   }
   const businessId = activeBusinessId()
   const [customers, workDays, entries, orders, items, documents, materials, messages, appointments, vacations, columns, payslips] = await Promise.all([
@@ -330,9 +338,11 @@ function weekStrip() {
 
 function employeePicker() {
   if (!isChief()) return ''
-  const available = managedEmployees()
+  const available = isBusiness() ? [state.profile, ...managedEmployees()] : managedEmployees()
   if (!available.length) return '<p class="muted">Für das ausgewählte Geschäftskonto sind noch keine Mitarbeiter angelegt.</p>'
-  return `<label class="select-label">Mitarbeiter<select data-action="employee-picker">${available.map(row => `<option value="${row.id}" ${same(row.id, activeEmployeeId()) ? 'selected' : ''}>${escapeHtml(row.username)} · Mitarbeiter</option>`).join('')}</select></label>`
+  const current = activeEmployeeId()
+  const placeholder = isAdmin() ? `<option value="" disabled ${!current ? 'selected' : ''}>Mitarbeiter auswählen</option>` : ''
+  return `<label class="select-label">Mitarbeiter<select data-action="employee-picker">${placeholder}${available.map(row => `<option value="${row.id}" ${same(row.id, current) ? 'selected' : ''}>${escapeHtml(row.username)} · ${escapeHtml(roleLabel(row.role))}</option>`).join('')}</select></label>`
 }
 
 function businessPicker() {
@@ -525,7 +535,7 @@ function businessManager() {
 }
 
 function accountSettings() {
-  const selected = person(activeEmployeeId())
+  const selected = settingsAccount()
   const columns = own(state.data.columns, selected?.id)
   const data = statusMetrics(selected?.id)
   const editableEmployee = selected?.role === 'employee' && isChief()
@@ -548,6 +558,12 @@ function settingsView() {
   return page('Einstellungen', 'VERWALTUNG', `${isAdmin() ? `<section class="card"><h2>Geschäftskonto auswählen</h2>${businessPicker()}<div class="card-actions"><button type="button" class="secondary" data-action="settings-self">Mein Administratorkonto</button></div></section>` : ''}${isChief() ? `<section class="card"><h2>Mitarbeiter auswählen</h2>${employeePicker()}</section>` : ''}${accountSettings()}${companyBrandingSettings()}${materialManager()}${employeeManager()}${businessManager()}`)
 }
 
+function administratorHomeView() {
+  const business = activeBusiness()
+  const employeeCount = managedEmployees().length
+  return page('Administrator', 'SYSTEMVERWALTUNG', `<section class="card"><h2>Willkommen, ${escapeHtml(state.profile?.username || 'Administrator')}</h2><p>Du bist als Administrator angemeldet. Dein Konto ist von allen Geschäftskonten und Mitarbeiterkonten getrennt.</p>${businessPicker()}${business ? `<p class="notice">Aktiv ausgewählt: <strong>${escapeHtml(business.company_name || business.username)}</strong> · ${employeeCount} Mitarbeiter</p><p class="muted">Wähle oben ein Geschäftskonto und danach einen Mitarbeiter, wenn du dessen Arbeitsdaten ansehen oder bearbeiten möchtest.</p>` : '<p class="empty">Lege in den Einstellungen zuerst ein Geschäftskonto an.</p>'}<div class="card-actions"><button type="button" class="primary" data-action="nav" data-view="settings">Geschäftskonten verwalten</button></div></section>`)
+}
+
 function customerOrdersView() {
   const customer = state.data.customers.find(row => same(row.id, state.selectedCustomerId))
   const orders = state.data.orders.filter(row => same(row.customer_id, customer?.id)).sort((a, b) => String(b.work_date).localeCompare(String(a.work_date)))
@@ -568,8 +584,12 @@ function loginView() {
 
 function appView() {
   if (!state.session || !state.profile) return loginView()
-  const view = ({ time: timeView, customers: customersView, customerOrders: customerOrdersView, orders: ordersView, calendar: calendarView, inbox: inboxView, assignments: assignmentsView, 'billing-customers': billingCustomersView, 'billing-employees': billingEmployeesView, invoices: invoicesView, settings: settingsView }[state.view] || timeView)
-  return `<div class="app-shell"><header class="app-header"><div class="brand">${companyLogo('header-logo')}<div><strong>${escapeHtml(companyName())}</strong><small>Willkommen, ${escapeHtml(employeeName(activeEmployeeId()))}</small></div></div><div class="header-actions"><button type="button" class="menu-toggle" data-action="menu-toggle" aria-expanded="${state.menuOpen}">Menü <span aria-hidden="true">▾</span></button><button type="button" class="logout" data-action="logout">Abmelden</button></div></header><button type="button" class="menu-backdrop ${state.menuOpen ? 'open' : ''}" data-action="menu-close" aria-label="Menü schließen"></button><aside class="menu-popover ${state.menuOpen ? 'open' : ''}" aria-label="Hauptmenü"><nav>${navigation()}</nav></aside>${view()}${state.toast ? `<div class="toast ${state.toast.error ? 'error' : ''}">${escapeHtml(state.toast.message)}</div>` : ''}${state.busy ? '<div class="busy">Wird gespeichert …</div>' : ''}</div>`
+  const workViews = ['time', 'orders', 'calendar', 'assignments']
+  const view = isAdmin() && workViews.includes(state.view) && !activeEmployeeId()
+    ? administratorHomeView
+    : ({ time: timeView, customers: customersView, customerOrders: customerOrdersView, orders: ordersView, calendar: calendarView, inbox: inboxView, assignments: assignmentsView, 'billing-customers': billingCustomersView, 'billing-employees': billingEmployeesView, invoices: invoicesView, settings: settingsView }[state.view] || timeView)
+  const welcome = isAdmin() ? `Administrator: ${state.profile.username}` : `Willkommen, ${state.profile?.username || ''}`
+  return `<div class="app-shell"><header class="app-header"><div class="brand">${companyLogo('header-logo')}<div><strong>${escapeHtml(companyName())}</strong><small>${escapeHtml(welcome)}</small></div></div><div class="header-actions"><button type="button" class="menu-toggle" data-action="menu-toggle" aria-expanded="${state.menuOpen}">Menü <span aria-hidden="true">▾</span></button><button type="button" class="logout" data-action="logout">Abmelden</button></div></header><button type="button" class="menu-backdrop ${state.menuOpen ? 'open' : ''}" data-action="menu-close" aria-label="Menü schließen"></button><aside class="menu-popover ${state.menuOpen ? 'open' : ''}" aria-label="Hauptmenü"><nav>${navigation()}</nav></aside>${view()}${state.toast ? `<div class="toast ${state.toast.error ? 'error' : ''}">${escapeHtml(state.toast.message)}</div>` : ''}${state.busy ? '<div class="busy">Wird gespeichert …</div>' : ''}</div>`
 }
 
 function render() { root.innerHTML = appView() }
@@ -605,22 +625,30 @@ function customFieldsFrom(form) {
   return fields
 }
 
+function workEmployeeId() {
+  const employeeId = activeEmployeeId()
+  if (!employeeId) throw new Error('Bitte zuerst einen Mitarbeiter auswählen.')
+  return employeeId
+}
+
 async function saveTime(form, update = false) {
   const values = Object.fromEntries(form.entries())
+  const employeeId = workEmployeeId()
   if (dayState().locked) throw new Error('An diesem Tag sind keine Zeiteinträge möglich.')
   const customer = await ensureCustomer(values.customer)
   const times = calculateTimes(values)
-  const payload = { employee_id: activeEmployeeId(), work_date: state.date, customer_id: customer.id, customer_name: customer.name, custom_fields: customFieldsFrom(form), ...times }
+  const payload = { employee_id: employeeId, work_date: state.date, customer_id: customer.id, customer_name: customer.name, custom_fields: customFieldsFrom(form), ...times }
   if (update) await api(db.from('time_entries').update(payload).eq('id', values.id))
   else await api(db.from('time_entries').insert(payload))
 }
 
 async function saveOrder(form, update = false) {
   const values = Object.fromEntries(form.entries())
+  const employeeId = workEmployeeId()
   if (dayState().locked) throw new Error('An diesem Tag sind keine Arbeitsscheine möglich.')
   const customer = await ensureCustomer(values.customer)
   const times = calculateTimes(values)
-  const payload = { employee_id: activeEmployeeId(), work_date: state.date, customer_id: customer.id, customer_name: customer.name, title: String(values.title || '').trim(), notes: String(values.notes || '').trim(), documentation: String(values.documentation || '').trim(), ...times }
+  const payload = { employee_id: employeeId, work_date: state.date, customer_id: customer.id, customer_name: customer.name, title: String(values.title || '').trim(), notes: String(values.notes || '').trim(), documentation: String(values.documentation || '').trim(), ...times }
   if (update) {
     await api(db.from('work_orders').update(payload).eq('id', values.id))
     await api(db.from('time_entries').update({ customer_id: customer.id, customer_name: customer.name, work_date: state.date, ...times }).eq('work_order_id', values.id))
@@ -675,12 +703,13 @@ async function saveItem(form) {
 async function uploadDocuments(form) {
   const files = [...(form.getAll('documents') || [])].filter(file => file && file.size)
   if (!files.length) throw new Error('Bitte mindestens eine Datei auswählen.')
+  const employeeId = workEmployeeId()
   const orderId = String(form.get('orderId'))
   for (const file of files) {
-    const path = `${activeEmployeeId()}/${orderId}/${crypto.randomUUID()}-${file.name.replace(/[^A-Za-z0-9._-]/g, '_')}`
+    const path = `${employeeId}/${orderId}/${crypto.randomUUID()}-${file.name.replace(/[^A-Za-z0-9._-]/g, '_')}`
     const { error: uploadError } = await db.storage.from('work-order-documents').upload(path, file)
     if (uploadError) throw uploadError
-    await api(db.from('work_order_documents').insert({ work_order_id: orderId, employee_id: activeEmployeeId(), file_path: path, file_name: file.name, mime_type: file.type || null }))
+    await api(db.from('work_order_documents').insert({ work_order_id: orderId, employee_id: employeeId, file_path: path, file_name: file.name, mime_type: file.type || null }))
   }
 }
 
@@ -711,12 +740,13 @@ function vacation(action, payload = {}) {
 }
 
 async function toggleSick() {
+  const employeeId = workEmployeeId()
   const info = dayState()
   if (info.sickness) {
     if (!isChief()) throw new Error('Nur der Chef kann Krankheitstage entfernen.')
-    await api(db.from('work_days').delete().eq('employee_id', activeEmployeeId()).eq('work_date', state.date))
+    await api(db.from('work_days').delete().eq('employee_id', employeeId).eq('work_date', state.date))
   } else {
-    await api(db.from('work_days').upsert({ employee_id: activeEmployeeId(), work_date: state.date, sick: 1 }, { onConflict: 'employee_id,work_date' }))
+    await api(db.from('work_days').upsert({ employee_id: employeeId, work_date: state.date, sick: 1 }, { onConflict: 'employee_id,work_date' }))
   }
 }
 
@@ -800,8 +830,8 @@ root.addEventListener('submit', event => {
 
 root.addEventListener('change', event => {
   const target = event.target
-  if (target.matches('[data-action="employee-picker"]')) { state.selectedEmployeeId = target.value; render(); return }
-  if (target.matches('[data-action="business-picker"]')) { state.selectedBusinessId = target.value; state.selectedEmployeeId = peopleForBusiness(target.value).find(row => row.role === 'employee')?.id || null; loadData().catch(error => notify(error?.message || 'Geschäftskonto konnte nicht geladen werden.', true)); return }
+  if (target.matches('[data-action="employee-picker"]')) { state.selectedEmployeeId = target.value; if (state.view === 'settings') state.selectedSettingsAccountId = target.value; render(); return }
+  if (target.matches('[data-action="business-picker"]')) { state.selectedBusinessId = target.value; state.selectedEmployeeId = null; if (state.view === 'settings') state.selectedSettingsAccountId = target.value; loadData().catch(error => notify(error?.message || 'Geschäftskonto konnte nicht geladen werden.', true)); return }
   if (target.matches('[data-action="order-invoiced"]')) { const id = target.dataset.id; perform(target.checked ? 'Arbeitsschein als abgerechnet markiert.' : 'Arbeitsschein wieder geöffnet.', () => api(db.from('work_orders').update({ invoiced: target.checked }).eq('id', id))); return }
   if (target.matches('input[name="start"], input[name="end"]')) { synchroniseTimeForm(target.closest('form'), 'time'); return }
   if (target.matches('select[name="hours"]')) { synchroniseTimeForm(target.closest('form'), 'hours'); return }
@@ -837,9 +867,9 @@ root.addEventListener('click', event => {
   if (action === 'customer-extra-add') { const container = button.closest('form')?.querySelector('[data-customer-extras]'); if (container) container.insertAdjacentHTML('beforeend', customerExtraField({}, Date.now())); return }
   if (action === 'customer-extra-remove') { button.closest('[data-customer-extra]')?.remove(); return }
   if (action === 'vacation-approve' || action === 'vacation-reject') return perform(action === 'vacation-approve' ? 'Urlaub genehmigt.' : 'Urlaub abgelehnt.', () => vacation('decide', { requestId: button.dataset.id, status: action === 'vacation-approve' ? 'approved' : 'rejected' }))
-  if (action === 'settings-employee') { state.selectedEmployeeId = button.dataset.id; state.view = 'settings'; render(); return }
-  if (action === 'settings-business') { state.selectedBusinessId = button.dataset.id; state.selectedEmployeeId = button.dataset.id; state.view = 'settings'; render(); return }
-  if (action === 'settings-self') { state.selectedEmployeeId = state.profile.id; state.view = 'settings'; render(); return }
+  if (action === 'settings-employee') { state.selectedEmployeeId = button.dataset.id; state.selectedSettingsAccountId = button.dataset.id; state.view = 'settings'; render(); return }
+  if (action === 'settings-business') { state.selectedBusinessId = button.dataset.id; state.selectedEmployeeId = null; state.selectedSettingsAccountId = button.dataset.id; state.view = 'settings'; render(); return }
+  if (action === 'settings-self') { state.selectedSettingsAccountId = state.profile.id; state.view = 'settings'; render(); return }
   if (action === 'employee-delete') { if (window.confirm('Mitarbeiterkonto wirklich löschen?')) perform('Mitarbeiter gelöscht.', () => manageAccount({ action: 'employee-delete', employeeId: button.dataset.id })); return }
   if (action === 'column-delete') { if (window.confirm('Eingabefeld löschen?')) perform('Eingabefeld gelöscht.', () => api(db.from('custom_columns').delete().eq('id', button.dataset.id))); return }
   if (action === 'material-delete') { if (window.confirm('Artikel aus der Materialliste entfernen?')) perform('Artikel entfernt.', () => api(db.from('materials').update({ active: false }).eq('id', button.dataset.id))); return }

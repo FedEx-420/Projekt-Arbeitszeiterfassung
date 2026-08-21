@@ -54,7 +54,9 @@ const same = (a, b) => String(a ?? '') === String(b ?? '')
 const isAdmin = () => state.profile?.role === 'administrator'
 const isBusiness = () => state.profile?.role === 'business'
 const isChief = () => isAdmin() || isBusiness()
-const activeEmployeeId = () => isChief() ? (state.selectedEmployeeId || state.profile?.id) : state.profile?.id
+// Administrators are intentionally not a work-time account. They select an employee
+// within a business before viewing or editing that employee's work data.
+const activeEmployeeId = () => isAdmin() ? (state.selectedEmployeeId || '') : isBusiness() ? (state.selectedEmployeeId || state.profile?.id) : state.profile?.id
 const person = id => state.people.find(row => row.id === id) || state.profile
 const employeeName = id => person(id)?.username || 'Unbekannt'
 const businesses = () => state.people.filter(row => row.role === 'business')
@@ -161,8 +163,8 @@ async function loadData() {
   state.people = people?.length ? people : [state.profile]
   if (isAdmin() && !businesses().some(row => same(row.id, state.selectedBusinessId))) state.selectedBusinessId = businesses()[0]?.id || null
   if (isAdmin()) {
-    const available = peopleForBusiness(state.selectedBusinessId)
-    if (!available.some(row => same(row.id, state.selectedEmployeeId))) state.selectedEmployeeId = available[0]?.id || state.profile.id
+    const available = peopleForBusiness(state.selectedBusinessId).filter(row => row.role === 'employee')
+    if (!available.some(row => same(row.id, state.selectedEmployeeId))) state.selectedEmployeeId = available[0]?.id || null
   } else if (!peopleForBusiness(activeBusinessId()).some(row => same(row.id, state.selectedEmployeeId))) {
     state.selectedEmployeeId = state.profile.id
   }
@@ -320,8 +322,9 @@ function weekStrip() {
 
 function employeePicker() {
   if (!isChief()) return ''
-  const available = managedPeople()
-  return `<label class="select-label">Mitarbeiter<select data-action="employee-picker">${available.map(row => `<option value="${row.id}" ${same(row.id, activeEmployeeId()) ? 'selected' : ''}>${escapeHtml(row.username)} · ${roleLabel(row.role)}</option>`).join('')}</select></label>`
+  const available = managedEmployees()
+  if (!available.length) return '<p class="muted">Für das ausgewählte Geschäftskonto sind noch keine Mitarbeiter angelegt.</p>'
+  return `<label class="select-label">Mitarbeiter<select data-action="employee-picker">${available.map(row => `<option value="${row.id}" ${same(row.id, activeEmployeeId()) ? 'selected' : ''}>${escapeHtml(row.username)} · Mitarbeiter</option>`).join('')}</select></label>`
 }
 
 function businessPicker() {
@@ -727,7 +730,7 @@ root.addEventListener('submit', event => {
 root.addEventListener('change', event => {
   const target = event.target
   if (target.matches('[data-action="employee-picker"]')) { state.selectedEmployeeId = target.value; render(); return }
-  if (target.matches('[data-action="business-picker"]')) { state.selectedBusinessId = target.value; state.selectedEmployeeId = peopleForBusiness(target.value)[0]?.id || state.profile.id; loadData().catch(error => notify(error?.message || 'Geschäftskonto konnte nicht geladen werden.', true)); return }
+  if (target.matches('[data-action="business-picker"]')) { state.selectedBusinessId = target.value; state.selectedEmployeeId = peopleForBusiness(target.value).find(row => row.role === 'employee')?.id || null; loadData().catch(error => notify(error?.message || 'Geschäftskonto konnte nicht geladen werden.', true)); return }
   if (target.matches('[data-action="order-invoiced"]')) { const id = target.dataset.id; perform(target.checked ? 'Arbeitsschein als abgerechnet markiert.' : 'Arbeitsschein wieder geöffnet.', () => api(db.from('work_orders').update({ invoiced: target.checked }).eq('id', id))); return }
   if (target.matches('input[name="start"], input[name="end"]')) { synchroniseTimeForm(target.closest('form'), 'time'); return }
   if (target.matches('select[name="hours"]')) { synchroniseTimeForm(target.closest('form'), 'hours'); return }
@@ -777,3 +780,4 @@ db.auth.onAuthStateChange(() => loadData().catch(error => notify(error?.message 
 window.addEventListener('visibilitychange', () => { if (!document.hidden && state.session && !state.busy) loadData().catch(() => {}) })
 setInterval(() => { if (state.session && !state.busy) loadData().catch(() => {}) }, 30000)
 loadData().catch(error => notify(error?.message || 'Die App konnte nicht geladen werden.', true))
+

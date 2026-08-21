@@ -66,6 +66,14 @@ const peopleForBusiness = businessId => state.people.filter(row => same(business
 const managedPeople = () => peopleForBusiness(activeBusinessId())
 const managedEmployees = () => managedPeople().filter(row => row.role === 'employee')
 const roleLabel = role => role === 'administrator' ? 'Administrator' : role === 'business' ? 'Geschäftskonto' : 'Mitarbeiter'
+const activeBusiness = () => state.people.find(row => same(row.id, activeBusinessId()) && row.role === 'business') || null
+const companyName = () => activeBusiness()?.company_name || activeBusiness()?.username || 'Zeiterfassung'
+const companyLogoUrl = () => {
+  const path = activeBusiness()?.company_logo_path
+  if (!path) return ''
+  return db.storage.from('company-logos').getPublicUrl(path).data.publicUrl || ''
+}
+const companyInitials = () => companyName().split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]).join('').toUpperCase() || 'AZ'
 const dateObject = value => new Date(`${value}T12:00:00`)
 const isoDate = value => value.toISOString().slice(0, 10)
 const shiftDate = (value, days) => { const result = dateObject(value); result.setDate(result.getDate() + days); return isoDate(result) }
@@ -329,7 +337,7 @@ function employeePicker() {
 
 function businessPicker() {
   if (!isAdmin()) return ''
-  return `<label class="select-label">Geschäftskonto<select data-action="business-picker">${businesses().map(row => `<option value="${row.id}" ${same(row.id, activeBusinessId()) ? 'selected' : ''}>${escapeHtml(row.username)}</option>`).join('')}</select></label>`
+  return `<label class="select-label">Geschäftskonto<select data-action="business-picker">${businesses().map(row => `<option value="${row.id}" ${same(row.id, activeBusinessId()) ? 'selected' : ''}>${escapeHtml(row.company_name || row.username)}</option>`).join('')}</select></label>`
 }
 
 function metrics(employeeId = activeEmployeeId()) {
@@ -352,30 +360,50 @@ function page(title, eyebrow, content, actions = '') {
   return `<main class="page"><section class="hero"><div><p class="eyebrow">${eyebrow}</p><h1>${escapeHtml(title)}</h1></div>${actions}</section>${content}</main>`
 }
 
+function companyLogo(className = 'company-logo') {
+  const url = companyLogoUrl()
+  return url ? `<span class="${className} image"><img src="${escapeHtml(url)}" alt="${escapeHtml(companyName())} Logo"></span>` : `<span class="${className}">${escapeHtml(companyInitials())}</span>`
+}
+
+function selectedDayTiles(employeeId = activeEmployeeId(), date = state.date) {
+  const info = dayState(date, employeeId)
+  const executed = entriesFor(date, employeeId).reduce((sum, row) => sum + number(row.executed_hours), 0)
+  const target = info.locked ? 0 : targetHours(date)
+  const overtime = executed - target
+  const remaining = statusMetrics(employeeId).remaining
+  return `<section class="metrics selected-day-metrics"><article><span>Überstunden</span><strong class="${overtime > 0 ? 'positive' : overtime < 0 ? 'negative' : ''}">${overtime === 0 ? '–' : hours(overtime)}</strong></article><article><span>Resturlaub</span><strong>${remaining} Tage</strong></article><article><span>Krankheitstage</span><strong>${statusMetrics(employeeId).sick} Tage</strong></article></section>`
+}
+
 function timeForm(entry = null) {
   const value = entry || { customer_name: '', start_time: nextStart(), end_time: '', pause_hours: 0, executed_hours: '', calculation_mode: 'hours', custom_fields: {} }
   const locked = dayState().locked
   const columns = own(state.data.columns)
   const custom = value.custom_fields || {}
   const formName = entry ? 'time-update' : 'time-create'
-  return `<form class="card form-grid" data-form="${formName}"><input type="hidden" name="id" value="${entry?.id || ''}"><input type="hidden" name="source" value="${entry?.calculation_mode === 'end_time' ? 'time' : 'hours'}"><label>Kunde<input name="customer" list="customers" value="${escapeHtml(value.customer_name)}" required></label><label>Arbeitsbeginn<input name="start" type="time" step="60" value="${String(value.start_time || nextStart()).slice(0, 5)}" required></label><label>Arbeitsende<input name="end" type="time" step="60" value="${String(value.end_time || '').slice(0, 5)}"></label><label>Pause${pauseOptions(value.pause_hours)}</label><label>Arbeitsstunden${durationOptions(value.executed_hours)}</label>${columns.map(column => `<label>${escapeHtml(column.name)}<input name="custom-${column.id}" value="${escapeHtml(custom[column.id] || '')}"></label>`).join('')}<div class="form-actions"><button class="primary" ${locked ? 'disabled' : ''}>${entry ? 'Zeiteintrag speichern' : 'Zeiteintrag hinzufügen'}</button>${entry ? `<button type="button" class="danger ghost" data-action="time-delete" data-id="${entry.id}">Löschen</button>` : ''}</div></form>`
+  return `<form class="card form-grid" data-form="${formName}"><input type="hidden" name="id" value="${entry?.id || ''}"><input type="hidden" name="source" value="${entry?.calculation_mode === 'end_time' ? 'time' : 'hours'}"><label>Kunde<input name="customer" list="customers" value="${escapeHtml(value.customer_name)}" required></label><label>Arbeitsbeginn<input name="start" type="time" step="900" value="${String(value.start_time || nextStart()).slice(0, 5)}" required></label><label>Arbeitsende<input name="end" type="time" step="900" value="${String(value.end_time || '').slice(0, 5)}"></label><label>Pause${pauseOptions(value.pause_hours)}</label><label>Arbeitsstunden${durationOptions(value.executed_hours)}</label>${columns.map(column => `<label>${escapeHtml(column.name)}<input name="custom-${column.id}" value="${escapeHtml(custom[column.id] || '')}"></label>`).join('')}<div class="form-actions"><button class="primary" ${locked ? 'disabled' : ''}>${entry ? 'Zeiteintrag speichern' : 'Zeiteintrag hinzufügen'}</button>${entry ? `<button type="button" class="danger ghost" data-action="time-delete" data-id="${entry.id}">Löschen</button>` : ''}</div></form>`
 }
 
 function timeView() {
   const info = dayState(), entries = entriesFor(), executed = entries.reduce((sum, row) => sum + number(row.executed_hours), 0)
   const target = info.locked ? 0 : targetHours(state.date)
   const overtime = executed - target
-  return page(dateText(state.date), 'ZEITERFASSUNG', `${employeePicker()}${weekStrip()}${lockNotice(info)}<section class="day-summary"><span>Ausgeführt<strong>${hours(executed)}</strong></span><span>Zu leisten<strong>${hours(target)}</strong></span><span>Überstunden<strong class="${overtime > 0 ? 'positive' : overtime < 0 ? 'negative' : ''}">${overtime === 0 ? '–' : hours(overtime)}</strong></span></section><section class="split"><div><h2>Zeiteinträge</h2>${entries.length ? entries.map(timeForm).join('') : '<p class="empty">Noch keine Zeiteinträge.</p>'}</div><div><h2>Neuer Eintrag</h2>${timeForm()}</div></section><section class="card slim"><h2>Krankheit</h2><p>${info.sickness ? 'Dieser Tag ist als Krankheitstag markiert.' : 'Krankheitstage können auch während Urlaub oder Feiertagen gemeldet werden.'}</p><button type="button" class="${info.sickness ? 'danger' : 'warning'}" data-action="sick">${info.sickness ? (isChief() ? 'Krankheitstag entfernen' : 'Krankheitstag gemeldet') : 'Als krank markieren'}</button></section>${customerDatalist()}`)
+  return page(dateText(state.date), `ZEITERFASSUNG · WILLKOMMEN, ${employeeName(activeEmployeeId()).toUpperCase()}`, `${employeePicker()}${weekStrip()}${selectedDayTiles()}${lockNotice(info)}<section class="day-summary"><span>Ausgeführt<strong>${hours(executed)}</strong></span><span>Zu leisten<strong>${hours(target)}</strong></span><span>Überstunden<strong class="${overtime > 0 ? 'positive' : overtime < 0 ? 'negative' : ''}">${overtime === 0 ? '–' : hours(overtime)}</strong></span></section><section class="split"><div><h2>Zeiteinträge</h2>${entries.length ? entries.map(timeForm).join('') : '<p class="empty">Noch keine Zeiteinträge.</p>'}</div><div><h2>Neuer Eintrag</h2>${timeForm()}</div></section><section class="card slim"><h2>Krankheit</h2><p>${info.sickness ? 'Dieser Tag ist als Krankheitstag markiert.' : 'Krankheitstage können auch während Urlaub oder Feiertagen gemeldet werden.'}</p><button type="button" class="${info.sickness ? 'danger' : 'warning'}" data-action="sick">${info.sickness ? (isChief() ? 'Krankheitstag entfernen' : 'Krankheitstag gemeldet') : 'Als krank markieren'}</button></section>${customerDatalist()}`)
 }
 
 function customerFields(data = {}) {
-  const labels = [['address', 'Adresse'], ['city', 'Ort'], ['postal_code', 'Postleitzahl'], ['email', 'E-Mail Adresse'], ['phone_private', 'Tel. privat'], ['phone_mobile', 'Tel. Mobil']]
-  return labels.map(([key, label]) => `<label>${label}<input name="${key}" value="${escapeHtml(data[key] || '')}"></label>`).join('')
+  const labels = [['contact_last_name', 'Nachname'], ['contact_first_name', 'Vorname'], ['street', 'Straße'], ['house_number', 'Hausnummer'], ['city', 'Ort'], ['postal_code', 'Postleitzahl'], ['phone_private', 'Telefon privat'], ['phone_mobile', 'Telefon mobil'], ['email', 'E-Mail-Adresse']]
+  return labels.map(([key, label]) => `<label>${label}<input name="${key}" value="${escapeHtml(data[key] || (key === 'street' ? data.address : ''))}"></label>`).join('')
+}
+
+function customerExtraField(field = {}, index = 0) {
+  return `<div class="customer-extra" data-customer-extra><label>Feldbezeichnung<input name="extra-label-${index}" value="${escapeHtml(field.label || '')}" placeholder="z. B. Ansprechpartner"></label><label>Wert<input name="extra-value-${index}" value="${escapeHtml(field.value || '')}"></label><button type="button" class="icon danger" data-action="customer-extra-remove" aria-label="Zusatzfeld entfernen">×</button></div>`
 }
 
 function customerForm(customer = null) {
   const fields = customer?.custom_fields || {}
-  return `<form class="card form-grid" data-form="${customer ? 'customer-update' : 'customer-create'}"><input type="hidden" name="id" value="${customer?.id || ''}"><label class="wide">Kundenname<input name="name" required value="${escapeHtml(customer?.name || '')}"></label>${customerFields(fields)}<div class="form-actions"><button class="primary">${customer ? 'Kunde speichern' : 'Kunden hinzufügen'}</button>${customer ? `<button type="button" class="danger ghost" data-action="customer-delete" data-id="${customer.id}">Kunde löschen</button><button type="button" class="secondary" data-action="customer-orders" data-id="${customer.id}">Arbeitsscheine ansehen</button>` : ''}</div></form>`
+  const extras = Array.isArray(fields.additional) ? fields.additional : []
+  const yearlyHours = customer ? state.data.entries.filter(row => same(row.customer_id, customer.id) && String(row.work_date || '').startsWith(String(state.year))).reduce((sum, row) => sum + number(row.executed_hours), 0) : 0
+  return `<form class="card form-grid" data-form="${customer ? 'customer-update' : 'customer-create'}"><input type="hidden" name="id" value="${customer?.id || ''}"><label class="wide">Kundenname / Firma<input name="name" required value="${escapeHtml(customer?.name || '')}"></label>${customer ? `<p class="notice wide">Ausgeführte Stunden ${state.year}: <strong>${hours(yearlyHours)}</strong></p>` : ''}${customerFields(fields)}<section class="wide customer-extras"><h3>Weitere Angaben</h3><div data-customer-extras>${extras.map(customerExtraField).join('')}</div><button type="button" class="secondary" data-action="customer-extra-add">Weiteres Eingabefeld hinzufügen</button></section><div class="form-actions"><button class="primary">${customer ? 'Kunde bestätigen' : 'Kunde hinzufügen'}</button>${customer ? `<button type="button" class="danger ghost" data-action="customer-delete" data-id="${customer.id}">Kunde löschen</button><button type="button" class="secondary" data-action="customer-orders" data-id="${customer.id}">Arbeitsscheine ansehen</button>` : ''}</div></form>`
 }
 
 function customersView() {
@@ -384,7 +412,7 @@ function customersView() {
 }
 
 function orderEditForm(order) {
-  return `<details class="subsection"><summary>Arbeitsschein bearbeiten</summary><form class="form-grid" data-form="order-update"><input type="hidden" name="id" value="${order.id}"><input type="hidden" name="source" value="${order.calculation_mode === 'end_time' ? 'time' : 'hours'}"><label>Kunde<input name="customer" list="customers" value="${escapeHtml(order.customer_name)}" required></label><label>Bezeichnung<input name="title" value="${escapeHtml(order.title)}"></label><label>Arbeitsbeginn<input name="start" type="time" step="60" value="${String(order.start_time || '').slice(0, 5)}" required></label><label>Arbeitsende<input name="end" type="time" step="60" value="${String(order.end_time || '').slice(0, 5)}"></label><label>Pause${pauseOptions(order.pause_hours)}</label><label>Arbeitsstunden${durationOptions(order.executed_hours)}</label><label class="wide">Notiz<textarea name="notes" rows="3">${escapeHtml(order.notes)}</textarea></label><label class="wide">Dokumentation<textarea name="documentation" rows="4">${escapeHtml(order.documentation)}</textarea></label><div class="form-actions"><button class="primary">Speichern</button></div></form></details>`
+  return `<details class="subsection"><summary>Arbeitsschein bearbeiten</summary><form class="form-grid" data-form="order-update"><input type="hidden" name="id" value="${order.id}"><input type="hidden" name="source" value="${order.calculation_mode === 'end_time' ? 'time' : 'hours'}"><label>Kunde<input name="customer" list="customers" value="${escapeHtml(order.customer_name)}" required></label><label>Bezeichnung<input name="title" value="${escapeHtml(order.title)}"></label><label>Arbeitsbeginn<input name="start" type="time" step="900" value="${String(order.start_time || '').slice(0, 5)}" required></label><label>Arbeitsende<input name="end" type="time" step="900" value="${String(order.end_time || '').slice(0, 5)}"></label><label>Pause${pauseOptions(order.pause_hours)}</label><label>Arbeitsstunden${durationOptions(order.executed_hours)}</label><label class="wide">Beschreibung<textarea name="notes" rows="3">${escapeHtml(order.notes)}</textarea></label><label class="wide">Dokumentation<textarea name="documentation" rows="4">${escapeHtml(order.documentation)}</textarea></label><div class="form-actions"><button class="primary">Änderungen bestätigen</button></div></form></details>`
 }
 
 function orderCard(order, compact = false) {
@@ -396,12 +424,12 @@ function orderCard(order, compact = false) {
 
 function orderForm() {
   const locked = dayState().locked
-  return `<form class="card form-grid" data-form="order-create"><input type="hidden" name="source" value="hours"><label>Kunde<input name="customer" list="customers" required></label><label>Bezeichnung<input name="title" placeholder="z. B. Reparatur"></label><label>Arbeitsbeginn<input name="start" type="time" step="60" value="${nextStart()}" required></label><label>Arbeitsende<input name="end" type="time" step="60"></label><label>Pause${pauseOptions(0)}</label><label>Arbeitsstunden${durationOptions('', 16, 'oder Ende eintragen')}</label><label class="wide">Notiz<textarea name="notes" rows="3"></textarea></label><label class="wide">Dokumentation<textarea name="documentation" rows="4" placeholder="Arbeitsfortschritt, Besonderheiten …"></textarea></label><div class="form-actions"><button class="primary" ${locked ? 'disabled' : ''}>Arbeitsschein anlegen</button></div></form>`
+  return `<form class="card form-grid" data-form="order-create"><input type="hidden" name="source" value="hours"><label>Kunde<input name="customer" list="customers" required></label><label>Bezeichnung<input name="title" placeholder="z. B. Reparatur"></label><label>Arbeitsbeginn<input name="start" type="time" step="900" value="${nextStart()}" required></label><label>Arbeitsende<input name="end" type="time" step="900"></label><label>Pause${pauseOptions(0)}</label><label>Arbeitsstunden${durationOptions('', 16, 'oder Ende eintragen')}</label><label class="wide">Beschreibung<textarea name="notes" rows="3" placeholder="Ausgeführte Arbeiten beschreiben"></textarea></label><label class="wide">Dokumentation<textarea name="documentation" rows="4" placeholder="Arbeitsfortschritt, Besonderheiten …"></textarea></label><div class="form-actions"><button class="primary" ${locked ? 'disabled' : ''}>Arbeitsschein bestätigen</button></div></form>`
 }
 
 function ordersView() {
   const orders = ordersFor(), info = dayState()
-  return page(`Arbeitsscheine · ${dateText(state.date)}`, 'ARBEITSSCHEINE', `${employeePicker()}${weekStrip()}${lockNotice(info)}<section class="split"><div><h2>Vorhandene Arbeitsscheine</h2>${orders.length ? orders.map(order => orderCard(order)).join('') : '<p class="empty">Noch keine Arbeitsscheine für diesen Tag.</p>'}</div><div><h2>Neuer Arbeitsschein</h2>${orderForm()}</div></section>${customerDatalist()}`)
+  return page(`Arbeitsscheine von ${employeeName(activeEmployeeId())} · ${dateText(state.date)}`, 'ARBEITSSCHEINE', `${employeePicker()}${weekStrip()}${lockNotice(info)}<section class="split"><div><h2>Arbeitsscheine des Tages</h2>${orders.length ? orders.map(order => orderCard(order)).join('') : '<p class="empty">Noch keine Arbeitsscheine für diesen Tag.</p>'}</div><div><h2>Neuer Arbeitsschein</h2>${orderForm()}</div></section>${customerDatalist()}`)
 }
 
 function calendarDays(year, month) {
@@ -426,9 +454,16 @@ function calendarView() {
 }
 
 function dayActivities(employeeId) {
-  const entries = entriesFor(state.date, employeeId), orders = ordersFor(state.date, employeeId), appointments = own(state.data.appointments, employeeId).filter(row => same(row.event_date, state.date))
-  const parts = [...appointments.map(row => `Termin: ${row.title}${row.customer_name ? ` · ${row.customer_name}` : ''}`), ...entries.map(row => `Zeit: ${row.customer_name} · ${hours(row.executed_hours)}`), ...orders.map(row => `Arbeitsschein: ${row.title || row.customer_name}`)]
-  return parts.length ? `<ul class="positions">${parts.map(text => `<li>${escapeHtml(text)}</li>`).join('')}</ul>` : '<p class="empty">Keine Aktivitäten an diesem Tag.</p>'
+  const info = dayState(state.date, employeeId)
+  const entries = entriesFor(state.date, employeeId).filter(row => !row.work_order_id)
+  const orders = ordersFor(state.date, employeeId)
+  const appointments = own(state.data.appointments, employeeId).filter(row => same(row.event_date, state.date))
+  const vacationCard = info.vacation ? `<article class="status-card vacation"><h3>${info.vacation.status === 'approved' ? 'Urlaub genehmigt' : 'Urlaub beantragt'}</h3><p>${dateText(info.vacation.start_date)} bis ${dateText(info.vacation.end_date)} · ${number(info.vacation.requested_days)} Arbeitstage</p></article>` : ''
+  const sicknessCard = info.sickness ? '<article class="status-card sick"><h3>Krank</h3><p>Für diesen Tag sind Zeiterfassung und Arbeitsscheine gesperrt.</p></article>' : ''
+  const locked = info.sickness || info.approvedVacation || Boolean(info.holiday)
+  const workCards = locked ? '' : `${orders.length ? `<section class="subsection"><h3>Arbeitsscheine</h3>${orders.map(order => `<p><strong>${escapeHtml(order.title || order.customer_name || 'Arbeitsschein')}</strong><br><span class="muted">${escapeHtml(order.customer_name)} · ${hours(order.executed_hours)}</span></p>`).join('')}</section>` : ''}${entries.length ? `<section class="subsection"><h3>Zeiterfassung</h3>${entries.map(row => `<p>${escapeHtml(row.customer_name)} · ${hours(row.executed_hours)}</p>`).join('')}</section>` : ''}${appointments.length ? `<section class="subsection"><h3>Termine</h3>${appointments.map(row => `<p>${escapeHtml(row.title)}${row.customer_name ? ` · ${escapeHtml(row.customer_name)}` : ''}</p>`).join('')}</section>` : ''}`
+  const noContent = !vacationCard && !sicknessCard && !workCards ? '<p class="empty">Keine Aktivitäten an diesem Tag.</p>' : ''
+  return `${selectedDayTiles(employeeId)}${sicknessCard}${vacationCard}${info.holiday ? `<p class="notice">${escapeHtml(info.holiday)}</p>` : ''}${workCards}${noContent}`
 }
 
 function inboxView() {
@@ -476,8 +511,8 @@ function materialManager() {
 
 function employeeManager() {
   if (!isChief()) return ''
-  const people = managedPeople()
-  return `<section class="split"><div><h2>Mitarbeiterkonten</h2>${people.map(row => { const value = statusMetrics(row.id); return `<article class="card employee-card"><h3>${escapeHtml(row.username)} · ${roleLabel(row.role)}</h3><p>${hours(value.executed)} · ${value.sick} Krankheitstage · ${value.remaining} Resturlaub</p><div class="card-actions"><button type="button" class="secondary" data-action="settings-employee" data-id="${row.id}">Statistik & Einstellungen</button>${row.role === 'employee' ? `<button type="button" class="danger ghost" data-action="employee-delete" data-id="${row.id}">Mitarbeiter löschen</button>` : ''}</div></article>` }).join('')}</div><div><h2>Mitarbeiter hinzufügen</h2><form class="card form-grid" data-form="employee-create">${isAdmin() ? `<label>Geschäftskonto<select name="businessId" required>${businesses().map(row => `<option value="${row.id}" ${same(row.id, activeBusinessId()) ? 'selected' : ''}>${escapeHtml(row.username)}</option>`).join('')}</select></label>` : ''}<label>Benutzername<input name="username" required></label><label>Passwort<input name="password" type="password" required></label>${permissionControls()}<div class="form-actions"><button class="primary">Mitarbeiter anlegen</button></div></form></div></section>`
+  const people = managedEmployees()
+  return `<section class="split"><div><h2>Mitarbeiterkonten</h2>${people.length ? people.map(row => { const value = statusMetrics(row.id); return `<article class="card employee-card"><h3>${escapeHtml(row.username)} · Mitarbeiter</h3><p>${hours(value.executed)} · ${value.sick} Krankheitstage · ${value.remaining} Resturlaub</p><div class="card-actions"><button type="button" class="secondary" data-action="settings-employee" data-id="${row.id}">Statistik & Einstellungen</button><button type="button" class="danger ghost" data-action="employee-delete" data-id="${row.id}">Mitarbeiter löschen</button></div></article>` }).join('') : '<p class="empty">Für dieses Geschäftskonto sind noch keine Mitarbeiter vorhanden.</p>'}</div><div><h2>Mitarbeiter hinzufügen</h2><form class="card form-grid" data-form="employee-create">${isAdmin() ? `<label>Geschäftskonto<select name="businessId" required>${businesses().map(row => `<option value="${row.id}" ${same(row.id, activeBusinessId()) ? 'selected' : ''}>${escapeHtml(row.company_name || row.username)}</option>`).join('')}</select></label>` : ''}<label>Benutzername<input name="username" required></label><label>Passwort<input name="password" type="password" required></label>${permissionControls()}<div class="form-actions"><button class="primary">Mitarbeiter anlegen</button></div></form></div></section>`
 }
 
 function permissionControls(value = {}) {
@@ -486,7 +521,7 @@ function permissionControls(value = {}) {
 
 function businessManager() {
   if (!isAdmin()) return ''
-  return `<section class="split"><div><h2>Geschäftskonten</h2>${businesses().map(row => `<article class="card employee-card"><h3>${escapeHtml(row.username)}</h3><p>Geschäftskonto · ${peopleForBusiness(row.id).filter(person => person.role === 'employee').length} Mitarbeiter</p><div class="card-actions"><button type="button" class="secondary" data-action="settings-business" data-id="${row.id}">Konto verwalten</button></div></article>`).join('') || '<p class="empty">Noch keine Geschäftskonten.</p>'}</div><div><h2>Geschäftskonto hinzufügen</h2><form class="card form-grid" data-form="business-create"><label>Benutzername<input name="username" required></label><label>Passwort<input name="password" type="password" required></label><div class="form-actions"><button class="primary">Geschäftskonto anlegen</button></div></form></div></section>`
+  return `<section class="split"><div><h2>Geschäftskonten</h2>${businesses().map(row => `<article class="card employee-card"><h3>${escapeHtml(row.company_name || row.username)}</h3><p>Geschäftskonto · ${peopleForBusiness(row.id).filter(person => person.role === 'employee').length} Mitarbeiter</p><div class="card-actions"><button type="button" class="secondary" data-action="settings-business" data-id="${row.id}">Konto verwalten</button></div></article>`).join('') || '<p class="empty">Noch keine Geschäftskonten.</p>'}</div><div><h2>Geschäftskonto hinzufügen</h2><form class="card form-grid" data-form="business-create"><label class="wide">Firma<input name="companyName" required></label><label>Benutzername der Firma<input name="username" required></label><label>Passwort<input name="password" type="password" required></label><div class="form-actions"><button class="primary">Geschäftskonto anlegen</button></div></form></div></section>`
 }
 
 function accountSettings() {
@@ -496,12 +531,21 @@ function accountSettings() {
   const editableEmployee = selected?.role === 'employee' && isChief()
   const editableBusiness = selected?.role === 'business' && isAdmin()
   const editableSelf = same(selected?.id, state.profile?.id) && isChief()
-  const form = editableEmployee ? `<form class="card form-grid" data-form="employee-update"><input type="hidden" name="employeeId" value="${selected.id}"><label>Benutzername<input name="username" value="${escapeHtml(selected.username)}" required></label><label>Neues Passwort<input name="password" type="password" placeholder="nur bei Änderung ausfüllen"></label><label>Vorhandene Urlaubstage<input name="vacationAllowance" inputmode="decimal" value="${number(selected.vacation_allowance)}"></label>${permissionControls(selected.menu_permissions || {})}<div class="form-actions"><button class="primary">Speichern</button><button type="button" class="secondary" data-action="pdf" data-id="${selected.id}">Daten als PDF herunterladen</button></div></form>` : editableBusiness ? `<form class="card form-grid" data-form="business-update"><input type="hidden" name="businessId" value="${selected.id}"><label>Benutzername<input name="username" value="${escapeHtml(selected.username)}" required></label><label>Neues Passwort<input name="password" type="password" placeholder="nur bei Änderung ausfüllen"></label><label>Vorhandene Urlaubstage<input name="vacationAllowance" inputmode="decimal" value="${number(selected.vacation_allowance)}"></label><div class="form-actions"><button class="primary">Speichern</button><button type="button" class="secondary" data-action="pdf" data-id="${selected.id}">Daten als PDF herunterladen</button></div></form>` : editableSelf ? `<form class="card form-grid" data-form="self-update"><label>Benutzername<input name="username" value="${escapeHtml(selected?.username || '')}" required></label><label>Neues Passwort<input name="password" type="password" placeholder="nur bei Änderung ausfüllen"></label><label>Vorhandene Urlaubstage<input name="vacationAllowance" inputmode="decimal" value="${number(selected?.vacation_allowance)}"></label><div class="form-actions"><button class="primary">Speichern</button><button type="button" class="secondary" data-action="pdf" data-id="${selected?.id}">Daten als PDF herunterladen</button></div></form>` : `<article class="card"><h3>Benutzerkonto</h3><p>Mitarbeiter können ihre Zugangsdaten nicht selbst ändern.</p><div class="card-actions"><button type="button" class="secondary" data-action="pdf" data-id="${selected?.id}">Daten als PDF herunterladen</button></div></article>`
+  const businessField = selected?.role === 'business' ? `<label class="wide">Firmenname<input name="companyName" value="${escapeHtml(selected.company_name || '')}" placeholder="Name der Firma"></label>` : ''
+  const form = editableEmployee ? `<form class="card form-grid" data-form="employee-update"><input type="hidden" name="employeeId" value="${selected.id}"><label>Benutzername<input name="username" value="${escapeHtml(selected.username)}" required></label><label>Neues Passwort<input name="password" type="password" placeholder="nur bei Änderung ausfüllen"></label><label>Vorhandene Urlaubstage<input name="vacationAllowance" inputmode="decimal" value="${number(selected.vacation_allowance)}"></label>${permissionControls(selected.menu_permissions || {})}<div class="form-actions"><button class="primary">Speichern</button><button type="button" class="secondary" data-action="pdf" data-id="${selected.id}">Daten als PDF herunterladen</button></div></form>` : editableBusiness ? `<form class="card form-grid" data-form="business-update"><input type="hidden" name="businessId" value="${selected.id}">${businessField}<label>Benutzername<input name="username" value="${escapeHtml(selected.username)}" required></label><label>Neues Passwort<input name="password" type="password" placeholder="nur bei Änderung ausfüllen"></label><label>Vorhandene Urlaubstage<input name="vacationAllowance" inputmode="decimal" value="${number(selected.vacation_allowance)}"></label><div class="form-actions"><button class="primary">Speichern</button><button type="button" class="secondary" data-action="pdf" data-id="${selected.id}">Daten als PDF herunterladen</button></div></form>` : editableSelf ? `<form class="card form-grid" data-form="self-update">${businessField}<label>Benutzername<input name="username" value="${escapeHtml(selected?.username || '')}" required></label><label>Neues Passwort<input name="password" type="password" placeholder="nur bei Änderung ausfüllen"></label><label>Vorhandene Urlaubstage<input name="vacationAllowance" inputmode="decimal" value="${number(selected?.vacation_allowance)}"></label><div class="form-actions"><button class="primary">Speichern</button><button type="button" class="secondary" data-action="pdf" data-id="${selected?.id}">Daten als PDF herunterladen</button></div></form>` : `<article class="card"><h3>Benutzerkonto</h3><p>Mitarbeiter können ihre Zugangsdaten nicht selbst ändern.</p><div class="card-actions"><button type="button" class="secondary" data-action="pdf" data-id="${selected?.id}">Daten als PDF herunterladen</button></div></article>`
   return `<section class="split"><div><h2>${same(selected?.id, state.profile?.id) ? 'Mein Benutzerkonto' : 'Benutzerkonto'}</h2>${form}</div><div><h2>Statistik</h2>${metrics(selected?.id)}<p class="notice">${escapeHtml(selected?.username || '')}: ${hours(data.executed)} ausgeführt, ${data.sick} Krankheitstage und ${data.remaining} Resturlaubstage.</p><h2>Zusätzliche Eingabefelder Zeiterfassung</h2>${isChief() ? `<form class="inline-form" data-form="column-create"><input type="hidden" name="employeeId" value="${selected?.id || ''}"><label>Überschrift<input name="name" required></label><button class="secondary">Hinzufügen</button></form>` : ''}${columns.length ? `<div class="material-list">${columns.map(row => `<p>${escapeHtml(row.name)}${isChief() ? `<button type="button" class="link danger" data-action="column-delete" data-id="${row.id}">Löschen</button>` : ''}</p>`).join('')}</div>` : '<p class="empty">Keine zusätzlichen Felder.</p>'}</div></section>`
 }
 
+function companyBrandingSettings() {
+  const business = activeBusiness()
+  if (!business) return isAdmin() ? '<section class="card"><h2>Firmenlogo</h2><p class="empty">Lege zuerst ein Geschäftskonto an.</p></section>' : ''
+  const allowed = isAdmin() || (isBusiness() && same(business.id, state.profile.id))
+  if (!allowed) return ''
+  return `<section class="card branding"><h2>Firma & Logo</h2><div class="brand-preview">${companyLogo('branding-logo')}<div><strong>${escapeHtml(business.company_name || business.username)}</strong><p>Dieses Logo wird in der Kopfzeile der App angezeigt.</p></div></div><form class="inline-form" data-form="company-logo-update"><input type="hidden" name="businessId" value="${business.id}"><label>Neues Firmenlogo<input name="companyLogo" type="file" accept="image/*" required></label><button class="secondary">Logo speichern</button></form></section>`
+}
+
 function settingsView() {
-  return page('Einstellungen', 'VERWALTUNG', `${isAdmin() ? `<section class="card"><h2>Geschäftskonto auswählen</h2>${businessPicker()}<div class="card-actions"><button type="button" class="secondary" data-action="settings-self">Mein Administratorkonto</button></div></section>` : ''}${isChief() ? `<section class="card"><h2>Mitarbeiter auswählen</h2>${employeePicker()}</section>` : ''}${accountSettings()}${materialManager()}${employeeManager()}${businessManager()}`)
+  return page('Einstellungen', 'VERWALTUNG', `${isAdmin() ? `<section class="card"><h2>Geschäftskonto auswählen</h2>${businessPicker()}<div class="card-actions"><button type="button" class="secondary" data-action="settings-self">Mein Administratorkonto</button></div></section>` : ''}${isChief() ? `<section class="card"><h2>Mitarbeiter auswählen</h2>${employeePicker()}</section>` : ''}${accountSettings()}${companyBrandingSettings()}${materialManager()}${employeeManager()}${businessManager()}`)
 }
 
 function customerOrdersView() {
@@ -519,13 +563,13 @@ function navigation() {
 }
 
 function loginView() {
-  return `<main class="login"><form class="login-card" data-form="login"><div class="logo">AZ</div><p class="eyebrow">ARBEITSZEIT</p><h1>Willkommen</h1><p>Bitte mit Benutzername und Passwort anmelden.</p><label>Benutzername<input name="username" autocomplete="username" required></label><label>Passwort<input name="password" type="password" autocomplete="current-password" required></label><button class="primary">Anmelden</button><button type="button" class="link" data-action="password-help">Passwort vergessen?</button><button type="button" class="link" data-action="administrator-bootstrap">Administrator einrichten</button></form></main>`
+  return `<main class="login"><form class="login-card" data-form="login"><div class="logo">AZ</div><p class="eyebrow">ZEITERFASSUNG</p><h1>Willkommen</h1><p>Bitte mit Firmen-, Benutzer- und Passwort anmelden.</p><label>Firma<input name="company" autocomplete="organization" placeholder="z. B. Musterfirma"></label><label>Benutzername<input name="username" autocomplete="username" required></label><label>Passwort<input name="password" type="password" autocomplete="current-password" required></label><button class="primary">Anmelden</button><button type="button" class="link" data-action="password-help">Passwort vergessen?</button><button type="button" class="link" data-action="administrator-bootstrap">Administrator einrichten</button></form></main>`
 }
 
 function appView() {
   if (!state.session || !state.profile) return loginView()
   const view = ({ time: timeView, customers: customersView, customerOrders: customerOrdersView, orders: ordersView, calendar: calendarView, inbox: inboxView, assignments: assignmentsView, 'billing-customers': billingCustomersView, 'billing-employees': billingEmployeesView, invoices: invoicesView, settings: settingsView }[state.view] || timeView)
-  return `<div class="app-shell"><header class="app-header"><div class="brand"><span>AZ</span><div><strong>Arbeitszeit</strong><small>${escapeHtml(state.profile.username)}</small></div></div><div class="header-actions"><button type="button" class="menu-toggle" data-action="menu-toggle" aria-expanded="${state.menuOpen}">Menü <span aria-hidden="true">▾</span></button><button type="button" class="logout" data-action="logout">Abmelden</button></div></header><button type="button" class="menu-backdrop ${state.menuOpen ? 'open' : ''}" data-action="menu-close" aria-label="Menü schließen"></button><aside class="menu-popover ${state.menuOpen ? 'open' : ''}" aria-label="Hauptmenü"><nav>${navigation()}</nav></aside>${view()}${state.toast ? `<div class="toast ${state.toast.error ? 'error' : ''}">${escapeHtml(state.toast.message)}</div>` : ''}${state.busy ? '<div class="busy">Wird gespeichert …</div>' : ''}</div>`
+  return `<div class="app-shell"><header class="app-header"><div class="brand">${companyLogo('header-logo')}<div><strong>${escapeHtml(companyName())}</strong><small>Willkommen, ${escapeHtml(employeeName(activeEmployeeId()))}</small></div></div><div class="header-actions"><button type="button" class="menu-toggle" data-action="menu-toggle" aria-expanded="${state.menuOpen}">Menü <span aria-hidden="true">▾</span></button><button type="button" class="logout" data-action="logout">Abmelden</button></div></header><button type="button" class="menu-backdrop ${state.menuOpen ? 'open' : ''}" data-action="menu-close" aria-label="Menü schließen"></button><aside class="menu-popover ${state.menuOpen ? 'open' : ''}" aria-label="Hauptmenü"><nav>${navigation()}</nav></aside>${view()}${state.toast ? `<div class="toast ${state.toast.error ? 'error' : ''}">${escapeHtml(state.toast.message)}</div>` : ''}${state.busy ? '<div class="busy">Wird gespeichert …</div>' : ''}</div>`
 }
 
 function render() { root.innerHTML = appView() }
@@ -590,9 +634,35 @@ async function saveCustomer(form, update = false) {
   const id = String(form.get('id') || '')
   const name = String(form.get('name') || '').trim()
   if (!name) throw new Error('Bitte einen Kundennamen eingeben.')
-  const custom_fields = Object.fromEntries(['address', 'city', 'postal_code', 'email', 'phone_private', 'phone_mobile'].map(key => [key, String(form.get(key) || '').trim()]))
+  const extraIndexes = [...new Set([...form.keys()].filter(key => String(key).startsWith('extra-label-')).map(key => String(key).slice('extra-label-'.length)))]
+  const extras = extraIndexes.map(index => ({ label: String(form.get(`extra-label-${index}`) || '').trim(), value: String(form.get(`extra-value-${index}`) || '').trim() })).filter(row => row.label || row.value)
+  const custom_fields = Object.fromEntries(['contact_last_name', 'contact_first_name', 'street', 'house_number', 'city', 'postal_code', 'email', 'phone_private', 'phone_mobile'].map(key => [key, String(form.get(key) || '').trim()]))
+  custom_fields.additional = extras
   if (update) await api(db.from('customers').update({ name, custom_fields }).eq('id', id))
   else await ensureCustomer(name).then(async customer => api(db.from('customers').update({ custom_fields }).eq('id', customer.id)))
+}
+
+async function saveCompanyLogo(form) {
+  const business = state.people.find(row => same(row.id, form.get('businessId')) && row.role === 'business')
+  const file = form.get('companyLogo')
+  if (!business) throw new Error('Geschäftskonto nicht gefunden.')
+  if (!file || !file.size) throw new Error('Bitte eine Bilddatei auswählen.')
+  if (!String(file.type || '').startsWith('image/')) throw new Error('Bitte eine Bilddatei auswählen.')
+  if (file.size > 5 * 1024 * 1024) throw new Error('Das Logo darf höchstens 5 MB groß sein.')
+  const safeName = String(file.name || 'logo').replace(/[^A-Za-z0-9._-]/g, '_')
+  const path = `${business.id}/${crypto.randomUUID()}-${safeName}`
+  const { error: uploadError } = await db.storage.from('company-logos').upload(path, file, { contentType: file.type, upsert: false })
+  if (uploadError) throw uploadError
+  try {
+    const payload = isBusiness() && same(business.id, state.profile.id)
+      ? { action: 'self-update', companyLogoPath: path, companyName: business.company_name || business.username }
+      : { action: 'business-update', businessId: business.id, companyLogoPath: path, companyName: business.company_name || business.username }
+    await manageAccount(payload)
+    if (business.company_logo_path) await db.storage.from('company-logos').remove([business.company_logo_path])
+  } catch (error) {
+    await db.storage.from('company-logos').remove([path])
+    throw error
+  }
 }
 
 async function saveItem(form) {
@@ -713,6 +783,7 @@ root.addEventListener('submit', event => {
   if (type === 'order-update') return perform('Arbeitsschein gespeichert.', () => saveOrder(data, true))
   if (type === 'customer-create') return perform('Kunde gespeichert.', () => saveCustomer(data))
   if (type === 'customer-update') return perform('Kundendaten gespeichert.', () => saveCustomer(data, true))
+  if (type === 'company-logo-update') return perform('Firmenlogo gespeichert.', () => saveCompanyLogo(data))
   if (type === 'item-create') return perform('Material hinzugefügt.', () => saveItem(data))
   if (type === 'document-create') return perform('Dokumente hochgeladen.', () => uploadDocuments(data))
   if (type === 'vacation-request') return perform('Urlaubsantrag gespeichert.', () => vacation('request', { startDate: data.get('startDate'), endDate: data.get('endDate') }))
@@ -720,11 +791,11 @@ root.addEventListener('submit', event => {
   if (type === 'material-create') return perform('Artikel gespeichert.', () => ensureMaterial(data.get('name'), data.get('price') || 0))
   if (type === 'column-create') return perform('Eingabefeld hinzugefügt.', () => api(db.from('custom_columns').insert({ employee_id: data.get('employeeId'), name: String(data.get('name') || '').trim(), position: own(state.data.columns, data.get('employeeId')).length })))
   if (type === 'payslip-create') return perform('Lohnabrechnung bereitgestellt und Mitarbeiter benachrichtigt.', () => uploadPayslip(data))
-  if (type === 'business-create') return perform('Geschäftskonto angelegt.', () => manageAccount({ action: 'business-create', username: data.get('username'), password: data.get('password') }))
-  if (type === 'business-update') return perform('Geschäftskonto gespeichert.', () => manageAccount({ action: 'business-update', businessId: data.get('businessId'), username: data.get('username'), password: data.get('password'), vacationAllowance: data.get('vacationAllowance') }))
+  if (type === 'business-create') return perform('Geschäftskonto angelegt.', () => manageAccount({ action: 'business-create', companyName: data.get('companyName'), username: data.get('username'), password: data.get('password') }))
+  if (type === 'business-update') return perform('Geschäftskonto gespeichert.', () => manageAccount({ action: 'business-update', businessId: data.get('businessId'), companyName: data.get('companyName'), username: data.get('username'), password: data.get('password'), vacationAllowance: data.get('vacationAllowance') }))
   if (type === 'employee-create') return perform('Mitarbeiter angelegt.', () => manageAccount({ action: 'employee-create', businessId: data.get('businessId') || activeBusinessId(), username: data.get('username'), password: data.get('password'), menuPermissions: formPermissions(data) }))
   if (type === 'employee-update') return perform('Mitarbeiterkonto gespeichert.', () => manageAccount({ action: 'employee-update', employeeId: data.get('employeeId'), username: data.get('username'), password: data.get('password'), vacationAllowance: data.get('vacationAllowance'), menuPermissions: formPermissions(data) }))
-  if (type === 'self-update') return perform('Mein Benutzerkonto gespeichert.', () => manageAccount({ action: 'self-update', username: data.get('username'), password: data.get('password'), vacationAllowance: data.get('vacationAllowance') }))
+  if (type === 'self-update') return perform('Mein Benutzerkonto gespeichert.', () => manageAccount({ action: 'self-update', companyName: data.get('companyName'), username: data.get('username'), password: data.get('password'), vacationAllowance: data.get('vacationAllowance') }))
 })
 
 root.addEventListener('change', event => {
@@ -763,6 +834,8 @@ root.addEventListener('click', event => {
   if (action === 'message-open') return perform('', async () => { state.openMessageId = same(state.openMessageId, button.dataset.id) ? null : button.dataset.id; const message = state.data.messages.find(row => same(row.id, button.dataset.id)); if (message && !message.read_at) await api(db.from('mailbox_messages').update({ read_at: new Date().toISOString() }).eq('id', message.id)) })
   if (action === 'message-delete') return perform('Nachricht in den Papierkorb verschoben.', () => api(db.from('mailbox_messages').update({ deleted_at: new Date().toISOString() }).eq('id', button.dataset.id)))
   if (action === 'message-restore') return perform('Nachricht wiederhergestellt.', () => api(db.from('mailbox_messages').update({ deleted_at: null }).eq('id', button.dataset.id)))
+  if (action === 'customer-extra-add') { const container = button.closest('form')?.querySelector('[data-customer-extras]'); if (container) container.insertAdjacentHTML('beforeend', customerExtraField({}, Date.now())); return }
+  if (action === 'customer-extra-remove') { button.closest('[data-customer-extra]')?.remove(); return }
   if (action === 'vacation-approve' || action === 'vacation-reject') return perform(action === 'vacation-approve' ? 'Urlaub genehmigt.' : 'Urlaub abgelehnt.', () => vacation('decide', { requestId: button.dataset.id, status: action === 'vacation-approve' ? 'approved' : 'rejected' }))
   if (action === 'settings-employee') { state.selectedEmployeeId = button.dataset.id; state.view = 'settings'; render(); return }
   if (action === 'settings-business') { state.selectedBusinessId = button.dataset.id; state.selectedEmployeeId = button.dataset.id; state.view = 'settings'; render(); return }
@@ -772,7 +845,7 @@ root.addEventListener('click', event => {
   if (action === 'material-delete') { if (window.confirm('Artikel aus der Materialliste entfernen?')) perform('Artikel entfernt.', () => api(db.from('materials').update({ active: false }).eq('id', button.dataset.id))); return }
   if (action === 'material-price') { const material = state.data.materials.find(row => same(row.id, button.dataset.id)); const value = window.prompt(`Preis für ${material?.name || 'Artikel'} (€):`, String(material?.unit_price ?? 0)); if (value !== null) perform('Preis aktualisiert.', async () => { const price = number(value); if (price < 0) throw new Error('Der Preis darf nicht negativ sein.'); const { error } = await db.rpc('update_material_price_for_open_orders', { p_material_id: material.id, p_unit_price: price }); if (error) throw error }); return }
   if (action === 'pdf') return perform('', () => downloadPdf(button.dataset.id))
-  if (action === 'password-help') { const username = window.prompt('Bitte Benutzernamen eingeben:'); if (username !== null) perform('Wenn ein Konto gefunden wurde, wurde das zuständige Geschäftskonto informiert.', async () => { const response = await db.functions.invoke('request-password-help', { body: { username } }); if (response.error || response.data?.error) throw new Error(response.error?.message || response.data?.error) }); return }
+  if (action === 'password-help') { const username = window.prompt('Bitte Benutzernamen eingeben:'); if (username !== null) perform('Wenn ein Konto gefunden wurde, wurden Administrator und zuständiges Geschäftskonto informiert.', async () => { const response = await db.functions.invoke('request-password-help', { body: { username } }); if (response.error || response.data?.error) throw new Error(response.error?.message || response.data?.error) }); return }
   if (action === 'administrator-bootstrap') { const username = window.prompt('Benutzername für das erste Administratorkonto:'); if (username === null) return; const password = window.prompt('Passwort für das erste Administratorkonto (mindestens 8 Zeichen):'); if (password === null) return; return perform('Administratorkonto eingerichtet. Du kannst dich jetzt anmelden.', async () => { const response = await db.functions.invoke('account-bootstrap', { body: { action: 'bootstrap', username, password } }); if (response.error || response.data?.error) throw new Error(response.error?.message || response.data?.error) }) }
 })
 

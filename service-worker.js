@@ -1,5 +1,5 @@
-const CACHE = 'arbeitszeit-rebuild-v403'
-const FILES = ['./', './index.html', './styles-rebuild.css?v=403', './app-rebuild.js?v=403', './config.js?v=1', './manifest.webmanifest', './icon.svg']
+const CACHE = 'arbeitszeit-rebuild-v404'
+const FILES = ['./', './index.html', './styles-rebuild.css?v=404', './app-rebuild.js?v=404', './config.js?v=1', './manifest.webmanifest', './icon.svg']
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(FILES)))
@@ -19,3 +19,4 @@ self.addEventListener('fetch', event => {
     return response
   }).catch(() => dynamic ? caches.match('./index.html') : caches.match(event.request)))
 })
+

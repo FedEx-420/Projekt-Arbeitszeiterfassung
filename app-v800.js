@@ -1,0 +1,253 @@
+/* Zeiterfassung v800 – neu aufgebaut, ohne Abhängigkeit von älteren App-Versionen. */
+(() => {
+  'use strict';
+
+  const cfg = window.WORKTIME_CONFIG || {};
+  const base = String(cfg.supabaseUrl || '').replace(/\/$/, '');
+  const key = String(cfg.supabasePublishableKey || '');
+  const root = document.getElementById('app');
+  const storage = 'zeiterfassung-v800-session';
+  const today = () => new Date().toISOString().slice(0, 10);
+  const state = {
+    session: null, profile: null, people: [], view: 'home', date: today(), month: today().slice(0, 7),
+    businessId: '', employeeId: '', customerId: '', menu: false, vacationForm: false, notice: null, busy: false,
+    rows: { entries: [], orders: [], items: [], customers: [], days: [], vacations: [], messages: [], materials: [], appointments: [], payslips: [], documents: [] }
+  };
+
+  const escape = value => String(value ?? '').replace(/[&<>'"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[ch]);
+  const n = value => Number(value || 0);
+  const same = (a, b) => String(a || '') === String(b || '');
+  const lower = value => String(value || '').trim().toLocaleLowerCase('de-DE');
+  const dateText = value => value ? new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: 'long', year: 'numeric' }).format(new Date(`${value}T12:00:00`)) : '';
+  const monthText = value => new Intl.DateTimeFormat('de-DE', { month: 'long', year: 'numeric' }).format(new Date(`${value}-01T12:00:00`));
+  const h = value => `${n(value).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} h`;
+  const timeText = value => value ? `${String(value).slice(0, 5)} Uhr` : '—';
+  const isAdmin = () => state.profile?.role === 'administrator';
+  const isBusiness = () => state.profile?.role === 'business';
+  const isManager = () => isAdmin() || isBusiness();
+  const canUse = name => isManager() || state.profile?.menu_permissions?.[name] !== false;
+
+  function notice(message, error = false) { state.notice = message ? { message, error } : null; }
+  function noticeHtml() { return state.notice ? `<div class="${state.notice.error ? 'notice error' : 'notice'}">${escape(state.notice.message)}</div>` : ''; }
+  function parse(text) { try { return text ? JSON.parse(text) : null; } catch { return null; } }
+
+  async function api(path, options = {}) {
+    const headers = { apikey: key, ...(options.headers || {}) };
+    if (state.session?.access_token) headers.Authorization = `Bearer ${state.session.access_token}`;
+    if (options.body !== undefined) headers['Content-Type'] = 'application/json';
+    const response = await fetch(`${base}${path}`, { method: options.method || 'GET', headers, body: options.body === undefined ? undefined : JSON.stringify(options.body) });
+    const text = await response.text(); const body = parse(text);
+    if (!response.ok) throw new Error(body?.error || body?.message || body?.error_description || 'Die Anfrage konnte nicht verarbeitet werden.');
+    return body;
+  }
+  const rows = (table, query = 'select=*') => api(`/rest/v1/${table}?${query}`);
+  const write = (table, data, method = 'POST', query = '') => api(`/rest/v1/${table}${query ? `?${query}` : ''}`, { method, body: data, headers: { Prefer: 'return=representation' } });
+  const remove = (table, query) => api(`/rest/v1/${table}?${query}`, { method: 'DELETE' });
+  const account = (action, payload = {}) => api('/functions/v1/account-management', { method: 'POST', body: { action, ...payload } });
+  const flow = (action, payload = {}) => api('/functions/v1/vacation-workflow', { method: 'POST', body: { action, ...payload } });
+
+  async function login(username, password) {
+    const name = String(username || '').trim();
+    if (!/^[A-Za-z0-9._-]{3,40}$/.test(name)) throw new Error('Bitte einen gültigen Benutzernamen eingeben.');
+    const data = await api('/auth/v1/token?grant_type=password', { method: 'POST', body: { email: `${name.toLowerCase()}@arbeitszeit.local`, password } });
+    state.session = data; localStorage.setItem(storage, JSON.stringify(data)); await loadApp();
+  }
+  function logout() { state.session = null; state.profile = null; localStorage.removeItem(storage); render(); }
+
+  async function loadApp() {
+    if (!state.session?.user?.id) return render();
+    state.busy = true; render();
+    try {
+      const own = await rows('profiles', `select=*&id=eq.${encodeURIComponent(state.session.user.id)}`);
+      state.profile = own?.[0] || null;
+      if (!state.profile) throw new Error('Dieses Konto ist nicht eingerichtet.');
+      await reload();
+    } catch (error) {
+      state.session = null; state.profile = null; localStorage.removeItem(storage); notice(error.message || 'Die Anmeldung ist fehlgeschlagen.', true);
+    } finally { state.busy = false; render(); }
+  }
+  async function reload() {
+    const load = async (name, table, query = 'select=*') => { try { state.rows[name] = await rows(table, query) || []; } catch { state.rows[name] = []; } };
+    await Promise.all([
+      load('people', 'profiles'), load('entries', 'time_entries', 'select=*&order=work_date.desc,created_at.desc'), load('orders', 'work_orders', 'select=*&order=work_date.desc,created_at.desc'),
+      load('items', 'work_order_items'), load('customers', 'customers', 'select=*&order=name.asc'), load('days', 'work_days'), load('vacations', 'vacation_requests', 'select=*&order=created_at.desc'),
+      load('messages', 'mailbox_messages', 'select=*&order=created_at.desc'), load('materials', 'materials', 'select=*&order=name.asc'), load('appointments', 'appointments'),
+      load('payslips', 'employee_payslips', 'select=*&order=created_at.desc'), load('documents', 'work_order_documents')
+    ]);
+    state.people = state.rows.people;
+    if (isAdmin() && !businesses().some(person => same(person.id, state.businessId))) state.businessId = businesses()[0]?.id || '';
+    if (!workers().some(person => same(person.id, state.employeeId))) state.employeeId = workers()[0]?.id || state.profile.id;
+  }
+  async function perform(message, task) {
+    state.busy = true; render();
+    try { await task(); await reload(); notice(message); }
+    catch (error) { try { await reload(); } catch { /* Originalfehler erhalten */ } notice(error.message || 'Die Aktion konnte nicht gespeichert werden.', true); }
+    finally { state.busy = false; render(); }
+  }
+
+  function businesses() { return state.people.filter(person => person.role === 'business'); }
+  function businessId() { return isAdmin() ? state.businessId : isBusiness() ? state.profile.id : state.profile?.business_id || ''; }
+  function workers() {
+    if (!state.profile) return [];
+    if (!isManager()) return [state.profile];
+    return state.people.filter(person => person.role === 'employee' && same(person.business_id, businessId()));
+  }
+  function worker() { return workers().find(person => same(person.id, state.employeeId)) || workers()[0] || state.profile; }
+  function workerId() { return worker()?.id || ''; }
+  function managerBusiness() { return businesses().find(person => same(person.id, businessId())) || (isBusiness() ? state.profile : null); }
+  function dayEntries(id = workerId(), date = state.date) { return state.rows.entries.filter(row => same(row.employee_id, id) && row.work_date === date); }
+  function dayHours(id = workerId(), date = state.date) { return dayEntries(id, date).reduce((sum, row) => sum + n(row.executed_hours), 0); }
+  function dueHours(date) { const day = new Date(`${date}T12:00:00`).getDay(); return day === 5 ? 5 : day === 0 || day === 6 ? 0 : 8; }
+  function sick(id = workerId(), date = state.date) { return state.rows.days.some(row => same(row.employee_id, id) && row.work_date === date && n(row.sick) > 0); }
+  function vacation(id = workerId(), date = state.date) { return state.rows.vacations.find(row => same(row.employee_id, id) && row.status === 'approved' && row.start_date <= date && row.end_date >= date); }
+  function locked(id = workerId(), date = state.date) { return sick(id, date) || vacation(id, date); }
+  function annualSick(id = workerId()) { const year = state.date.slice(0, 4); return state.rows.days.filter(row => same(row.employee_id, id) && row.work_date.startsWith(year) && n(row.sick) > 0).reduce((sum, row) => sum + n(row.sick), 0); }
+  function vacationLeft(id = workerId()) { const person = state.people.find(row => same(row.id, id)) || worker(); const year = state.date.slice(0, 4); const used = state.rows.vacations.filter(row => same(row.employee_id, id) && row.status === 'approved' && row.start_date <= `${year}-12-31` && row.end_date >= `${year}-01-01`).reduce((sum, row) => sum + n(row.requested_days), 0); return Math.max(0, n(person?.vacation_allowance) - used); }
+  function overtime(id = workerId()) { const year = state.date.slice(0, 4), days = new Map(); dayEntries(id); state.rows.entries.filter(row => same(row.employee_id, id) && row.work_date.startsWith(year)).forEach(row => days.set(row.work_date, n(days.get(row.work_date)) + n(row.executed_hours))); return [...days].reduce((sum, [date, value]) => sum + value - dueHours(date), 0); }
+
+  function loginView() { return `<main class="login-page"><section class="login-card"><div class="brand-mark">ZE</div><h1>Zeiterfassung</h1><p>Arbeitszeiten einfach und sicher erfassen.</p><form data-form="login"><label>Firma<input name="company" autocomplete="organization" placeholder="Firmenname"></label><label>Benutzername<input name="username" autocomplete="username" required></label><label>Passwort<input name="password" type="password" autocomplete="current-password" required></label><button class="primary" ${state.busy ? 'disabled' : ''}>Anmelden</button></form><button class="link-button" type="button" data-action="forgot">Passwort vergessen?</button>${noticeHtml()}</section></main>`; }
+  function menuItems() { return [['home','Übersicht',true],['time','Zeiterfassung',canUse('time')],['orders','Arbeitsscheine',canUse('orders')],['calendar','Kalender',canUse('calendar')],['customers','Kunden',canUse('customers')],['mailbox','Postfach',true],['materials','Materialliste',isManager()],['invoices','Abrechnungen Kunden',isManager()],['settings','Einstellungen',true]].filter(([, , yes]) => yes); }
+  function selector() {
+    if (!isManager()) return '';
+    const businessesHtml = isAdmin() ? `<label>Geschäftskonto<select data-select="business"><option value="">Auswählen</option>${businesses().map(person => `<option value="${person.id}" ${same(person.id, businessId()) ? 'selected' : ''}>${escape(person.company_name || person.username)}</option>`).join('')}</select></label>` : '';
+    return `<div class="account-selector">${businessesHtml}<label>Mitarbeiter<select data-select="employee">${workers().map(person => `<option value="${person.id}" ${same(person.id, workerId()) ? 'selected' : ''}>${escape(person.username)}</option>`).join('')}</select></label></div>`;
+  }
+  function appView() {
+    const title = managerBusiness()?.company_name || 'Zeiterfassung';
+    const overlay = state.menu ? `<section class="app-menu-sheet"><header><b>Menü auswählen</b><button type="button" class="secondary small" data-action="menu">Schließen</button></header><nav>${menuItems().map(([id, text]) => `<button type="button" data-action="nav" data-view="${id}" class="${state.view === id ? 'active' : ''}">${text}</button>`).join('')}<hr><button type="button" data-action="logout">Abmelden</button></nav></section>` : '';
+    return `<div class="app-shell"><header class="topbar"><div><span class="eyebrow">${escape(title)}</span><h1>Zeiterfassung</h1></div><div class="top-actions">${selector()}<button type="button" class="menu-toggle" data-action="menu">☰ Menü</button></div></header>${overlay}<main class="content">${viewHtml()}${noticeHtml()}</main></div>`;
+  }
+  function viewHtml() { return ({ home: homeView, time: timeView, orders: ordersView, calendar: calendarView, customers: customersView, mailbox: mailboxView, materials: materialsView, invoices: invoicesView, settings: settingsView }[state.view] || homeView)(); }
+
+  function homeView() { const id = workerId(), extra = overtime(id); return `<section class="page-head"><div><span class="eyebrow">Willkommen, ${escape(worker()?.username || '')}</span><h2>${dateText(state.date)}</h2></div><label class="date-field">Tag<input type="date" data-date value="${state.date}"></label></section><section class="stat-grid"><article><span>Überstunden ${state.date.slice(0, 4)}</span><strong class="${extra > 0 ? 'positive' : extra < 0 ? 'negative' : ''}">${extra ? h(extra) : '—'}</strong></article><article><span>Urlaub übrig</span><strong>${vacationLeft(id)} Tage</strong></article><article><span>Krankheitstage</span><strong>${annualSick(id)} Tage</strong></article></section><section class="panel"><h3>Ausgewählter Arbeitstag</h3><p>${locked(id) ? (sick(id) ? 'Krank gemeldet – keine Arbeitszeit möglich.' : 'Genehmigter Urlaub – keine Arbeitszeit möglich.') : dayEntries(id).length ? `${h(dayHours(id))} Arbeitszeit erfasst.` : 'Für diesen Tag wurde noch keine Arbeitszeit erfasst.'}</p></section>`; }
+  function timeInput(name, value) { return `<input name="${name}" type="time" step="900" value="${value || ''}">`; }
+  function customerList() { return `<datalist id="customers">${state.rows.customers.map(row => `<option value="${escape(row.name)}"></option>`).join('')}</datalist>`; }
+  function timeView() { const id = workerId(), list = dayEntries(id), previous = list.at(-1)?.end_time?.slice(0, 5) || '07:30'; return `<section class="page-head"><div><span class="eyebrow">Zeiterfassung von ${escape(worker()?.username || '')}</span><h2>${dateText(state.date)}</h2></div><label class="date-field">Tag<input type="date" data-date value="${state.date}"></label></section>${locked(id) ? '<div class="locked">Für diesen Tag kann keine Zeit erfasst werden.</div>' : `<section class="panel"><h3>Arbeitszeit hinzufügen</h3><form data-form="time" class="entry-form"><label class="wide">Kunde<input name="customer" required list="customers"></label><label>Arbeitsbeginn${timeInput('start', previous)}</label><label>Arbeitsende${timeInput('end', '')}</label><label>Pause in Stunden<input name="pause" type="number" min="0" step="0.25" value="0"></label><label>Ausgeführte Stunden<input name="hours" type="number" min="0.25" step="0.25" required></label><button class="primary wide">Speichern</button></form>${customerList()}</section>`}<section class="list-section"><h3>Einträge des Tages</h3>${list.map(row => `<article class="row-card"><div><b>${escape(row.customer_name)}</b><span>${timeText(row.start_time)} – ${timeText(row.end_time)} · ${h(row.executed_hours)}</span></div><button type="button" class="danger small" data-action="delete-time" data-id="${row.id}">Löschen</button></article>`).join('') || '<p class="empty">Keine Einträge vorhanden.</p>'}</section>`; }
+
+  function materialRow() { return `<div class="material-row"><label>Material<input name="material" list="materials"></label><label>Stückzahl<input name="quantity" type="number" min="0.25" step="0.25" value="1"></label></div>`; }
+  function ordersView() { const id = workerId(), list = state.rows.orders.filter(row => same(row.employee_id, id) && (isManager() || row.work_date === state.date)); const previous = dayEntries(id).at(-1)?.end_time?.slice(0, 5) || '07:30'; return `<section class="page-head"><div><span class="eyebrow">Arbeitsscheine von ${escape(worker()?.username || '')}</span><h2>${isManager() ? 'Alle Arbeitsscheine' : dateText(state.date)}</h2></div><label class="date-field">Tag<input type="date" data-date value="${state.date}"></label></section>${locked(id) ? '<div class="locked">Für diesen Tag kann kein Arbeitsschein angelegt werden.</div>' : `<section class="panel"><h3>Neuer Arbeitsschein</h3><form data-form="order" class="entry-form"><label class="wide">Kunde<input name="customer" required list="customers"></label><label class="wide">Beschreibung<input name="title" placeholder="Ausgeführte Arbeiten"></label><div class="wide" id="material-lines">${materialRow()}</div><button type="button" class="secondary wide" data-action="more-material">Weiteres Material</button><label>Arbeitsbeginn${timeInput('start', previous)}</label><label>Arbeitsende${timeInput('end', '')}</label><label>Pause in Stunden<input name="pause" type="number" min="0" step="0.25" value="0"></label><label>Ausgeführte Stunden<input name="hours" type="number" min="0.25" step="0.25" required></label><label class="wide">Dokumentation<textarea name="documentation" rows="4"></textarea></label><button class="primary wide">Arbeitsschein speichern</button></form>${customerList()}<datalist id="materials">${state.rows.materials.filter(row => row.active !== false).map(row => `<option value="${escape(row.name)}"></option>`).join('')}</datalist></section>`}<section class="list-section"><h3>Gespeicherte Arbeitsscheine</h3>${list.map(row => `<article class="row-card"><div><b>${escape(row.customer_name || 'Ohne Kunde')}</b><span>${dateText(row.work_date)} · ${escape(row.title || '')} · ${h(row.executed_hours)}</span></div><button type="button" class="danger small" data-action="delete-order" data-id="${row.id}">Löschen</button></article>`).join('') || '<p class="empty">Keine Arbeitsscheine vorhanden.</p>'}</section>`; }
+
+  function monthDays() {
+    const start = new Date(`${state.month}-01T12:00:00`), first = new Date(start); first.setDate(1 - ((start.getDay() + 6) % 7));
+    return Array.from({ length: 42 }, (_, index) => { const value = new Date(first); value.setDate(first.getDate() + index); return value.toISOString().slice(0, 10); });
+  }
+  function calendarView() {
+    const id = workerId();
+    const grid = monthDays().map(date => {
+      const classes = [date.slice(0, 7) === state.month ? '' : 'muted', date === state.date ? 'selected' : '', sick(id, date) ? 'sick' : '', vacation(id, date) ? 'vacation' : '', state.rows.vacations.some(row => same(row.employee_id, id) && row.status === 'requested' && row.start_date <= date && row.end_date >= date) ? 'requested' : ''].join(' ');
+      return `<button type="button" class="${classes}" data-action="pick-day" data-date="${date}"><b>${Number(date.slice(-2))}</b></button>`;
+    }).join('');
+    const records = state.rows.orders.filter(row => same(row.employee_id, id) && row.work_date === state.date);
+    return `<section class="page-head"><div><span class="eyebrow">Kalender von ${escape(worker()?.username || '')}</span><h2>${dateText(state.date)}</h2></div><label class="date-field">Tag<input type="date" data-date value="${state.date}"></label></section><section class="stat-grid"><article><span>Überstunden</span><strong>${dayEntries(id).length ? h(dayHours(id) - dueHours(state.date)) : '—'}</strong></article><article><span>Urlaub</span><strong>${vacation(id) ? 'Genehmigt' : '—'}</strong></article><article><span>Krank</span><strong>${sick(id) ? 'Ja' : '—'}</strong></article></section><section class="panel"><div class="calendar-head"><button type="button" data-action="month" data-value="-1">‹</button><h3>${monthText(state.month)}</h3><button type="button" data-action="month" data-value="1">›</button></div><div class="month-grid"><span>Mo</span><span>Di</span><span>Mi</span><span>Do</span><span>Fr</span><span>Sa</span><span>So</span>${grid}</div><div class="actions"><button type="button" class="secondary" data-action="sick">${sick(id) ? 'Krankheitstag entfernen' : 'Krank melden'}</button><button type="button" class="primary" data-action="vacation-form">Urlaub beantragen</button></div></section>${state.vacationForm ? `<section class="panel"><h3>Urlaub beantragen</h3><form data-form="vacation" class="entry-form"><label>Von<input name="start" type="date" required value="${state.date}"></label><label>Bis<input name="end" type="date" required value="${state.date}"></label><button class="primary">Antrag senden</button></form></section>` : ''}<section class="list-section"><h3>Durchgeführt</h3>${records.map(row => `<article class="row-card"><div><b>${escape(row.customer_name)}</b><span>${escape(row.title || '')} · ${h(row.executed_hours)}</span></div></article>`).join('') || '<p class="empty">Für diesen Tag existiert kein Arbeitsschein.</p>'}</section>`;
+  }
+
+  function customerFields(customer) { const fields = customer?.custom_fields || {}; return `<input type="hidden" name="id" value="${customer?.id || ''}"><label>Firmenname<input name="name" required value="${escape(customer?.name || '')}"></label><label>Vorname<input name="first_name" value="${escape(fields.first_name || '')}"></label><label>Straße<input name="street" value="${escape(fields.street || '')}"></label><label>Hausnummer<input name="house_no" value="${escape(fields.house_no || '')}"></label><label>Ort<input name="city" value="${escape(fields.city || '')}"></label><label>Postleitzahl<input name="postal_code" value="${escape(fields.postal_code || '')}"></label><label>Telefon privat<input name="phone_private" value="${escape(fields.phone_private || '')}"></label><label>Telefon mobil<input name="phone_mobile" value="${escape(fields.phone_mobile || '')}"></label><label class="wide">E-Mail-Adresse<input name="email" type="email" value="${escape(fields.email || '')}"></label><label class="wide">Zusätzliche Angaben (eine Zeile je Feld)<textarea name="extra" rows="3">${escape(Object.entries(fields).filter(([name]) => name.startsWith('extra_')).map(([, value]) => value).join('\n'))}</textarea></label>`; }
+  function customersView() { const selected = state.rows.customers.find(row => same(row.id, state.customerId)); return `<section class="page-head"><div><span class="eyebrow">Gemeinsame Daten</span><h2>Kundenliste</h2></div><button type="button" class="secondary" data-action="new-customer">Kunde hinzufügen</button></section><section class="list-section">${state.rows.customers.map(row => `<article class="row-card"><button type="button" class="row-main" data-action="customer" data-id="${row.id}"><b>${escape(row.name)}</b><span>${h(state.rows.entries.filter(entry => same(entry.customer_id, row.id)).reduce((sum, entry) => sum + n(entry.executed_hours), 0))} gesamt</span></button>${isManager() ? `<button type="button" class="danger small" data-action="delete-customer" data-id="${row.id}">Löschen</button>` : ''}</article>`).join('') || '<p class="empty">Noch keine Kunden angelegt.</p>'}</section>${state.customerId || state.customerId === 'new' ? `<section class="panel"><h3>${selected ? 'Kunde bearbeiten' : 'Neuer Kunde'}</h3><form data-form="customer" class="entry-form">${customerFields(selected)}<button class="primary wide">Kunde speichern</button></form></section>` : ''}`; }
+
+  function mailboxView() { const messages = state.rows.messages.filter(row => !row.deleted_at); return `<section class="page-head"><div><span class="eyebrow">Persönlich</span><h2>Postfach</h2></div></section><section class="message-list">${messages.map(message => { const body = message.body || {}; const decision = message.message_type === 'vacation_request' && isManager() ? `<div class="actions"><button type="button" class="primary small" data-action="vacation-decision" data-id="${message.id}" data-request="${escape(body.request_id || '')}" data-status="approved">Genehmigen</button><button type="button" class="secondary small" data-action="vacation-decision" data-id="${message.id}" data-request="${escape(body.request_id || '')}" data-status="rejected">Ablehnen</button></div>` : ''; return `<article class="message ${message.read_at ? 'read' : 'unread'}"><header><b>${escape(message.title)}</b><time>${new Intl.DateTimeFormat('de-DE', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(message.created_at))}</time></header><p>${escape(body.message || body.note || (body.start_date ? `${dateText(body.start_date)} bis ${dateText(body.end_date)}` : ''))}</p>${decision}<div class="message-actions">${!message.read_at ? `<button type="button" data-action="read" data-id="${message.id}">Als gelesen markieren</button>` : ''}<button type="button" data-action="trash" data-id="${message.id}">Löschen</button></div></article>`; }).join('') || '<p class="empty">Keine Nachrichten vorhanden.</p>'}</section>`; }
+
+  function materialsView() { return `<section class="page-head"><div><span class="eyebrow">Material</span><h2>Materialliste</h2></div></section><section class="panel"><form data-form="material" class="entry-form"><label>Artikel<input name="name" required></label><label>Preis in €<input name="price" type="number" min="0" step="0.01" value="0"></label><button class="primary">Artikel speichern</button></form></section><section class="list-section">${state.rows.materials.filter(row => row.active !== false).map(row => `<article class="row-card"><div><b>${escape(row.name)}</b><span>${n(row.unit_price).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}</span></div><button type="button" class="danger small" data-action="delete-material" data-id="${row.id}">Löschen</button></article>`).join('') || '<p class="empty">Keine Materialien vorhanden.</p>'}</section>`; }
+  function invoicesView() { const groups = Object.values(state.rows.orders.filter(row => !row.invoiced).reduce((all, row) => { (all[row.customer_name || 'Ohne Kunde'] ||= []).push(row); return all; }, {})); return `<section class="page-head"><div><span class="eyebrow">Abrechnung</span><h2>Abrechnungen Kunden</h2></div></section>${groups.map(group => `<section class="panel"><h3>${escape(group[0].customer_name)}</h3><p>${group.length} offene Arbeitsscheine · ${h(group.reduce((sum, row) => sum + n(row.executed_hours), 0))}</p><div class="actions">${group.map(row => `<button type="button" class="secondary small" data-action="invoice" data-id="${row.id}">Arbeitschein vom ${dateText(row.work_date)} abrechnen</button>`).join('')}</div></section>`).join('') || '<p class="empty">Alle Arbeitsscheine sind abgerechnet.</p>'}`; }
+
+  function permissionFields(person) { return [['time','Zeiterfassung'],['customers','Kunden'],['orders','Arbeitsscheine'],['calendar','Kalender']].map(([id, title]) => `<label><input type="checkbox" name="perm-${id}" ${person?.menu_permissions?.[id] !== false ? 'checked' : ''}> ${title}</label>`).join(''); }
+  function settingsView() {
+    if (!isManager()) return `<section class="page-head"><div><span class="eyebrow">Mein Konto</span><h2>Einstellungen</h2></div></section><section class="panel"><p>Benutzername und Passwort werden durch die Geschäftsverwaltung festgelegt.</p><button type="button" class="secondary" data-action="pdf">Daten als PDF drucken</button></section>`;
+    const person = worker(), business = managerBusiness();
+    const own = `<section class="panel"><h3>Mein Benutzerkonto</h3><form data-form="self" class="entry-form"><label>Benutzername<input name="username" value="${escape(state.profile.username)}"></label><label>Neues Passwort<input name="password" type="password" minlength="8" placeholder="Nur bei Änderung"></label>${isBusiness() ? `<label>Firma<input name="company" value="${escape(state.profile.company_name || '')}"></label>` : ''}<button class="primary">Eigenes Konto speichern</button></form></section>`;
+    const employee = person?.role === 'employee' ? `<section class="panel"><h3>Mitarbeiter bearbeiten: ${escape(person.username)}</h3><form data-form="employee-credentials" class="entry-form"><label>Benutzername<input name="username" value="${escape(person.username)}"></label><label>Neues Passwort<input name="password" type="password" minlength="8" placeholder="Nur bei Änderung"></label><button class="secondary">Benutzername und Passwort speichern</button></form><form data-form="employee-permissions" class="entry-form"><div class="wide permissions">${permissionFields(person)}</div><button class="secondary wide">Menüfreigaben speichern</button></form><form data-form="employee-vacation" class="entry-form"><label>Urlaubsanspruch pro Jahr<input name="allowance" type="number" min="0" step="0.5" value="${n(person.vacation_allowance)}"></label><button class="secondary">Urlaubsanspruch speichern</button></form><div class="actions"><button type="button" class="danger" data-action="delete-employee" data-id="${person.id}">Mitarbeiter löschen</button></div></section>` : '<section class="panel"><p>Bitte einen Mitarbeiter in der Auswahl oben auswählen.</p></section>';
+    const newEmployee = businessId() ? `<section class="panel"><h3>Mitarbeiter hinzufügen</h3><form data-form="employee-new" class="entry-form"><label>Benutzername<input name="username" required></label><label>Passwort<input name="password" type="password" minlength="8" required></label><label>Urlaubsanspruch pro Jahr<input name="allowance" type="number" min="0" step="0.5" value="30"></label><div class="wide permissions">${permissionFields({})}</div><button class="primary wide">Mitarbeiter anlegen</button></form></section>` : '';
+    const newBusiness = isAdmin() ? `<section class="panel"><h3>Neues Geschäftskonto</h3><form data-form="business-new" class="entry-form"><label>Firma<input name="company" required></label><label>Benutzername<input name="username" required></label><label>Passwort<input name="password" type="password" minlength="8" required></label><button class="primary">Geschäftskonto anlegen</button></form></section>${business ? `<section class="panel"><h3>Ausgewähltes Geschäftskonto</h3><form data-form="business-update" class="entry-form"><label>Firma<input name="company" value="${escape(business.company_name || '')}"></label><label>Benutzername<input name="username" value="${escape(business.username)}"></label><label>Neues Passwort<input name="password" type="password" minlength="8" placeholder="Nur bei Änderung"></label><button class="secondary">Geschäftskonto speichern</button></form><button type="button" class="danger" data-action="delete-business" data-id="${business.id}">Geschäftskonto löschen</button></section>` : ''}` : '';
+    return `<section class="page-head"><div><span class="eyebrow">Verwaltung</span><h2>Einstellungen</h2></div><button type="button" class="secondary" data-action="pdf">Daten als PDF drucken</button></section>${own}${newBusiness}${newEmployee}${employee}`;
+  }
+
+  function roundTime(value) { if (!value) return ''; const [hour, minute] = String(value).slice(0, 5).split(':').map(Number); const all = Math.max(0, Math.min(1439, Math.round((hour * 60 + minute) / 15) * 15)); return `${String(Math.floor(all / 60)).padStart(2, '0')}:${String(all % 60).padStart(2, '0')}`; }
+  function toMinutes(value) { const [hour, minute] = String(value || '00:00').slice(0, 5).split(':').map(Number); return hour * 60 + minute; }
+  function timeValues(form) {
+    const hours = Math.max(0.25, Math.round(n(form.elements.hours.value) * 4) / 4);
+    const pause = Math.max(0, Math.round(n(form.elements.pause.value) * 4) / 4);
+    const start = roundTime(form.elements.start.value);
+    let end = roundTime(form.elements.end.value);
+    if (!start) throw new Error('Bitte einen Arbeitsbeginn auswählen.');
+    if (!end) end = roundTime(`${String(Math.floor((toMinutes(start) + Math.round((hours + pause) * 60)) / 60) % 24).padStart(2, '0')}:${String((toMinutes(start) + Math.round((hours + pause) * 60)) % 60).padStart(2, '0')}`);
+    return { start, end, hours, pause };
+  }
+  async function ensureCustomer(value, employee) {
+    const name = String(value || '').trim(); if (!name) throw new Error('Bitte einen Kunden eingeben.');
+    const current = state.rows.customers.find(row => lower(row.name) === lower(name));
+    if (current) return current;
+    const created = await write('customers', { employee_id: employee, name, custom_fields: {} });
+    return created?.[0] || { id: null, name };
+  }
+  async function ensureMaterial(value) {
+    const name = String(value || '').trim(); if (!name) return null;
+    const current = state.rows.materials.find(row => lower(row.name) === lower(name));
+    if (current) return current;
+    const created = await write('materials', { business_id: businessId(), name, unit_price: 0, active: true });
+    return created?.[0] || null;
+  }
+  async function saveTime(form) { const id = workerId(); if (locked(id)) throw new Error('Für Krankheit oder genehmigten Urlaub kann keine Zeit eingetragen werden.'); const customer = await ensureCustomer(form.elements.customer.value, id); const value = timeValues(form); await write('time_entries', { employee_id: id, work_date: state.date, customer_id: customer.id, customer_name: customer.name, start_time: value.start, end_time: value.end, pause_hours: value.pause, executed_hours: value.hours, calculation_mode: 'end_time' }); }
+  async function saveOrder(form) { const id = workerId(); if (locked(id)) throw new Error('Für Krankheit oder genehmigten Urlaub kann kein Arbeitsschein angelegt werden.'); const customer = await ensureCustomer(form.elements.customer.value, id); const value = timeValues(form); const created = await write('work_orders', { employee_id: id, work_date: state.date, customer_id: customer.id, customer_name: customer.name, title: String(form.elements.title.value || '').trim(), start_time: value.start, end_time: value.end, pause_hours: value.pause, executed_hours: value.hours, calculation_mode: 'end_time', documentation: String(form.elements.documentation.value || '') }); const order = created?.[0]; if (!order) throw new Error('Der Arbeitsschein konnte nicht gespeichert werden.'); const materials = [...form.querySelectorAll('[name="material"]')], quantities = [...form.querySelectorAll('[name="quantity"]')]; for (let index = 0; index < materials.length; index++) { const material = await ensureMaterial(materials[index].value); if (material) await write('work_order_items', { work_order_id: order.id, material_id: material.id, position_name: material.name, quantity: Math.max(0.25, n(quantities[index]?.value || 1)), unit_price: n(material.unit_price) }); } }
+  function permissions(form) { return Object.fromEntries(['time', 'customers', 'orders', 'calendar'].map(name => [name, form.elements[`perm-${name}`]?.checked !== false])); }
+  async function saveCustomer(form) { const id = String(form.elements.id.value || ''); const custom = Object.fromEntries(['first_name','street','house_no','city','postal_code','phone_private','phone_mobile','email'].map(name => [name, String(form.elements[name].value || '').trim()])); String(form.elements.extra.value || '').split('\n').map(value => value.trim()).filter(Boolean).forEach((value, index) => { custom[`extra_${index + 1}`] = value; }); const data = { name: String(form.elements.name.value || '').trim(), custom_fields: custom }; if (!data.name) throw new Error('Bitte einen Kundennamen eingeben.'); if (id) await write('customers', data, 'PATCH', `id=eq.${encodeURIComponent(id)}`); else await write('customers', { ...data, employee_id: workerId() }); state.customerId = ''; }
+
+  root.addEventListener('click', event => {
+    const button = event.target.closest('[data-action]'); if (!button) return;
+    const action = button.dataset.action;
+    if (action === 'menu') { state.menu = !state.menu; render(); return; }
+    if (action === 'nav') { state.view = button.dataset.view; state.menu = false; state.vacationForm = false; render(); return; }
+    if (action === 'logout') return logout();
+    if (action === 'forgot') return perform('Die zuständige Verwaltung wurde informiert.', () => api('/functions/v1/request-password-help', { method: 'POST', body: { username: root.querySelector('[name="username"]')?.value || '' } }));
+    if (action === 'pick-day') { state.date = button.dataset.date; state.month = state.date.slice(0, 7); state.vacationForm = false; render(); return; }
+    if (action === 'month') { const date = new Date(`${state.month}-01T12:00:00`); date.setMonth(date.getMonth() + n(button.dataset.value)); state.month = date.toISOString().slice(0, 7); render(); return; }
+    if (action === 'vacation-form') { state.vacationForm = true; render(); return; }
+    if (action === 'more-material') { document.getElementById('material-lines')?.insertAdjacentHTML('beforeend', materialRow()); return; }
+    if (action === 'new-customer') { state.customerId = 'new'; render(); return; }
+    if (action === 'customer') { state.customerId = button.dataset.id; render(); return; }
+    if (action === 'pdf') return printPdf();
+    if (action === 'delete-time') return confirm('Zeiterfassung wirklich löschen?') && perform('Zeiterfassung wurde gelöscht.', () => remove('time_entries', `id=eq.${encodeURIComponent(button.dataset.id)}`));
+    if (action === 'delete-order') return confirm('Arbeitsschein wirklich löschen?') && perform('Arbeitsschein wurde gelöscht.', async () => { const id = encodeURIComponent(button.dataset.id); await remove('work_order_items', `work_order_id=eq.${id}`); await remove('work_order_documents', `work_order_id=eq.${id}`); await remove('time_entries', `work_order_id=eq.${id}`); await remove('work_orders', `id=eq.${id}`); });
+    if (action === 'delete-customer') return confirm('Kunde wirklich löschen?') && perform('Kunde wurde gelöscht.', () => remove('customers', `id=eq.${encodeURIComponent(button.dataset.id)}`));
+    if (action === 'delete-material') return confirm('Material wirklich löschen?') && perform('Material wurde gelöscht.', () => remove('materials', `id=eq.${encodeURIComponent(button.dataset.id)}`));
+    if (action === 'invoice') return perform('Arbeitsschein wurde als abgerechnet markiert.', () => write('work_orders', { invoiced: true }, 'PATCH', `id=eq.${encodeURIComponent(button.dataset.id)}`));
+    if (action === 'read') return perform('Nachricht als gelesen markiert.', () => write('mailbox_messages', { read_at: new Date().toISOString() }, 'PATCH', `id=eq.${encodeURIComponent(button.dataset.id)}`));
+    if (action === 'trash') return perform('Nachricht wurde gelöscht.', () => write('mailbox_messages', { deleted_at: new Date().toISOString() }, 'PATCH', `id=eq.${encodeURIComponent(button.dataset.id)}`));
+    if (action === 'vacation-decision') return perform('Urlaubsantrag wurde entschieden.', async () => { await flow('decide', { requestId: button.dataset.request, status: button.dataset.status }); await write('mailbox_messages', { read_at: new Date().toISOString() }, 'PATCH', `id=eq.${encodeURIComponent(button.dataset.id)}`); });
+    if (action === 'sick') return perform(sick() ? 'Krankheitstag wurde entfernt.' : 'Krankheitstag wurde eingetragen.', async () => { const existing = state.rows.days.find(row => same(row.employee_id, workerId()) && row.work_date === state.date); if (sick()) { if (!isManager()) throw new Error('Krankheitstage können nur durch die Verwaltung entfernt werden.'); if (existing) await remove('work_days', `employee_id=eq.${encodeURIComponent(workerId())}&work_date=eq.${state.date}`); } else await api('/rest/v1/work_days?on_conflict=employee_id,work_date', { method: 'POST', body: { employee_id: workerId(), work_date: state.date, sick: 1, vacation: n(existing?.vacation) }, headers: { Prefer: 'resolution=merge-duplicates,return=representation' } }); });
+    if (action === 'delete-employee') return confirm('Mitarbeiterkonto wirklich löschen?') && perform('Mitarbeiterkonto wurde gelöscht.', () => account('employee-delete', { employeeId: button.dataset.id }));
+    if (action === 'delete-business') return confirm('Geschäftskonto inklusive Mitarbeiter wirklich löschen?') && perform('Geschäftskonto wurde gelöscht.', () => account('business-delete', { businessId: button.dataset.id }));
+  });
+
+  root.addEventListener('change', event => {
+    const input = event.target;
+    if (input.matches('[data-date]')) { state.date = input.value || today(); state.month = state.date.slice(0, 7); render(); return; }
+    if (input.matches('[data-select="business"]')) { state.businessId = input.value; state.employeeId = ''; render(); return; }
+    if (input.matches('[data-select="employee"]')) { state.employeeId = input.value; render(); }
+  });
+
+  root.addEventListener('submit', event => {
+    const form = event.target; if (!(form instanceof HTMLFormElement)) return;
+    event.preventDefault(); const name = form.dataset.form;
+    const submitters = {
+      login: () => login(form.elements.username.value, form.elements.password.value),
+      time: () => saveTime(form), order: () => saveOrder(form), customer: () => saveCustomer(form),
+      material: () => write('materials', { business_id: businessId(), name: String(form.elements.name.value || '').trim(), unit_price: n(form.elements.price.value), active: true }),
+      vacation: () => flow('request', { employeeId: workerId(), startDate: form.elements.start.value, endDate: form.elements.end.value }),
+      self: () => account('self-update', { username: form.elements.username.value, password: form.elements.password.value, companyName: form.elements.company?.value }),
+      'employee-new': () => account('employee-create', { businessId: businessId(), username: form.elements.username.value, password: form.elements.password.value, vacationAllowance: n(form.elements.allowance.value), menuPermissions: permissions(form) }),
+      'employee-credentials': () => account('employee-credentials-update', { employeeId: workerId(), username: form.elements.username.value, password: form.elements.password.value }),
+      'employee-permissions': () => account('employee-permissions-update', { employeeId: workerId(), menuPermissions: permissions(form) }),
+      'employee-vacation': () => account('employee-vacation-update', { employeeId: workerId(), vacationAllowance: n(form.elements.allowance.value) }),
+      'business-new': () => account('business-create', { companyName: form.elements.company.value, username: form.elements.username.value, password: form.elements.password.value }),
+      'business-update': () => account('business-update', { businessId: businessId(), companyName: form.elements.company.value, username: form.elements.username.value, password: form.elements.password.value })
+    };
+    const submit = submitters[name];
+    if (submit) return perform(name === 'login' ? '' : 'Änderung wurde sofort gespeichert.', async () => { await submit(); if (name === 'vacation') state.vacationForm = false; });
+  });
+
+  function printPdf() { const person = worker(), id = workerId(); const lines = state.rows.entries.filter(row => same(row.employee_id, id)).map(row => `<tr><td>${dateText(row.work_date)}</td><td>${escape(row.customer_name)}</td><td>${h(row.executed_hours)}</td></tr>`).join(''); const windowRef = window.open('', '_blank'); if (!windowRef) throw new Error('Bitte Pop-ups erlauben, um die PDF zu erstellen.'); windowRef.document.write(`<!doctype html><title>Zeiterfassung</title><style>body{font:14px Arial;padding:24px}table{width:100%;border-collapse:collapse}th,td{padding:8px;border-bottom:1px solid #ddd;text-align:left}</style><h1>Zeiterfassung – ${escape(person?.username)}</h1><p>Arbeitsstunden: ${h(state.rows.entries.filter(row => same(row.employee_id, id)).reduce((sum, row) => sum + n(row.executed_hours), 0))}<br>Überstunden: ${h(overtime(id))}<br>Urlaub übrig: ${vacationLeft(id)} Tage<br>Krankheitstage: ${annualSick(id)} Tage</p><table><thead><tr><th>Datum</th><th>Kunde</th><th>Stunden</th></tr></thead><tbody>${lines}</tbody></table><script>window.onload=()=>window.print()<\/script>`); windowRef.document.close(); }
+  function render() { if (!root) return; if (!base || !key) { root.innerHTML = '<main class="login-page"><section class="login-card"><h1>Zeiterfassung</h1><p>Die App-Konfiguration fehlt.</p></section></main>'; return; } root.innerHTML = state.session && state.profile ? appView() : loginView(); }
+  window.addEventListener('unhandledrejection', event => { event.preventDefault(); notice('Die Aktion konnte nicht ausgeführt werden. Bitte erneut versuchen.', true); render(); });
+  state.session = parse(localStorage.getItem(storage));
+  if (state.session?.access_token) loadApp(); else render();
+})();
+

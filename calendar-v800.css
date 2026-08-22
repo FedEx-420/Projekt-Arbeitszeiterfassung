@@ -1,0 +1,31 @@
+/* Einheitliche Monatsansicht für Administrator, Geschäftskonto und Mitarbeiter. */
+.calendar-panel{padding:22px}
+.calendar-head{display:grid;grid-template-columns:48px 1fr 48px;gap:12px;align-items:center;margin-bottom:14px}
+.calendar-head h3{margin:0;text-align:center;text-transform:capitalize;font-size:20px}
+.calendar-head button{min-height:42px;padding:0;font-size:28px;line-height:1;color:var(--brand-dark);background:#e5f2ef}
+.calendar-legend{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 18px}
+.calendar-legend span,.day-flags i{font-style:normal;font-weight:800;border-radius:999px}
+.calendar-legend span{padding:5px 9px;font-size:12px}
+.legend-order,.flag-order{background:#dbeafe;color:#1d4ed8}
+.legend-requested,.flag-requested{background:#fef3c7;color:#92400e}
+.legend-approved,.flag-approved{background:#dcfce7;color:#166534}
+.legend-sick,.flag-sick{background:#fee2e2;color:#b91c1c}
+.month-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:7px}
+.month-grid .weekday{padding:2px 0 5px;text-align:center;color:var(--muted);font-size:12px;font-weight:850}
+.month-day{min-height:92px;padding:9px;border:1px solid #dce7e4;border-radius:13px;background:#fff;text-align:left;display:flex;flex-direction:column;gap:7px;justify-content:space-between;transition:transform .15s ease,box-shadow .15s ease,border-color .15s ease}
+.month-day:hover{transform:translateY(-1px);box-shadow:0 7px 16px rgba(11,54,51,.10)}
+.month-day>b{font-size:15px;line-height:1}
+.month-day.outside{opacity:.42;background:#f5f8f7}
+.month-day.selected{outline:3px solid #08766f;outline-offset:1px}
+.month-day.has-order{background:linear-gradient(145deg,#eff6ff,#fff);border-color:#93c5fd}
+.month-day.requested{background:linear-gradient(145deg,#fffbeb,#fff);border-color:#fcd34d}
+.month-day.approved{background:linear-gradient(145deg,#f0fdf4,#fff);border-color:#86efac}
+.month-day.sick{background:linear-gradient(145deg,#fff1f2,#fff);border-color:#fda4af}
+.day-flags{display:flex;flex-wrap:wrap;gap:4px;align-items:flex-end}
+.day-flags i{padding:3px 6px;font-size:10px;line-height:1.15;white-space:nowrap}
+@media(max-width:650px){
+  .calendar-panel{padding:15px}.calendar-head{grid-template-columns:42px 1fr 42px;margin-bottom:12px}.calendar-head h3{font-size:17px}.calendar-head button{min-height:38px;font-size:24px}
+  .calendar-legend{gap:5px;margin-bottom:12px}.calendar-legend span{padding:4px 7px;font-size:10px}.month-grid{gap:4px}.month-grid .weekday{font-size:10px}
+  .month-day{min-height:63px;padding:6px;border-radius:9px}.month-day>b{font-size:13px}.day-flags{gap:3px}.day-flags i{width:7px;height:7px;padding:0;border-radius:50%;font-size:0}
+}
+

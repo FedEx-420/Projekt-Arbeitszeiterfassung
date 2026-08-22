@@ -122,7 +122,12 @@
   const run = async (message, job) => {
     state.busy = true; render();
     try { await job(); await reloadData(); announce(message); }
-    catch (error) { announce(error.message || 'Die Aktion konnte nicht ausgeführt werden.', true); }
+    catch (error) {
+      // A request may have succeeded immediately before an optional later step
+      // (such as an upload) failed. Keep the screen in sync with saved data.
+      try { await reloadData(); } catch { /* retain the original failure */ }
+      announce(error.message || 'Die Aktion konnte nicht ausgeführt werden.', true);
+    }
     finally { state.busy = false; render(); }
   };
 
@@ -195,13 +200,46 @@
   function roundTime(value) { if (!value) return ''; const [h, m] = value.split(':').map(Number); const rounded = Math.max(0, Math.min(23 * 60 + 45, Math.round((h * 60 + m) / 15) * 15)); return `${String(Math.floor(rounded / 60)).padStart(2, '0')}:${String(rounded % 60).padStart(2, '0')}`; }
   function syncTimes(form, source) { const start = form.elements.start, end = form.elements.end, pause = form.elements.pause, worked = form.elements.hours; if (!start || !end || !pause || !worked) return; start.value = roundTime(start.value); end.value = roundTime(end.value); const p = Math.max(0, Math.round(number(pause.value) * 4) / 4); pause.value = p; if (source === 'hours' && start.value && worked.value) { const total = Math.round(number(worked.value) * 4) / 4; worked.value = total; const [h, m] = start.value.split(':').map(Number); end.value = roundTime(`${String(Math.floor((h * 60 + m + (total + p) * 60) / 60) % 24).padStart(2, '0')}:${String((h * 60 + m + (total + p) * 60) % 60).padStart(2, '0')}`); } else if (start.value && end.value) { const [sh, sm] = start.value.split(':').map(Number); const [eh, em] = end.value.split(':').map(Number); const diff = Math.max(0, (eh * 60 + em - sh * 60 - p * 60) / 60); worked.value = Math.round(diff * 4) / 4; } }
   function times(form) { syncTimes(form, 'end'); const start = roundTime(form.elements.start.value); const end = roundTime(form.elements.end.value); const pause = Math.max(0, Math.round(number(form.elements.pause.value) * 4) / 4); const executed = Math.max(0, Math.round(number(form.elements.hours.value) * 4) / 4); if (!start || !end || executed <= 0) throw new Error('Bitte Arbeitsbeginn sowie Arbeitsende oder ausgeführte Stunden eingeben.'); return { start, end, pause, executed }; }
-  async function ensureCustomer(name, employee) { const value = String(name || '').trim(); if (!value) throw new Error('Bitte einen Kunden eingeben.'); const exact = state.rows.customers.find(row => lower(row.name) === lower(value)); if (exact) return exact; const similar = state.rows.customers.find(row => lower(row.name).includes(lower(value)) || lower(value).includes(lower(row.name))); if (similar && confirm(`Meinst du den vorhandenen Kunden „${similar.name}“?\nOK = vorhandenen Kunden verwenden · Abbrechen = neuen Kunden anlegen`)) return similar; const created = await write('customers', { employee_id: employee, name: value, custom_fields: {} }); return created?.[0] || { id: null, name: value }; }
-  async function ensureMaterial(name) { const value = String(name || '').trim(); if (!value) return null; const exact = state.rows.materials.find(row => lower(row.name) === lower(value)); if (exact) return exact; const similar = state.rows.materials.find(row => lower(row.name).includes(lower(value)) || lower(value).includes(lower(row.name))); if (similar && confirm(`Meinst du den vorhandenen Artikel „${similar.name}“?\nOK = vorhandenen Artikel verwenden · Abbrechen = neuen Artikel ohne Preis anlegen`)) return similar; const created = await write('materials', { business_id: activeBusinessId(), name: value, unit_price: 0, active: true }); return created?.[0] || null; }
+  async function ensureCustomer(name, employee) {
+    const value = String(name || '').trim();
+    if (!value) throw new Error('Bitte einen Kunden eingeben.');
+    const exact = state.rows.customers.find(row => lower(row.name) === lower(value));
+    if (exact) return exact;
+    const similar = state.rows.customers.find(row => lower(row.name).includes(lower(value)) || lower(value).includes(lower(row.name)));
+    if (similar && confirm(`Meinst du den vorhandenen Kunden „${similar.name}“?\nOK = vorhandenen Kunden verwenden · Abbrechen = neuen Kunden anlegen`)) return similar;
+    try {
+      const created = await write('customers', { employee_id: employee, name: value, custom_fields: {} });
+      return created?.[0] || { id: null, name: value };
+    } catch (error) {
+      // It may already have been saved by another device or a previous request.
+      const latest = await rows('customers', `select=*&employee_id=eq.${encodeURIComponent(employee)}&name=ilike.${encodeURIComponent(value)}`);
+      const existing = (latest || []).find(row => lower(row.name) === lower(value));
+      if (existing) return existing;
+      throw error;
+    }
+  }
+  async function ensureMaterial(name) {
+    const value = String(name || '').trim();
+    if (!value) return null;
+    const exact = state.rows.materials.find(row => lower(row.name) === lower(value));
+    if (exact) return exact;
+    const similar = state.rows.materials.find(row => lower(row.name).includes(lower(value)) || lower(value).includes(lower(row.name)));
+    if (similar && confirm(`Meinst du den vorhandenen Artikel „${similar.name}“?\nOK = vorhandenen Artikel verwenden · Abbrechen = neuen Artikel ohne Preis anlegen`)) return similar;
+    try {
+      const created = await write('materials', { business_id: activeBusinessId(), name: value, unit_price: 0, active: true });
+      return created?.[0] || null;
+    } catch (error) {
+      const latest = await rows('materials', `select=*&name=ilike.${encodeURIComponent(value)}`);
+      const existing = (latest || []).find(row => lower(row.name) === lower(value));
+      if (existing) return existing;
+      throw error;
+    }
+  }
   async function upload(bucket, path, file) { const response = await fetch(`${endpoint}/storage/v1/object/${bucket}/${path.split('/').map(encodeURIComponent).join('/')}`, { method: 'POST', headers: { apikey: publishableKey, Authorization: `Bearer ${state.session.access_token}`, 'Content-Type': file.type || 'application/octet-stream', 'x-upsert': 'false' }, body: file }); if (!response.ok) throw new Error('Die Datei konnte nicht hochgeladen werden.'); }
   async function download(bucket, path, name) { const response = await fetch(`${endpoint}/storage/v1/object/${bucket}/${path.split('/').map(encodeURIComponent).join('/')}`, { headers: { apikey: publishableKey, Authorization: `Bearer ${state.session.access_token}` } }); if (!response.ok) throw new Error('Die Datei konnte nicht heruntergeladen werden.'); const blob = await response.blob(); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = name || 'Datei'; link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 1000); }
 
   async function saveTime(form) { const employee = currentEmployeeId(); if (locked(employee, state.date)) throw new Error('Für diesen Tag darf keine Arbeitszeit erfasst werden.'); const customer = await ensureCustomer(form.elements.customer.value, employee); const value = times(form); await write('time_entries', { employee_id: employee, work_date: state.date, customer_id: customer.id, customer_name: customer.name, start_time: value.start, end_time: value.end, pause_hours: value.pause, executed_hours: value.executed, calculation_mode: 'end_time' }); }
-  async function saveOrder(form) { const employee = currentEmployeeId(); if (locked(employee, state.date)) throw new Error('Für diesen Tag darf kein Arbeitsschein angelegt werden.'); const customer = await ensureCustomer(form.elements.customer.value, employee); const value = times(form); const created = await write('work_orders', { employee_id: employee, work_date: state.date, customer_id: customer.id, customer_name: customer.name, title: String(form.elements.title.value || '').trim(), start_time: value.start, end_time: value.end, pause_hours: value.pause, executed_hours: value.executed, calculation_mode: 'end_time', documentation: String(form.elements.documentation.value || '') }); const order = created?.[0]; if (!order) throw new Error('Der Arbeitsschein wurde nicht gespeichert.'); await write('time_entries', { employee_id: employee, work_date: state.date, customer_id: customer.id, customer_name: customer.name, start_time: value.start, end_time: value.end, pause_hours: value.pause, executed_hours: value.executed, calculation_mode: 'end_time', work_order_id: order.id }); const materialInputs = [...form.querySelectorAll('[name="material"]')]; const quantities = [...form.querySelectorAll('[name="quantity"]')]; for (let index = 0; index < materialInputs.length; index++) { const material = await ensureMaterial(materialInputs[index].value); if (material) await write('work_order_items', { work_order_id: order.id, position_name: material.name, quantity: Math.max(.25, number(quantities[index]?.value || 1)), unit_price: number(material.unit_price), material_id: material.id }); }
+  async function saveOrder(form) { const employee = currentEmployeeId(); if (locked(employee, state.date)) throw new Error('Für diesen Tag darf kein Arbeitsschein angelegt werden.'); const customer = await ensureCustomer(form.elements.customer.value, employee); const value = times(form); const created = await write('work_orders', { employee_id: employee, work_date: state.date, customer_id: customer.id, customer_name: customer.name, title: String(form.elements.title.value || '').trim(), start_time: value.start, end_time: value.end, pause_hours: value.pause, executed_hours: value.executed, calculation_mode: 'end_time', documentation: String(form.elements.documentation.value || '') }); const order = created?.[0]; if (!order) throw new Error('Der Arbeitsschein wurde nicht gespeichert.'); /* The database creates and synchronizes the linked time entry itself. Do not insert it a second time. */ const materialInputs = [...form.querySelectorAll('[name="material"]')]; const quantities = [...form.querySelectorAll('[name="quantity"]')]; for (let index = 0; index < materialInputs.length; index++) { const material = await ensureMaterial(materialInputs[index].value); if (material) await write('work_order_items', { work_order_id: order.id, position_name: material.name, quantity: Math.max(.25, number(quantities[index]?.value || 1)), unit_price: number(material.unit_price), material_id: material.id }); }
     for (const file of [...form.elements.documents.files]) { const safe = file.name.replace(/[^A-Za-z0-9._-]/g, '_'); const path = `${employee}/${order.id}-${Date.now()}-${safe}`; await upload('work-order-documents', path, file); await write('work_order_documents', { work_order_id: order.id, employee_id: employee, file_path: path, file_name: file.name, mime_type: file.type || null }); }
   }
   async function saveCustomer(form) { const id = String(form.elements.id.value || ''); const custom_fields = {}; ['first_name','street','house_no','city','postal_code','phone_private','phone_mobile','email'].forEach(key => { custom_fields[key] = String(form.elements[key].value || '').trim(); }); String(form.elements.extra.value || '').split('\n').map(value => value.trim()).filter(Boolean).forEach((value, index) => custom_fields[`extra_${index + 1}`] = value); const data = { name: String(form.elements.name.value || '').trim(), custom_fields }; if (!data.name) throw new Error('Bitte einen Kundennamen eingeben.'); if (id) await write('customers', data, 'PATCH', `id=eq.${encodeURIComponent(id)}`); else await write('customers', { ...data, employee_id: currentEmployeeId() }); state.selectedCustomerId = ''; state.newCustomer = false; }

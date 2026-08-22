@@ -1,5 +1,5 @@
-const CACHE = 'arbeitszeit-neu-v600';
-const FILES = ['./','./index.html','./styles.css?v=600','./app.js?v=600','./config.js?v=600','./manifest.webmanifest','./icon.svg'];
+const CACHE = 'arbeitszeit-neu-v601';
+const FILES = ['./','./index.html','./styles-v601.css','./app-v601.js','./config.js?v=600','./manifest.webmanifest','./icon.svg'];
 self.addEventListener('install', event => { event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(FILES))); self.skipWaiting(); });
 self.addEventListener('activate', event => { event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key !== CACHE).map(key => caches.delete(key))))); self.clients.claim(); });
 self.addEventListener('fetch', event => { if (event.request.method !== 'GET') return; event.respondWith(fetch(event.request).then(response => { if (response.ok) caches.open(CACHE).then(cache => cache.put(event.request, response.clone())); return response; }).catch(() => caches.match(event.request).then(hit => hit || caches.match('./index.html')))); });

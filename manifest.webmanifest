@@ -1,19 +1,10 @@
 {
-  "name": "Arbeitszeit · Team",
+  "name": "Zeiterfassung",
   "short_name": "Arbeitszeit",
-  "description": "Gemeinsame Arbeitszeit-, Kunden- und Arbeitsscheinerfassung",
-  "lang": "de-DE",
   "start_url": "./",
   "display": "standalone",
-  "background_color": "#f5fbfc",
-  "theme_color": "#083344",
-  "icons": [
-    {
-      "src": "icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
-    }
-  ]
+  "background_color": "#eef7f5",
+  "theme_color": "#075d59",
+  "icons": [{"src":"icon.svg","sizes":"any","type":"image/svg+xml"}]
 }
 

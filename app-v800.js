@@ -382,7 +382,7 @@
     if (action === 'more-material') { document.getElementById('material-lines')?.insertAdjacentHTML('beforeend', materialRow()); return; }
     if (action === 'hourly-type') { const form = button.closest('form'); if (!form?.elements.hourly_type) return; form.elements.hourly_type.value = hourlyName(button.dataset.type); form.querySelectorAll('[data-action="hourly-type"]').forEach(choice => { const active = choice.dataset.type === form.elements.hourly_type.value; choice.classList.toggle('primary', active); choice.classList.toggle('secondary', !active); }); return; }
     if (action === 'new-customer') { state.customerId = 'new'; render(); return; }
-    if (action === 'customer') { state.customerId = button.dataset.id; render(); return; }
+    if (action === 'customer') { state.customerId = button.dataset.id; render(); window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
     if (action === 'create-order-from-customer') { const customer = state.rows.customers.find(row => same(row.id, button.dataset.id)); if (!customer) { notice('Der ausgewählte Kunde wurde nicht gefunden.', true); render(); return; } state.orderCustomer = customer.name; state.orderId = ''; state.orderOrigin = 'customers'; state.view = 'orders'; render(); return; }
     if (action === 'edit-material') { state.materialId = button.dataset.id; render(); return; }
     if (action === 'close-material-edit') { state.materialId = ''; render(); return; }

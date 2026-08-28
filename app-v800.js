@@ -10,7 +10,7 @@
   const today = () => new Date().toISOString().slice(0, 10);
   const state = {
     session: null, profile: null, people: [], view: 'home', date: today(), month: today().slice(0, 7),
-    businessId: '', employeeId: '', customerId: '', orderId: '', orderOrigin: 'orders', billingKey: '', billingMode: 'open', menu: false, vacationForm: false, appointmentForm: false, notice: null, busy: false,
+    businessId: '', employeeId: '', customerId: '', materialId: '', orderId: '', orderOrigin: 'orders', billingKey: '', billingMode: 'open', menu: false, vacationForm: false, appointmentForm: false, notice: null, busy: false,
     rows: { entries: [], orders: [], items: [], customers: [], days: [], vacations: [], messages: [], materials: [], appointments: [], payslips: [], documents: [] }
   };
 
@@ -196,7 +196,23 @@
 
   function mailboxView() { const messages = state.rows.messages.filter(row => !row.deleted_at); return `<section class="page-head"><div><span class="eyebrow">Persönlich</span><h2>Postfach</h2></div></section><section class="message-list">${messages.map(message => { const body = message.body || {}; const decision = message.message_type === 'vacation_request' && isManager() ? `<div class="actions"><button type="button" class="primary small" data-action="vacation-decision" data-id="${message.id}" data-request="${escape(body.request_id || '')}" data-status="approved">Genehmigen</button><button type="button" class="secondary small" data-action="vacation-decision" data-id="${message.id}" data-request="${escape(body.request_id || '')}" data-status="rejected">Ablehnen</button></div>` : ''; return `<article class="message ${message.read_at ? 'read' : 'unread'}"><header><b>${escape(message.title)}</b><time>${new Intl.DateTimeFormat('de-DE', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(message.created_at))}</time></header><p>${escape(body.message || body.note || (body.start_date ? `${dateText(body.start_date)} bis ${dateText(body.end_date)}` : ''))}</p>${decision}<div class="message-actions">${!message.read_at ? `<button type="button" data-action="read" data-id="${message.id}">Als gelesen markieren</button>` : ''}<button type="button" data-action="trash" data-id="${message.id}">Löschen</button></div></article>`; }).join('') || '<p class="empty">Keine Nachrichten vorhanden.</p>'}</section>`; }
 
-  function materialsView() { const materials = state.rows.materials.filter(row => same(row.business_id, businessId()) && row.active !== false), monteur = materials.find(row => lower(row.name) === 'monteurstunde'), others = materials.filter(row => lower(row.name) !== 'monteurstunde'); return `<section class="page-head"><div><span class="eyebrow">Material</span><h2>Materialliste</h2></div></section>${monteur ? `<section class="panel"><h3>Monteurstunde</h3><p>Wird automatisch nach den erfassten Stunden in jeden Arbeitsschein übernommen und kann nicht gelöscht werden.</p><form data-form="monteur-price" class="entry-form"><input type="hidden" name="id" value="${monteur.id}"><label>Preis pro Monteurstunde in €<input name="price" type="number" min="0" step="0.01" value="${n(monteur.unit_price)}"></label><button class="primary">Preis speichern</button></form></section>` : ''}<section class="panel"><form data-form="material" class="entry-form"><label>Artikel<input name="name" required></label><label>Preis in €<input name="price" type="number" min="0" step="0.01" value="0"></label><button class="primary">Artikel speichern</button></form></section><section class="list-section">${others.map(row => `<article class="row-card"><div><b>${escape(row.name)}</b><span>${n(row.unit_price).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}</span></div><button type="button" class="danger small" data-action="delete-material" data-id="${row.id}">Löschen</button></article>`).join('') || '<p class="empty">Keine weiteren Materialien vorhanden.</p>'}</section>`; }
+  function materialEditFields(material) {
+    return '<input type="hidden" name="id" value="' + escape(material.id) + '"><label>Artikel<input name="name" required value="' + escape(material.name) + '"></label><label>Preis in €<input name="price" type="number" min="0" step="0.01" value="' + n(material.unit_price) + '"></label>';
+  }
+  function materialsView() {
+    const materials = state.rows.materials.filter(row => same(row.business_id, businessId()) && row.active !== false);
+    const monteur = materials.find(row => isMonteurstunde(row));
+    const others = materials.filter(row => !isMonteurstunde(row));
+    const selected = others.find(row => same(row.id, state.materialId));
+    const monteurCard = monteur
+      ? '<section class="panel"><h3>Monteurstunde</h3><p>Wird automatisch nach den erfassten Stunden in jeden Arbeitsschein übernommen und kann nicht gelöscht oder umbenannt werden.</p><form data-form="monteur-price" class="entry-form"><input type="hidden" name="id" value="' + escape(monteur.id) + '"><label>Preis pro Monteurstunde in €<input name="price" type="number" min="0" step="0.01" value="' + n(monteur.unit_price) + '"></label><button class="primary">Preis speichern</button></form></section>'
+      : '';
+    const list = others.map(row => '<article class="row-card"><div><b>' + escape(row.name) + '</b><span>' + n(row.unit_price).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' }) + '</span></div><div class="actions"><button type="button" class="secondary small" data-action="edit-material" data-id="' + escape(row.id) + '">Bearbeiten</button><button type="button" class="danger small" data-action="delete-material" data-id="' + escape(row.id) + '">Löschen</button></div></article>').join('') || '<p class="empty">Keine weiteren Materialien vorhanden.</p>';
+    const editor = selected
+      ? '<section class="panel"><section class="page-head"><div><span class="eyebrow">Materialliste</span><h3>Material bearbeiten</h3></div><button type="button" class="secondary small" data-action="close-material-edit">Abbrechen</button></section><form data-form="material-edit" class="entry-form">' + materialEditFields(selected) + '<button class="primary wide">Änderungen speichern</button></form><p>Preis- und Namensänderungen werden nur auf offene, noch nicht abgerechnete Arbeitsscheine übertragen.</p></section>'
+      : '';
+    return '<section class="page-head"><div><span class="eyebrow">Material</span><h2>Materialliste</h2></div></section>' + monteurCard + '<section class="panel"><h3>Neues Material</h3><form data-form="material" class="entry-form"><label>Artikel<input name="name" required></label><label>Preis in €<input name="price" type="number" min="0" step="0.01" value="0"></label><button class="primary">Artikel speichern</button></form></section><section class="list-section"><h3>Vorhandene Materialien</h3>' + list + '</section>' + editor;
+  }
   function invoiceGroups(invoiced) {
     const groups = {};
     state.rows.orders.filter(row => Boolean(row.invoiced) === invoiced).forEach(row => { const key = row.customer_id || `name:${lower(row.customer_name || 'Ohne Kunde')}`; (groups[key] ||= { key, customerName: row.customer_name || 'Ohne Kunde', orders: [] }).orders.push(row); });
@@ -305,6 +321,18 @@
     for (const item of state.rows.items.filter(item => same(item.material_id, material.id) && openOrderIds.has(item.work_order_id))) await write('work_order_items', { unit_price: price }, 'PATCH', 'id=eq.' + item.id);
     await load(); notice('Preis für Monteurstunde gespeichert. Offene Arbeitsscheine wurden aktualisiert.'); render();
   }
+  async function updateMaterial(form) {
+    const material = state.rows.materials.find(row => same(row.id, form.elements.id.value) && same(row.business_id, businessId()));
+    if (!material) throw new Error('Das Material wurde nicht gefunden.');
+    if (isMonteurstunde(material)) throw new Error('Die Position „Monteurstunde“ kann nur über ihren Preis bearbeitet werden.');
+    const name = String(form.elements.name.value || '').trim();
+    if (!name) throw new Error('Bitte einen Artikelnamen eingeben.');
+    const price = Math.max(0, n(form.elements.price.value));
+    await write('materials', { name, unit_price: price }, 'PATCH', 'id=eq.' + material.id);
+    const openOrderIds = new Set(state.rows.orders.filter(order => !order.invoiced).map(order => order.id));
+    for (const item of state.rows.items.filter(item => same(item.material_id, material.id) && openOrderIds.has(item.work_order_id))) await write('work_order_items', { position_name: name, unit_price: price }, 'PATCH', 'id=eq.' + item.id);
+    state.materialId = '';
+  }
   async function saveDocuments(form, order, employee) {
     for (const file of [...(form.elements.documents?.files || [])]) { const safe = file.name.replace(/[^A-Za-z0-9._-]/g, '_'); const path = `${employee}/${order.id}-${Date.now()}-${safe}`; await upload('work-order-documents', path, file); await write('work_order_documents', { work_order_id: order.id, employee_id: employee, file_path: path, file_name: file.name, mime_type: file.type || null }); }
   }
@@ -331,6 +359,8 @@
     if (action === 'more-material') { document.getElementById('material-lines')?.insertAdjacentHTML('beforeend', materialRow()); return; }
     if (action === 'new-customer') { state.customerId = 'new'; render(); return; }
     if (action === 'customer') { state.customerId = button.dataset.id; render(); return; }
+    if (action === 'edit-material') { state.materialId = button.dataset.id; render(); return; }
+    if (action === 'close-material-edit') { state.materialId = ''; render(); return; }
     if (action === 'pdf') return printPdf();
     if (action === 'order-pdf') return printOrderPdf(button.dataset.id);
     if (action === 'billing-pdf') return printBillingPdf(state.billingKey, state.billingMode === 'paid');
@@ -380,6 +410,7 @@
       time: () => saveTime(form), order: () => saveOrder(form), 'order-edit': () => updateOrder(form), customer: () => saveCustomer(form),
       material: () => { if (isMonteurstunde(form.elements.name.value)) throw new Error('„Monteurstunde“ ist bereits als geschützte Standardposition vorhanden.'); return write('materials', { business_id: businessId(), name: String(form.elements.name.value || '').trim(), unit_price: n(form.elements.price.value), active: true }); },
       'monteur-price': () => updateMonteurPrice(form),
+      'material-edit': () => updateMaterial(form),
       vacation: () => flow('request', { employeeId: workerId(), startDate: form.elements.start.value, endDate: form.elements.end.value }),
       self: () => account('self-update', { username: form.elements.username.value, password: form.elements.password.value, companyName: form.elements.company?.value, vacationAllowance: n(form.elements.allowance.value) }),
       'employee-new': () => account('employee-create', { businessId: businessId(), username: form.elements.username.value, password: form.elements.password.value, vacationAllowance: n(form.elements.allowance.value), menuPermissions: permissions(form) }),

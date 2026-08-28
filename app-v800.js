@@ -210,7 +210,7 @@
       return '<article class="row-card"><button type="button" class="row-main" data-action="customer" data-id="' + escape(row.id) + '"><b>' + escape(row.name) + '</b><span>' + h(total) + ' gesamt</span></button>' + removeButton + '</article>';
     }).join('') || '<p class="empty">Noch keine Kunden angelegt.</p>';
     const edit = selected || state.customerId === 'new'
-      ? '<section class="panel"><h3>' + (selected ? 'Kunde bearbeiten' : 'Neuer Kunde') + '</h3><form data-form="customer" class="entry-form">' + customerFields(selected) + '<button class="primary wide">Kunde speichern</button></form>' + (selected ? '<button type="button" class="secondary wide" data-action="create-order-from-customer" data-id="' + escape(selected.id) + '">Arbeitsschein erstellen</button>' : '') + '</section>'
+      ? '<section class="panel" id="customer-profile" tabindex="-1"><h3>' + (selected ? 'Kunde bearbeiten' : 'Neuer Kunde') + '</h3><form data-form="customer" class="entry-form">' + customerFields(selected) + '<button class="primary wide">Kunde speichern</button></form>' + (selected ? '<button type="button" class="secondary wide" data-action="create-order-from-customer" data-id="' + escape(selected.id) + '">Arbeitsschein erstellen</button>' : '') + '</section>'
       : '';
     return '<section class="page-head"><div><span class="eyebrow">Gemeinsame Daten</span><h2>Kundenliste</h2></div><button type="button" class="secondary" data-action="new-customer">Kunde hinzufügen</button></section>' + edit + '<section class="list-section">' + list + '</section>';
   }
@@ -365,6 +365,16 @@
   function permissions(form) { return Object.fromEntries(['time', 'customers', 'orders', 'calendar'].map(name => [name, form.elements[`perm-${name}`]?.checked !== false])); }
   async function saveCustomer(form) { const id = String(form.elements.id.value || ''); const custom = Object.fromEntries(['first_name','street','house_no','city','postal_code','phone_private','phone_mobile','email'].map(name => [name, String(form.elements[name].value || '').trim()])); String(form.elements.extra.value || '').split('\n').map(value => value.trim()).filter(Boolean).forEach((value, index) => { custom[`extra_${index + 1}`] = value; }); const data = { name: String(form.elements.name.value || '').trim(), custom_fields: custom }; if (!data.name) throw new Error('Bitte einen Kundennamen eingeben.'); if (id) await write('customers', data, 'PATCH', `id=eq.${encodeURIComponent(id)}`); else await write('customers', { ...data, employee_id: workerId() }); state.customerId = ''; }
 
+  function revealCustomerProfile() {
+    const move = () => {
+      const profile = root?.querySelector('#customer-profile');
+      if (profile) { profile.scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'auto' }); if (window.innerWidth <= 850) window.scrollBy(0, -110); }
+      else window.scrollTo(0, 0);
+    };
+    move();
+    requestAnimationFrame(move);
+    setTimeout(move, 40);
+  }
   root.addEventListener('click', event => {
     const button = event.target.closest('[data-action]'); if (!button) return;
     const action = button.dataset.action;
@@ -382,7 +392,7 @@
     if (action === 'more-material') { document.getElementById('material-lines')?.insertAdjacentHTML('beforeend', materialRow()); return; }
     if (action === 'hourly-type') { const form = button.closest('form'); if (!form?.elements.hourly_type) return; form.elements.hourly_type.value = hourlyName(button.dataset.type); form.querySelectorAll('[data-action="hourly-type"]').forEach(choice => { const active = choice.dataset.type === form.elements.hourly_type.value; choice.classList.toggle('primary', active); choice.classList.toggle('secondary', !active); }); return; }
     if (action === 'new-customer') { state.customerId = 'new'; render(); return; }
-    if (action === 'customer') { state.customerId = button.dataset.id; render(); window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
+    if (action === 'customer') { state.customerId = button.dataset.id; render(); revealCustomerProfile(); return; }
     if (action === 'create-order-from-customer') { const customer = state.rows.customers.find(row => same(row.id, button.dataset.id)); if (!customer) { notice('Der ausgewählte Kunde wurde nicht gefunden.', true); render(); return; } state.orderCustomer = customer.name; state.orderId = ''; state.orderOrigin = 'customers'; state.view = 'orders'; render(); return; }
     if (action === 'edit-material') { state.materialId = button.dataset.id; render(); return; }
     if (action === 'close-material-edit') { state.materialId = ''; render(); return; }

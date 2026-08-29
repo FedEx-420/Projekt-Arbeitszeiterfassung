@@ -233,9 +233,10 @@
       : '';
     return '<section class="page-head"><div><span class="eyebrow">Material</span><h2>Materialliste</h2></div></section>' + hourlyCards + '<section class="panel"><h3>Neues Material</h3><form data-form="material" class="entry-form"><label>Artikel<input name="name" required></label><label>Preis in €<input name="price" type="number" min="0" step="0.01" value="0"></label><button class="primary">Artikel speichern</button></form></section><section class="list-section"><h3>Vorhandene Materialien</h3>' + list + '</section>' + editor;
   }
+  function orderInCurrentBusiness(order) { return same(state.rows.people.find(person => same(person.id, order.employee_id))?.business_id, businessId()); }
   function invoiceGroups(invoiced) {
     const groups = {};
-    state.rows.orders.filter(row => Boolean(row.invoiced) === invoiced).forEach(row => { const key = row.customer_id || `name:${lower(row.customer_name || 'Ohne Kunde')}`; (groups[key] ||= { key, customerName: row.customer_name || 'Ohne Kunde', orders: [] }).orders.push(row); });
+    state.rows.orders.filter(row => orderInCurrentBusiness(row) && Boolean(row.invoiced) === invoiced).forEach(row => { const key = row.customer_id || `name:${lower(row.customer_name || 'Ohne Kunde')}`; (groups[key] ||= { key, customerName: row.customer_name || 'Ohne Kunde', orders: [] }).orders.push(row); });
     return Object.values(groups).map(group => ({ ...group, hours: group.orders.reduce((sum, row) => sum + n(row.executed_hours), 0) })).sort((a, b) => String(a.customerName).localeCompare(String(b.customerName), 'de'));
   }
   function billingListView(invoiced) {
@@ -244,7 +245,7 @@
     return `<section class="page-head"><div><span class="eyebrow">Abrechnung</span><h2>${title}</h2></div></section><section class="list-section">${groups.map(group => `<article class="row-card"><button type="button" class="row-main" data-action="open-billing" data-key="${escape(group.key)}" data-mode="${invoiced ? 'paid' : 'open'}"><b>${escape(group.customerName)}</b><span>${group.orders.length} ${invoiced ? 'abgerechnete' : 'offene'} Arbeitsscheine · ${h(group.hours)} · Zusammengefasst öffnen</span></button></article>`).join('') || `<p class="empty">${empty}</p>`}</section>`;
   }
   function invoicesView() { return billingListView(false); }
-  function paidInvoicesView() { const orders = state.rows.orders.filter(row => Boolean(row.invoiced)).sort((a, b) => String(b.work_date).localeCompare(String(a.work_date))); return `<section class="page-head"><div><span class="eyebrow">Abrechnung</span><h2>Abgerechnete Arbeitsscheine</h2></div></section><section class="list-section">${orders.map(row => `<article class="row-card"><button type="button" class="row-main" data-action="open-order" data-id="${row.id}"><b>${escape(row.customer_name || 'Ohne Kunde')}</b><span>${dateText(row.work_date)} · ${escape(row.title || 'Arbeitsschein')} · ${h(row.executed_hours)} · Öffnen</span></button></article>`).join('') || '<p class="empty">Noch keine Arbeitsscheine abgerechnet.</p>'}</section>`; }
+  function paidInvoicesView() { const orders = state.rows.orders.filter(row => orderInCurrentBusiness(row) && Boolean(row.invoiced)).sort((a, b) => String(b.work_date).localeCompare(String(a.work_date))); return `<section class="page-head"><div><span class="eyebrow">Abrechnung</span><h2>Abgerechnete Arbeitsscheine</h2></div></section><section class="list-section">${orders.map(row => `<article class="row-card"><button type="button" class="row-main" data-action="open-order" data-id="${row.id}"><b>${escape(row.customer_name || 'Ohne Kunde')}</b><span>${dateText(row.work_date)} · ${escape(row.title || 'Arbeitsschein')} · ${h(row.executed_hours)} · Öffnen</span></button></article>`).join('') || '<p class="empty">Noch keine Arbeitsscheine abgerechnet.</p>'}</section>`; }
   function billingDetailView() {
     const invoiced = state.billingMode === 'paid', group = invoiceGroups(invoiced).find(item => same(item.key, state.billingKey));
     if (!group) return `<section class="panel"><h2>Abrechnung nicht gefunden</h2><button type="button" class="secondary" data-action="close-billing">Zurück</button></section>`;

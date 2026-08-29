@@ -57,20 +57,30 @@
   }
 
   function loginCompanyKey(value) { return lower(value).normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48); }
-  function loginEmails(username, company) {
-    const name = String(username || '').trim().toLowerCase(); const key = loginCompanyKey(company || '');
-    return [...new Set([key ? `${name}--${key}@arbeitszeit.local` : '', `${name}@arbeitszeit.local`].filter(Boolean))];
+  function loginUsernameKey(value) { return `u${Array.from(new TextEncoder().encode(String(value || '').trim().normalize('NFKC').toLocaleLowerCase('de-DE')), byte => byte.toString(16).padStart(2, '0')).join('')}`; }
+  function legacyLoginUsernameKey(value) { const name = String(value || '').trim().toLowerCase(); return /^[A-Za-z0-9._-]+$/.test(name) ? name : ''; }
+  function loginEmails(username, company, administratorLogin = false) {
+    const key = loginCompanyKey(company || ''), names = [...new Set([loginUsernameKey(username), legacyLoginUsernameKey(username)].filter(Boolean))];
+    return administratorLogin ? names.map(name => `${name}@arbeitszeit.local`) : key ? names.map(name => `${name}--${key}@arbeitszeit.local`) : [];
   }
-  async function login(username, password, company) {
+  async function login(username, password, company, administratorLogin = false) {
     const name = String(username || '').trim();
-    if (!/^[A-Za-z0-9._-]{3,40}$/.test(name)) throw new Error('Bitte einen gültigen Benutzernamen eingeben.');
+    if (name.length < 3 || name.length > 80 || /[\u0000-\u001F\u007F]/.test(name)) throw new Error('Bitte einen gültigen Benutzernamen eingeben. Leerzeichen innerhalb des Namens sind erlaubt.');
+    if (!administratorLogin && !loginCompanyKey(company || '')) throw new Error('Bitte die Firma eingeben. Nur das Administratorkonto meldet sich ohne Firma an.');
     let data = null, lastError = null;
-    for (const email of loginEmails(name, company)) {
+    for (const email of loginEmails(name, company, administratorLogin)) {
       try { data = await api('/auth/v1/token?grant_type=password', { method: 'POST', body: { email, password } }); break; }
       catch (error) { lastError = error; }
     }
     if (!data) throw lastError || new Error('Firma, Benutzername oder Passwort sind nicht korrekt.');
-    state.session = data; localStorage.setItem(storage, JSON.stringify(data)); await loadApp();
+    state.session = data;
+    const own = await rows('profiles', `select=role&id=eq.${encodeURIComponent(data.user.id)}`), role = own?.[0]?.role;
+    if ((administratorLogin && role !== 'administrator') || (!administratorLogin && role === 'administrator')) {
+      try { await api('/auth/v1/logout', { method: 'POST' }); } catch { /* Session wird anschließend lokal verworfen. */ }
+      state.session = null;
+      throw new Error(administratorLogin ? 'Dieses Konto ist kein Administratorkonto.' : 'Das Administratorkonto meldet sich ohne Firma an.');
+    }
+    localStorage.setItem(storage, JSON.stringify(data)); await loadApp();
   }
   function logout() { state.session = null; state.profile = null; localStorage.removeItem(storage); render(); }
 
@@ -138,7 +148,7 @@
   function vacationLeft(id = workerId()) { const person = state.people.find(row => same(row.id, id)) || worker(); const year = state.date.slice(0, 4); const used = state.rows.vacations.filter(row => same(row.employee_id, id) && row.status === 'approved' && row.start_date <= `${year}-12-31` && row.end_date >= `${year}-01-01`).reduce((sum, row) => sum + n(row.requested_days), 0); return Math.max(0, n(person?.vacation_allowance) - used); }
   function overtime(id = workerId()) { const year = state.date.slice(0, 4), days = new Map(); dayEntries(id); state.rows.entries.filter(row => same(row.employee_id, id) && row.work_date.startsWith(year)).forEach(row => days.set(row.work_date, n(days.get(row.work_date)) + n(row.executed_hours))); return [...days].reduce((sum, [date, value]) => sum + value - dueHours(date), 0); }
 
-  function loginView() { return `<main class="login-page"><section class="login-card"><div class="brand-mark">ZE</div><h1>Zeiterfassung</h1><p>Arbeitszeiten einfach und sicher erfassen.</p><form data-form="login"><label>Firma<input name="company" autocomplete="organization" placeholder="Firmenname (bei Administrator leer lassen)"></label><label>Benutzername<input name="username" autocomplete="username" required></label><label>Passwort<input name="password" type="password" autocomplete="current-password" required></label><button class="primary" ${state.busy ? 'disabled' : ''}>Anmelden</button></form><button class="link-button" type="button" data-action="forgot">Passwort vergessen?</button>${noticeHtml()}</section></main>`; }
+  function loginView() { return `<main class="login-page"><section class="login-card"><div class="brand-mark">ZE</div><h1>Zeiterfassung</h1><p>Arbeitszeiten einfach und sicher erfassen.</p><form data-form="login"><label>Firma<input name="company" autocomplete="organization" placeholder="Firmenname" required></label><label>Benutzername<input name="username" autocomplete="username" required></label><label>Passwort<input name="password" type="password" autocomplete="current-password" required></label><label class="login-admin"><input name="administrator_login" type="checkbox"> Anmeldung als Administrator (nur dann ohne Firma)</label><button class="primary" ${state.busy ? 'disabled' : ''}>Anmelden</button></form><button class="link-button" type="button" data-action="forgot">Passwort vergessen?</button>${noticeHtml()}</section></main>`; }
   function menuItems() { return [['home','Übersicht',true],['time','Zeiterfassung',canUse('time')],['orders','Arbeitsscheine',canUse('orders')],['calendar','Kalender',canUse('calendar')],['customers','Kunden',canUse('customers')],['mailbox','Postfach',true],['materials','Materialliste',isManager()],['invoices','Abrechnungen Kunden',isManager()],['invoices-paid','Abgerechnete Arbeitsscheine',isManager()],['settings','Einstellungen',true]].filter(([, , yes]) => yes); }
   function selector() {
     if (!isManager()) return '';
@@ -367,6 +377,25 @@
     if (!material?.id) throw new Error('Die Stundenposition konnte nicht angelegt werden.');
     await write('work_order_items', { work_order_id: order.id, material_id: material.id, position_name: name, quantity: Math.max(0.25, n(hours)), unit_price: n(material.unit_price) });
   }
+  function currentMaterialForItem(item) { return state.rows.materials.find(material => same(material.id, item?.material_id)); }
+  function invoiceItemPrice(item, order) {
+    const material = currentMaterialForItem(item);
+    return !order?.invoiced && material ? n(material.unit_price) : n(item?.unit_price);
+  }
+  function invoiceItemName(item, order) {
+    const material = currentMaterialForItem(item);
+    return !order?.invoiced && material?.name ? material.name : item?.position_name || 'Leistung';
+  }
+  async function snapshotCurrentPrices(orders) {
+    for (const order of orders || []) {
+      for (const item of state.rows.items.filter(row => same(row.work_order_id, order.id))) {
+        const material = currentMaterialForItem(item);
+        if (!material) continue;
+        const price = n(material.unit_price), name = material.name;
+        if (n(item.unit_price) !== price || item.position_name !== name) await write('work_order_items', { unit_price: price, position_name: name }, 'PATCH', `id=eq.${encodeURIComponent(item.id)}`);
+      }
+    }
+  }
   async function updateHourlyPrice(form) {
     const material = state.rows.materials.find(row => same(row.id, form.elements.id.value) && same(row.business_id, businessId()) && isHourlyMaterial(row));
     if (!material) throw new Error('Die geschützte Stundenposition wurde nicht gefunden.');
@@ -494,7 +523,7 @@
     if (action === 'delete-order') return confirm('Arbeitsschein wirklich löschen?') && perform('Arbeitsschein wurde gelöscht.', async () => { const id = encodeURIComponent(button.dataset.id); await remove('work_order_items', `work_order_id=eq.${id}`); await remove('work_order_documents', `work_order_id=eq.${id}`); await remove('time_entries', `work_order_id=eq.${id}`); await remove('work_orders', `id=eq.${id}`); });
     if (action === 'delete-customer') return confirm('Kunde wirklich löschen?') && perform('Kunde wurde gelöscht.', () => remove('customers', `id=eq.${encodeURIComponent(button.dataset.id)}`));
     if (action === 'delete-material') { const material = state.rows.materials.find(row => same(row.id, button.dataset.id)); if (isHourlyMaterial(material)) { notice('Diese Stundenposition ist geschützt und kann nicht gelöscht werden.'); render(); return; } return confirm('Material wirklich löschen?') && perform('Material wurde gelöscht.', () => remove('materials', `id=eq.${encodeURIComponent(button.dataset.id)}`)); }
-    if (action === 'invoice') return perform('Arbeitsschein wurde als abgerechnet markiert.', () => write('work_orders', { invoiced: true }, 'PATCH', `id=eq.${encodeURIComponent(button.dataset.id)}`));
+    if (action === 'invoice') return perform('Arbeitsschein wurde als abgerechnet markiert.', async () => { const order = state.rows.orders.find(row => same(row.id, button.dataset.id)); if (!order) throw new Error('Der Arbeitsschein wurde nicht gefunden.'); await snapshotCurrentPrices([order]); await write('work_orders', { invoiced: true }, 'PATCH', `id=eq.${encodeURIComponent(button.dataset.id)}`); });
     if (action === 'remove-company-logo') return confirm('Firmenlogo wirklich entfernen?') && perform('Das Firmenlogo wurde entfernt.', () => account('business-logo-update', { businessId: businessId(), logoPath: null }));
     if (action === 'invoice-order') {
       const group = invoiceGroups(false).find(item => item.orders.some(order => same(order.id, button.dataset.id)));
@@ -508,9 +537,9 @@
       const group = invoiceGroups(false).find(item => item.orders.some(order => same(order.id, button.dataset.id)));
       if (!group) { notice('Für diesen Arbeitsschein ist keine offene Abrechnung verfügbar.', true); render(); return; }
       if (!confirm(`Wirklich alle ${group.orders.length} offenen Arbeitsschein(e) für ${group.customerName} als abgerechnet markieren? Dies erfolgt erst nach Abschluss der Rechnung.`)) return;
-      return perform('Die enthaltenen Arbeitsscheine wurden als abgerechnet markiert.', async () => { for (const order of group.orders) await write('work_orders', { invoiced: true }, 'PATCH', `id=eq.${encodeURIComponent(order.id)}`); state.orderId = ''; state.view = 'invoices-paid'; });
+      return perform('Die enthaltenen Arbeitsscheine wurden als abgerechnet markiert.', async () => { await snapshotCurrentPrices(group.orders); for (const order of group.orders) await write('work_orders', { invoiced: true }, 'PATCH', `id=eq.${encodeURIComponent(order.id)}`); state.orderId = ''; state.view = 'invoices-paid'; });
     }
-    if (action === 'mark-invoice-group') { const group = invoiceGroups(false).find(item => same(item.key, state.billingKey)); if (!group) return; if (!confirm(`Wirklich alle ${group.orders.length} offenen Arbeitsschein(e) für ${group.customerName} als abgerechnet markieren? Dies erfolgt erst nach Abschluss der Rechnung.`)) return; return perform('Die enthaltenen Arbeitsscheine wurden als abgerechnet markiert.', async () => { for (const order of group.orders) await write('work_orders', { invoiced: true }, 'PATCH', `id=eq.${encodeURIComponent(order.id)}`); state.billingKey = ''; state.view = 'invoices-paid'; }); }
+    if (action === 'mark-invoice-group') { const group = invoiceGroups(false).find(item => same(item.key, state.billingKey)); if (!group) return; if (!confirm(`Wirklich alle ${group.orders.length} offenen Arbeitsschein(e) für ${group.customerName} als abgerechnet markieren? Dies erfolgt erst nach Abschluss der Rechnung.`)) return; return perform('Die enthaltenen Arbeitsscheine wurden als abgerechnet markiert.', async () => { await snapshotCurrentPrices(group.orders); for (const order of group.orders) await write('work_orders', { invoiced: true }, 'PATCH', `id=eq.${encodeURIComponent(order.id)}`); state.billingKey = ''; state.view = 'invoices-paid'; }); }
     if (action === 'read') return perform('Nachricht als gelesen markiert.', () => write('mailbox_messages', { read_at: new Date().toISOString() }, 'PATCH', `id=eq.${encodeURIComponent(button.dataset.id)}`));
     if (action === 'trash') return perform('Nachricht wurde in den Papierkorb verschoben.', () => write('mailbox_messages', { deleted_at: new Date().toISOString() }, 'PATCH', `id=eq.${encodeURIComponent(button.dataset.id)}`));
     if (action === 'restore-mail') return perform('Nachricht wurde wiederhergestellt.', () => write('mailbox_messages', { deleted_at: null }, 'PATCH', `id=eq.${encodeURIComponent(button.dataset.id)}`));
@@ -539,6 +568,7 @@
   root.addEventListener('change', event => {
     const input = event.target;
     if (input.matches('input[type="time"]')) { input.value = roundTime(input.value); input.dispatchEvent(new Event('input', { bubbles: true })); return; }
+    if (input.matches('[name="administrator_login"]')) { const form = input.closest('form[data-form="login"]'), company = form?.elements.company; if (company) { company.disabled = input.checked; company.required = !input.checked; if (input.checked) company.value = ''; } return; }
     if (input.matches('[data-date]')) { state.date = input.value || today(); state.month = state.date.slice(0, 7); render(); return; }
     if (input.matches('[data-select="business"]')) { state.businessId = input.value; state.employeeId = ''; render(); return; }
     if (input.matches('[data-select="employee"]')) { state.employeeId = input.value; render(); }
@@ -548,7 +578,7 @@
     const form = event.target; if (!(form instanceof HTMLFormElement)) return;
     event.preventDefault(); const name = form.dataset.form;
     const submitters = {
-      login: () => login(form.elements.username.value, form.elements.password.value, form.elements.company.value),
+      login: () => login(form.elements.username.value, form.elements.password.value, form.elements.company.value, form.elements.administrator_login?.checked === true),
       time: () => saveTime(form), order: () => saveOrder(form), 'order-edit': () => updateOrder(form), customer: () => saveCustomer(form),
       material: () => { if (isHourlyMaterial(form.elements.name.value)) throw new Error('Diese geschützte Stundenposition ist bereits vorhanden.'); return write('materials', { business_id: businessId(), name: String(form.elements.name.value || '').trim(), unit_price: n(form.elements.price.value), active: true }); },
       'hourly-price': () => updateHourlyPrice(form),
@@ -601,9 +631,9 @@
       const employee = employeeInfo(order);
       const orderItems = state.rows.items.filter(item => same(item.work_order_id, order.id));
       const items = orderItems.length ? orderItems : [{ position_name: order.title || 'Arbeitsleistung', quantity: n(order.executed_hours), unit_price: 0 }];
-      return items.map(item => `<tr><td>${dateText(order.work_date)}</td><td><b>${escape(employee.name)}</b><small>Arbeitszeit: ${escape(employee.time)} · Stunden: ${escape(employee.hours)}</small>${escape(item.position_name || 'Leistung')}${order.title ? `<small>${escape(order.title)}</small>` : ''}</td><td>${n(item.quantity).toLocaleString('de-DE')}</td><td>${money(item.unit_price)}</td><td>${money(n(item.quantity) * n(item.unit_price))}</td></tr>`);
+      return items.map(item => { const price = invoiceItemPrice(item, order), name = invoiceItemName(item, order); return `<tr><td>${dateText(order.work_date)}</td><td><b>${escape(employee.name)}</b><small>Arbeitszeit: ${escape(employee.time)} · Stunden: ${escape(employee.hours)}</small>${escape(name)}${order.title ? `<small>${escape(order.title)}</small>` : ''}</td><td>${n(item.quantity).toLocaleString('de-DE')}</td><td>${money(price)}</td><td>${money(n(item.quantity) * price)}</td></tr>`; });
     }).join('');
-    const total = group.orders.reduce((sum, order) => sum + state.rows.items.filter(item => same(item.work_order_id, order.id)).reduce((itemSum, item) => itemSum + n(item.quantity) * n(item.unit_price), 0), 0);
+    const total = group.orders.reduce((sum, order) => sum + state.rows.items.filter(item => same(item.work_order_id, order.id)).reduce((itemSum, item) => itemSum + n(item.quantity) * invoiceItemPrice(item, order), 0), 0);
     const logo = companyLogoUrl(company);
     const windowRef = window.open('', '_blank');
     if (!windowRef) throw new Error('Bitte Pop-ups erlauben, um die Rechnung als PDF zu erstellen.');
@@ -621,8 +651,8 @@
   function printBillingPdf(key, invoiced) {
     const group = invoiceGroups(invoiced).find(item => same(item.key, key)); if (!group) throw new Error('Die Abrechnung wurde nicht gefunden.');
     const money = value => n(value).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
-    const detailRows = group.orders.map(order => { const person = state.rows.people.find(row => same(row.id, order.employee_id)); const employeeName = person?.display_name || person?.username || 'Mitarbeiter nicht verfügbar'; const items = state.rows.items.filter(item => same(item.work_order_id, order.id)); const materials = items.length ? `<ul>${items.map(item => `<li>${escape(item.position_name)} · ${n(item.quantity).toLocaleString('de-DE')} × ${money(item.unit_price)} = ${money(n(item.quantity) * n(item.unit_price))}</li>`).join('')}</ul>` : '<p>Kein Material erfasst.</p>'; return `<section><h2>${dateText(order.work_date)} · ${escape(order.title || 'Arbeitsschein')}</h2><p><b>Mitarbeiter:</b> ${escape(employeeName)}<br><b>Arbeitszeit:</b> ${timeText(order.start_time)} bis ${timeText(order.end_time)} · <b>Pause:</b> ${h(order.pause_hours)} · <b>Stunden:</b> ${h(order.executed_hours)}</p>${order.documentation ? `<p><b>Dokumentation:</b><br>${escape(order.documentation).replace(/\n/g, '<br>')}</p>` : ''}<h3>Material</h3>${materials}</section>`; }).join('');
-    const totalHours = group.orders.reduce((sum, order) => sum + n(order.executed_hours), 0), totalMaterial = group.orders.reduce((sum, order) => sum + state.rows.items.filter(item => same(item.work_order_id, order.id)).reduce((itemSum, item) => itemSum + n(item.quantity) * n(item.unit_price), 0), 0);
+    const detailRows = group.orders.map(order => { const person = state.rows.people.find(row => same(row.id, order.employee_id)); const employeeName = person?.display_name || person?.username || 'Mitarbeiter nicht verfügbar'; const items = state.rows.items.filter(item => same(item.work_order_id, order.id)); const materials = items.length ? `<ul>${items.map(item => { const price = invoiceItemPrice(item, order); return `<li>${escape(invoiceItemName(item, order))} · ${n(item.quantity).toLocaleString('de-DE')} × ${money(price)} = ${money(n(item.quantity) * price)}</li>`; }).join('')}</ul>` : '<p>Kein Material erfasst.</p>'; return `<section><h2>${dateText(order.work_date)} · ${escape(order.title || 'Arbeitsschein')}</h2><p><b>Mitarbeiter:</b> ${escape(employeeName)}<br><b>Arbeitszeit:</b> ${timeText(order.start_time)} bis ${timeText(order.end_time)} · <b>Pause:</b> ${h(order.pause_hours)} · <b>Stunden:</b> ${h(order.executed_hours)}</p>${order.documentation ? `<p><b>Dokumentation:</b><br>${escape(order.documentation).replace(/\n/g, '<br>')}</p>` : ''}<h3>Material</h3>${materials}</section>`; }).join('');
+    const totalHours = group.orders.reduce((sum, order) => sum + n(order.executed_hours), 0), totalMaterial = group.orders.reduce((sum, order) => sum + state.rows.items.filter(item => same(item.work_order_id, order.id)).reduce((itemSum, item) => itemSum + n(item.quantity) * invoiceItemPrice(item, order), 0), 0);
     const windowRef = window.open('', '_blank'); if (!windowRef) throw new Error('Bitte Pop-ups erlauben, um die PDF zu erstellen.');
     windowRef.document.write(`<!doctype html><title>Zusammengefasster Arbeitsschein</title><style>body{font:14px Arial;padding:24px;color:#183431}h1{margin:0 0 4px}h2{margin:26px 0 8px;padding-top:18px;border-top:1px solid #d7e3e0}h3{font-size:14px;margin:14px 0 5px}p,li{line-height:1.55}ul{margin:0;padding-left:20px}.summary{background:#edf5f3;padding:14px;border-radius:8px}</style><h1>Zusammengefasster Arbeitsschein</h1><p>${escape(managerBusiness()?.company_name || 'Zeiterfassung')}<br><b>Kunde:</b> ${escape(group.customerName)}<br><b>Status:</b> ${invoiced ? 'Bereits abgerechnet' : 'Offen zur Abrechnung'}</p><p class="summary"><b>${group.orders.length} Arbeitsscheine</b><br>Arbeitsstunden gesamt: ${h(totalHours)}<br>Material gesamt: ${money(totalMaterial)}</p>${detailRows}<p class="summary"><b>Gesamtsumme aller enthaltenen Arbeitsscheine: ${money(totalMaterial)}</b></p><script>window.onload=()=>window.print()<\/script>`); windowRef.document.close();
   }

@@ -10,8 +10,8 @@
   const today = () => new Date().toISOString().slice(0, 10);
   const state = {
     session: null, profile: null, people: [], view: 'home', date: today(), month: today().slice(0, 7),
-    businessId: '', employeeId: '', customerId: '', materialId: '', orderId: '', orderCustomer: '', orderOrigin: 'orders', billingKey: '', billingMode: 'open', menu: false, vacationForm: false, appointmentForm: false, notice: null, busy: false,
-    rows: { entries: [], orders: [], items: [], customers: [], days: [], vacations: [], messages: [], materials: [], appointments: [], payslips: [], documents: [] }
+    businessId: '', employeeId: '', customerId: '', materialId: '', orderId: '', orderCustomer: '', orderOrigin: 'orders', billingKey: '', billingMode: 'open', menu: false, vacationForm: false, appointmentForm: false, composeMessage: false, notice: null, busy: false,
+    rows: { entries: [], orders: [], items: [], customers: [], days: [], vacations: [], messages: [], attachments: [], recipients: [], materials: [], appointments: [], payslips: [], documents: [] }
   };
 
   const escape = value => String(value ?? '').replace(/[&<>'"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[ch]);
@@ -88,11 +88,12 @@
   }
   async function reload() {
     const load = async (name, table, query = 'select=*') => { try { state.rows[name] = await rows(table, query) || []; } catch { state.rows[name] = []; } };
+    const loadRecipients = async () => { try { state.rows.recipients = (await api('/functions/v1/mailbox-send', { method: 'POST', body: { action: 'recipients' } }))?.recipients || []; } catch { state.rows.recipients = []; } };
     await Promise.all([
       load('people', 'profiles'), load('entries', 'time_entries', 'select=*&order=work_date.desc,created_at.desc'), load('orders', 'work_orders', 'select=*&order=work_date.desc,created_at.desc'),
       load('items', 'work_order_items'), load('customers', 'customers', 'select=*&order=name.asc'), load('days', 'work_days'), load('vacations', 'vacation_requests', 'select=*&order=created_at.desc'),
-      load('messages', 'mailbox_messages', 'select=*&order=created_at.desc'), load('materials', 'materials', 'select=*&order=name.asc'), load('appointments', 'appointments'),
-      load('payslips', 'employee_payslips', 'select=*&order=created_at.desc'), load('documents', 'work_order_documents')
+      load('messages', 'mailbox_messages', 'select=*&order=created_at.desc'), load('attachments', 'mailbox_attachments', 'select=*&order=created_at.asc'), load('materials', 'materials', 'select=*&order=name.asc'), load('appointments', 'appointments'),
+      load('payslips', 'employee_payslips', 'select=*&order=created_at.desc'), load('documents', 'work_order_documents'), loadRecipients()
     ]);
     state.people = state.rows.people;
     if (isAdmin() && !businesses().some(person => same(person.id, state.businessId))) state.businessId = businesses()[0]?.id || '';
@@ -217,7 +218,14 @@
       : '';
     return '<section class="page-head"><div><span class="eyebrow">Gemeinsame Daten</span><h2>Kundenliste</h2></div><button type="button" class="secondary" data-action="new-customer">Kunde hinzufügen</button></section>' + edit + '<section class="list-section">' + list + '</section>';
   }
-  function mailboxView() { const messages = state.rows.messages.filter(row => !row.deleted_at); return `<section class="page-head"><div><span class="eyebrow">Persönlich</span><h2>Postfach</h2></div></section><section class="message-list">${messages.map(message => { const body = message.body || {}; const decision = message.message_type === 'vacation_request' && isManager() ? `<div class="actions"><button type="button" class="primary small" data-action="vacation-decision" data-id="${message.id}" data-request="${escape(body.request_id || '')}" data-status="approved">Genehmigen</button><button type="button" class="secondary small" data-action="vacation-decision" data-id="${message.id}" data-request="${escape(body.request_id || '')}" data-status="rejected">Ablehnen</button></div>` : ''; return `<article class="message ${message.read_at ? 'read' : 'unread'}"><header><b>${escape(message.title)}</b><time>${new Intl.DateTimeFormat('de-DE', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(message.created_at))}</time></header><p>${escape(body.message || body.note || (body.start_date ? `${dateText(body.start_date)} bis ${dateText(body.end_date)}` : ''))}</p>${decision}<div class="message-actions">${!message.read_at ? `<button type="button" data-action="read" data-id="${message.id}">Als gelesen markieren</button>` : ''}<button type="button" data-action="trash" data-id="${message.id}">Löschen</button></div></article>`; }).join('') || '<p class="empty">Keine Nachrichten vorhanden.</p>'}</section>`; }
+  function messageRecipients() { return state.rows.recipients || []; }
+  function personName(person) { return person?.display_name || person?.username || 'Unbekannt'; }
+  function personRole(person) { return person?.role === 'administrator' ? 'Administrator' : person?.role === 'business' ? 'Geschäftskonto' : 'Mitarbeiter'; }
+  function mailboxView() {
+    const messages = state.rows.messages.filter(row => !row.deleted_at), recipients = messageRecipients();
+    const compose = state.composeMessage ? `<section class="panel"><section class="page-head"><div><span class="eyebrow">Neue Nachricht</span><h3>Nachricht schreiben</h3></div><button type="button" class="secondary small" data-action="compose-message">Schließen</button></section>${recipients.length ? `<form data-form="message-send" class="entry-form"><label class="wide">Empfänger<select name="recipient" required><option value="">Bitte auswählen</option>${recipients.map(person => `<option value="${person.id}">${escape(personName(person))} · ${personRole(person)}</option>`).join('')}</select></label><label class="wide">Betreff<input name="title" maxlength="160" required></label><label class="wide">Nachricht<textarea name="message" rows="6" maxlength="10000" required></textarea></label><label class="wide">Anhänge (PDF, Bilder, Office-Dateien usw.; max. 25 MB je Datei)<input name="attachments" type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.gif,.txt,.csv,.doc,.docx,.xls,.xlsx"></label><button class="primary wide">Nachricht senden</button></form>` : '<p class="empty">Es ist kein zulässiger Empfänger verfügbar.</p>'}</section>` : '';
+    return `<section class="page-head"><div><span class="eyebrow">Persönlich</span><h2>Postfach</h2></div><button type="button" class="primary" data-action="compose-message">Neue Nachricht</button></section>${compose}<section class="message-list">${messages.map(message => { const body = message.body || {}, sender = state.rows.people.find(person => same(person.id, message.sender_id)), attachments = state.rows.attachments.filter(attachment => same(attachment.message_id, message.id)); const decision = message.message_type === 'vacation_request' && isManager() ? `<div class="actions"><button type="button" class="primary small" data-action="vacation-decision" data-id="${message.id}" data-request="${escape(body.request_id || '')}" data-status="approved">Genehmigen</button><button type="button" class="secondary small" data-action="vacation-decision" data-id="${message.id}" data-request="${escape(body.request_id || '')}" data-status="rejected">Ablehnen</button></div>` : ''; const files = attachments.length ? `<div class="message-actions">${attachments.map(attachment => `<button type="button" class="secondary small" data-action="download-mail-attachment" data-id="${attachment.id}">Anhang: ${escape(attachment.file_name)}</button>`).join('')}</div>` : ''; const canDelete = isAdmin() || same(message.recipient_id, state.profile?.id); return `<article class="message ${message.read_at ? 'read' : 'unread'}"><header><b>${escape(message.title)}</b><time>${new Intl.DateTimeFormat('de-DE', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(message.created_at))}</time></header>${message.sender_id ? `<p><b>Von:</b> ${escape(body.sender_name || personName(sender))}</p>` : ''}<p>${escape(body.message || body.note || (body.start_date ? `${dateText(body.start_date)} bis ${dateText(body.end_date)}` : ''))}</p>${files}${decision}<div class="message-actions">${!message.read_at && same(message.recipient_id, state.profile?.id) ? `<button type="button" data-action="read" data-id="${message.id}">Als gelesen markieren</button>` : ''}${canDelete ? `<button type="button" data-action="trash" data-id="${message.id}">Löschen</button>` : ''}</div></article>`; }).join('') || '<p class="empty">Keine Nachrichten vorhanden.</p>'}</section>`;
+  }
 
   function materialEditFields(material) {
     return '<input type="hidden" name="id" value="' + escape(material.id) + '"><label>Artikel<input name="name" required value="' + escape(material.name) + '"></label><label>Preis in €<input name="price" type="number" min="0" step="0.01" value="' + n(material.unit_price) + '"></label>';
@@ -375,6 +383,25 @@
     await upload('company-logos', path, file);
     await account('business-logo-update', { businessId: businessId(), logoPath: path });
   }
+  async function sendMailboxMessage(form) {
+    const files = [...(form.elements.attachments?.files || [])];
+    if (files.length > 10) throw new Error('Bitte höchstens zehn Anhänge auf einmal auswählen.');
+    for (const file of files) if (file.size > 25 * 1024 * 1024) throw new Error(`„${file.name}“ ist größer als 25 MB.`);
+    const sent = await api('/functions/v1/mailbox-send', { method: 'POST', body: { action: 'send', recipientId: form.elements.recipient.value, title: form.elements.title.value, message: form.elements.message.value } });
+    const message = sent?.message;
+    if (!message?.id) throw new Error('Die Nachricht konnte nicht erstellt werden.');
+    if (files.length) {
+      const attachments = [];
+      for (const file of files) {
+        const safe = file.name.replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 160) || 'Datei';
+        const path = `${message.id}/${Date.now()}-${crypto.getRandomValues(new Uint32Array(1))[0]}-${safe}`.slice(0, 215);
+        await upload('mailbox-attachments', path, file);
+        attachments.push({ filePath: path, fileName: file.name.slice(0, 180), mimeType: file.type || '', fileSize: file.size });
+      }
+      await api('/functions/v1/mailbox-send', { method: 'POST', body: { action: 'attach', messageId: message.id, attachments } });
+    }
+    state.composeMessage = false;
+  }
   async function saveTime(form) { const id = workerId(); if (locked(id)) throw new Error(lockedText(id)); const customer = await ensureCustomer(form.elements.customer.value, id); const value = timeValues(form); await write('time_entries', { employee_id: id, work_date: state.date, customer_id: customer.id, customer_name: customer.name, start_time: value.start, end_time: value.end, pause_hours: value.pause, executed_hours: value.hours, calculation_mode: 'end_time' }); }
   async function saveOrder(form) { const id = workerId(); if (locked(id)) throw new Error(lockedText(id)); const customer = await ensureCustomer(form.elements.customer.value, id); const value = timeValues(form); const created = await write('work_orders', { employee_id: id, work_date: state.date, customer_id: customer.id, customer_name: customer.name, title: String(form.elements.title.value || '').trim(), start_time: value.start, end_time: value.end, pause_hours: value.pause, executed_hours: value.hours, calculation_mode: 'end_time', documentation: String(form.elements.documentation.value || '') }); const order = created?.[0]; if (!order) throw new Error('Der Arbeitsschein konnte nicht gespeichert werden.'); await saveMaterials(form, order); await saveHourlyMaterial(order, value.hours, form.elements.hourly_type.value); await saveDocuments(form, order, id); state.orderCustomer = ''; }
   async function updateOrder(form) { const order = state.rows.orders.find(row => same(row.id, form.elements.id.value)); if (!order) throw new Error('Der Arbeitsschein wurde nicht gefunden.'); const id = order.employee_id, workDate = form.elements.work_date.value || order.work_date; if (workDate !== order.work_date && locked(id, workDate)) throw new Error(lockedText(id, workDate)); const customer = await ensureCustomer(form.elements.customer.value, id), value = timeValues(form); const changes = { customer_id: customer.id, customer_name: customer.name, title: String(form.elements.title.value || '').trim(), start_time: value.start, end_time: value.end, pause_hours: value.pause, executed_hours: value.hours, calculation_mode: 'end_time', documentation: String(form.elements.documentation.value || '') }; if (workDate !== order.work_date) changes.work_date = workDate; await write('work_orders', changes, 'PATCH', `id=eq.${encodeURIComponent(order.id)}`); await saveMaterials(form, order, true); await saveHourlyMaterial(order, value.hours, form.elements.hourly_type.value); await saveDocuments(form, order, id); state.orderId = ''; state.view = state.orderOrigin || 'orders'; }
@@ -412,7 +439,7 @@
     const button = event.target.closest('[data-action]'); if (!button) return;
     const action = button.dataset.action;
     if (action === 'menu') { state.menu = !state.menu; render(); return; }
-    if (action === 'nav') { state.view = button.dataset.view; state.menu = false; state.vacationForm = false; state.orderId = ''; state.orderCustomer = ''; state.orderOrigin = 'orders'; state.billingKey = ''; render(); return; }
+    if (action === 'nav') { state.view = button.dataset.view; state.menu = false; state.vacationForm = false; state.composeMessage = false; state.orderId = ''; state.orderCustomer = ''; state.orderOrigin = 'orders'; state.billingKey = ''; render(); return; }
     if (action === 'logout') return logout();
     if (action === 'forgot') return perform('Die zuständige Verwaltung wurde informiert.', () => api('/functions/v1/request-password-help', { method: 'POST', body: { username: root.querySelector('[name="username"]')?.value || '' } }));
     if (action === 'pick-day') { state.date = button.dataset.date; state.month = state.date.slice(0, 7); state.vacationForm = false; render(); return; }
@@ -432,6 +459,8 @@
     if (action === 'pdf') return printPdf();
     if (action === 'order-pdf') return printOrderPdf(button.dataset.id);
     if (action === 'billing-pdf') return printBillingPdf(state.billingKey, state.billingMode === 'paid');
+    if (action === 'compose-message') { state.composeMessage = !state.composeMessage; render(); return; }
+    if (action === 'download-mail-attachment') { const attachment = state.rows.attachments.find(row => same(row.id, button.dataset.id)); if (!attachment) { notice('Der Anhang wurde nicht gefunden.', true); render(); return; } return download('mailbox-attachments', attachment.file_path, attachment.file_name); }
     if (action === 'delete-time') return confirm('Zeiterfassung wirklich löschen?') && perform('Zeiterfassung wurde gelöscht.', () => remove('time_entries', `id=eq.${encodeURIComponent(button.dataset.id)}`));
     if (action === 'delete-order') return confirm('Arbeitsschein wirklich löschen?') && perform('Arbeitsschein wurde gelöscht.', async () => { const id = encodeURIComponent(button.dataset.id); await remove('work_order_items', `work_order_id=eq.${id}`); await remove('work_order_documents', `work_order_id=eq.${id}`); await remove('time_entries', `work_order_id=eq.${id}`); await remove('work_orders', `id=eq.${id}`); });
     if (action === 'delete-customer') return confirm('Kunde wirklich löschen?') && perform('Kunde wurde gelöscht.', () => remove('customers', `id=eq.${encodeURIComponent(button.dataset.id)}`));
@@ -495,6 +524,7 @@
       'hourly-price': () => updateHourlyPrice(form),
       'material-edit': () => updateMaterial(form),
       vacation: () => flow('request', { employeeId: workerId(), startDate: form.elements.start.value, endDate: form.elements.end.value }),
+      'message-send': () => sendMailboxMessage(form),
       'company-logo': () => saveCompanyLogo(form),
       self: () => account('self-update', { username: form.elements.username.value, password: form.elements.password.value, companyName: form.elements.company?.value, vacationAllowance: n(form.elements.allowance.value) }),
       'employee-new': () => account('employee-create', { businessId: businessId(), username: form.elements.username.value, password: form.elements.password.value, vacationAllowance: n(form.elements.allowance.value), menuPermissions: permissions(form) }),

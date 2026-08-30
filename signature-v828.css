@@ -1,0 +1,7 @@
+.signature-field{display:grid;gap:8px}
+.signature-pad{display:block;width:100%;min-height:154px;border:2px dashed #8dbab2;border-radius:14px;background:repeating-linear-gradient(0deg,#fff,#fff 30px,#f4f9f8 31px);touch-action:none;cursor:crosshair}
+.signature-pad.is-signed{border-style:solid;border-color:#178775;background:#fff}
+.signature-help{margin:0;color:var(--muted);font-size:13px}
+button[data-signature-submit][disabled]{cursor:not-allowed;opacity:.52}
+@media(max-width:600px){.signature-pad{min-height:138px}}
+

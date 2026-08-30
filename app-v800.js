@@ -221,33 +221,34 @@
     if (!input || input.dataset.ready === 'true') return;
     input.dataset.ready = 'true';
     const update = () => {
-      const cursor = input.selectionStart ?? input.value.length;
       state.customerSearch = input.value;
-      render();
-      requestAnimationFrame(() => {
-        const next = root?.querySelector('[data-customer-search]');
-        if (!next) return;
-        next.focus({ preventScroll: true });
-        next.setSelectionRange(Math.min(cursor, next.value.length), Math.min(cursor, next.value.length));
+      const query = customerSearchKey(input.value), cards = [...root.querySelectorAll('[data-customer-search-item]')];
+      let matches = 0;
+      cards.forEach(card => {
+        const visible = !query || String(card.dataset.customerSearch || '').includes(query);
+        card.style.display = visible ? '' : 'none';
+        card.setAttribute('aria-hidden', visible ? 'false' : 'true');
+        if (visible) matches += 1;
       });
+      const empty = root.querySelector('[data-customer-search-empty]');
+      if (empty) empty.style.display = query && matches === 0 ? 'block' : 'none';
     };
     input.addEventListener('input', update);
     input.addEventListener('search', update);
+    update();
   }
 
   function customersView() {
     const selected = state.rows.customers.find(row => same(row.id, state.customerId));
-    const query = customerSearchKey(state.customerSearch);
-    const matchingCustomers = state.rows.customers.filter(row => !query || customerSearchText(row).includes(query));
-    const list = matchingCustomers.map(row => {
+    const list = state.rows.customers.map(row => {
       const total = state.rows.entries.filter(entry => same(entry.customer_id, row.id)).reduce((sum, entry) => sum + n(entry.executed_hours), 0);
       const removeButton = isManager() ? '<button type="button" class="danger small" data-action="delete-customer" data-id="' + escape(row.id) + '">Löschen</button>' : '';
-      return '<article class="row-card"><button type="button" class="row-main" data-action="customer" data-id="' + escape(row.id) + '"><b>' + escape(row.name) + '</b><span>' + h(total) + ' gesamt</span></button>' + removeButton + '</article>';
-    }).join('') || `<p class="empty">${state.rows.customers.length ? 'Kein passender Kunde gefunden.' : 'Noch keine Kunden angelegt.'}</p>`;
+      return '<article class="row-card" data-customer-search-item data-customer-search="' + escape(customerSearchText(row)) + '"><button type="button" class="row-main" data-action="customer" data-id="' + escape(row.id) + '"><b>' + escape(row.name) + '</b><span>' + h(total) + ' gesamt</span></button>' + removeButton + '</article>';
+    }).join('') || '<p class="empty">Noch keine Kunden angelegt.</p>';
     const edit = selected || state.customerId === 'new'
       ? '<section class="panel" id="customer-profile" tabindex="-1"><h3>' + (selected ? 'Kunde bearbeiten' : 'Neuer Kunde') + '</h3><form data-form="customer" class="entry-form">' + customerFields(selected) + '<button class="primary wide">Kunde speichern</button></form>' + (selected ? '<button type="button" class="secondary wide" data-action="create-order-from-customer" data-id="' + escape(selected.id) + '">Arbeitsschein erstellen</button>' : '') + '</section>'
       : '';
-    return '<section class="page-head"><div><span class="eyebrow">Gemeinsame Daten</span><h2>Kundenliste</h2></div><button type="button" class="secondary" data-action="new-customer">Kunde hinzufügen</button></section>' + edit + '<section class="list-section"><label>Kunden suchen<input type="search" data-customer-search value="' + escape(state.customerSearch) + '" placeholder="Name, Ort, Adresse, Telefon oder E-Mail"></label>' + list + '</section>';
+    return '<section class="page-head"><div><span class="eyebrow">Gemeinsame Daten</span><h2>Kundenliste</h2></div><button type="button" class="secondary" data-action="new-customer">Kunde hinzufügen</button></section>' + edit + '<section class="list-section"><label>Kunden suchen<input type="search" data-customer-search value="' + escape(state.customerSearch) + '" placeholder="Name, Ort, Adresse, Telefon oder E-Mail"></label><p class="empty" data-customer-search-empty style="display:none">Kein passender Kunde gefunden.</p>' + list + '</section>';
   }
   function messageRecipients() { return state.rows.recipients || []; }
   function personName(person) { return person?.display_name || person?.username || 'Unbekannt'; }

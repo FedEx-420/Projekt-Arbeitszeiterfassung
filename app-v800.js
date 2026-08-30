@@ -457,10 +457,15 @@
       const form = canvas.closest('form'), hidden = form?.elements.signature_data;
       if (!form || !hidden) return;
       canvas.dataset.ready = 'true';
+      canvas.style.touchAction = 'none';
       const context = canvas.getContext('2d'); context.lineCap = 'round'; context.lineJoin = 'round'; context.strokeStyle = '#075d59'; context.lineWidth = 5;
       const point = event => { const box = canvas.getBoundingClientRect(); return { x: (event.clientX - box.left) * (canvas.width / box.width), y: (event.clientY - box.top) * (canvas.height / box.height) }; };
       const save = () => { hidden.value = canvas.toDataURL('image/png'); canvas.classList.add('is-signed'); syncSignatureSubmit(form); };
       let drawing = false, last = null;
+      const preventTouchScroll = event => { if (event.cancelable) event.preventDefault(); };
+      canvas.addEventListener('touchstart', preventTouchScroll, { passive: false });
+      canvas.addEventListener('touchmove', preventTouchScroll, { passive: false });
+      canvas.addEventListener('touchend', preventTouchScroll, { passive: false });
       canvas.addEventListener('pointerdown', event => { event.preventDefault(); drawing = true; last = point(event); canvas.setPointerCapture?.(event.pointerId); context.beginPath(); context.arc(last.x, last.y, 2.5, 0, Math.PI * 2); context.fillStyle = '#075d59'; context.fill(); });
       canvas.addEventListener('pointermove', event => { if (!drawing) return; event.preventDefault(); const next = point(event); context.beginPath(); context.moveTo(last.x, last.y); context.lineTo(next.x, next.y); context.stroke(); last = next; });
       const finish = event => { if (!drawing) return; drawing = false; try { canvas.releasePointerCapture?.(event.pointerId); } catch (_) {} save(); };

@@ -475,15 +475,48 @@
       syncSignatureSubmit(form);
     });
   }
+  async function prepareCompanyLogo(file) {
+    // Trim large, purely white borders without changing the actual logo. Images
+    // whose content already reaches the edges are uploaded unchanged.
+    if (!file?.type?.startsWith('image/') || !window.createImageBitmap) return file;
+    let image = null;
+    try {
+      image = await createImageBitmap(file);
+      const scale = Math.min(1, 1800 / Math.max(image.width, image.height));
+      const width = Math.max(1, Math.round(image.width * scale));
+      const height = Math.max(1, Math.round(image.height * scale));
+      const source = document.createElement('canvas'); source.width = width; source.height = height;
+      const context = source.getContext('2d', { willReadFrequently: true });
+      context.drawImage(image, 0, 0, width, height);
+      const pixels = context.getImageData(0, 0, width, height).data;
+      let left = width, top = height, right = -1, bottom = -1;
+      for (let y = 0; y < height; y += 2) for (let x = 0; x < width; x += 2) {
+        const offset = (y * width + x) * 4;
+        const alpha = pixels[offset], red = pixels[offset + 1], green = pixels[offset + 2], blue = pixels[offset + 3];
+        if (alpha > 18 && (red < 246 || green < 246 || blue < 246)) { left = Math.min(left, x); top = Math.min(top, y); right = Math.max(right, x); bottom = Math.max(bottom, y); }
+      }
+      if (right < 0) return file;
+      const padding = Math.max(12, Math.round(Math.max(right - left + 1, bottom - top + 1) * 0.045));
+      left = Math.max(0, left - padding); top = Math.max(0, top - padding);
+      right = Math.min(width - 1, right + padding); bottom = Math.min(height - 1, bottom + padding);
+      const cropWidth = right - left + 1, cropHeight = bottom - top + 1;
+      if (cropWidth >= width * 0.96 && cropHeight >= height * 0.96) return file;
+      const output = document.createElement('canvas'); output.width = cropWidth; output.height = cropHeight;
+      output.getContext('2d').drawImage(source, left, top, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
+      const blob = await new Promise(resolve => output.toBlob(resolve, 'image/webp', 0.92));
+      return blob ? new File([blob], `firmenlogo-${Date.now()}.webp`, { type: 'image/webp' }) : file;
+    } catch (_) { return file; } finally { image?.close?.(); }
+  }
   async function saveCompanyLogo(form) {
     if (!isManager() || !businessId()) throw new Error('Bitte zuerst ein Geschäftskonto auswählen.');
     const file = form.elements.logo?.files?.[0];
     const allowed = ['image/png', 'image/jpeg', 'image/webp'];
     if (!file || !allowed.includes(file.type)) throw new Error('Bitte ein Logo im Format PNG, JPG oder WebP auswählen.');
     if (file.size > 5 * 1024 * 1024) throw new Error('Das Firmenlogo darf höchstens 5 MB groß sein.');
-    const extension = file.type === 'image/png' ? 'png' : file.type === 'image/webp' ? 'webp' : 'jpg';
+    const uploadFile = await prepareCompanyLogo(file);
+    const extension = uploadFile.type === 'image/png' ? 'png' : uploadFile.type === 'image/webp' ? 'webp' : 'jpg';
     const path = `${businessId()}/logo-${Date.now()}.${extension}`;
-    await upload('company-logos', path, file);
+    await upload('company-logos', path, uploadFile);
     await account('business-logo-update', { businessId: businessId(), logoPath: path });
   }
   async function sendMailboxMessage(form) {

@@ -10,7 +10,7 @@
   const today = () => new Date().toISOString().slice(0, 10);
   const state = {
     session: null, profile: null, people: [], view: 'home', date: today(), month: today().slice(0, 7),
-    businessId: '', employeeId: '', customerId: '', materialId: '', orderId: '', orderCustomer: '', orderOrigin: 'orders', billingKey: '', billingMode: 'open', menu: false, vacationForm: false, appointmentForm: false, composeMessage: false, mailboxFolder: 'received', notice: null, busy: false,
+    businessId: '', employeeId: '', customerId: '', customerSearch: '', materialId: '', orderId: '', orderCustomer: '', orderOrigin: 'orders', billingKey: '', billingMode: 'open', menu: false, vacationForm: false, appointmentForm: false, composeMessage: false, mailboxFolder: 'received', notice: null, busy: false,
     rows: { entries: [], orders: [], items: [], customers: [], days: [], vacations: [], messages: [], attachments: [], recipients: [], materials: [], appointments: [], payslips: [], documents: [] }
   };
 
@@ -216,25 +216,38 @@
   function customerFields(customer) { const fields = customer?.custom_fields || {}; return `<input type="hidden" name="id" value="${customer?.id || ''}"><label>Firmenname<input name="name" required value="${escape(customer?.name || '')}"></label><label>Vorname<input name="first_name" value="${escape(fields.first_name || '')}"></label><label>Straße<input name="street" value="${escape(fields.street || '')}"></label><label>Hausnummer<input name="house_no" value="${escape(fields.house_no || '')}"></label><label>Ort<input name="city" value="${escape(fields.city || '')}"></label><label>Postleitzahl<input name="postal_code" value="${escape(fields.postal_code || '')}"></label><label>Telefon privat<input name="phone_private" value="${escape(fields.phone_private || '')}"></label><label>Telefon mobil<input name="phone_mobile" value="${escape(fields.phone_mobile || '')}"></label><label class="wide">E-Mail-Adresse<input name="email" type="email" value="${escape(fields.email || '')}"></label><label class="wide">Zusätzliche Angaben (eine Zeile je Feld)<textarea name="extra" rows="3">${escape(Object.entries(fields).filter(([name]) => name.startsWith('extra_')).map(([, value]) => value).join('\n'))}</textarea></label>`; }
   function customerSearchKey(value) { return lower(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replaceAll('ß', 'ss'); }
   function customerSearchText(customer) { return customerSearchKey([customer?.name || '', ...Object.values(customer?.custom_fields || {})].join(' ')); }
-  function filterCustomerList(value) {
-    const query = customerSearchKey(value), cards = [...root.querySelectorAll('[data-customer-search-item]')];
-    let matches = 0;
-    cards.forEach(card => { const visible = !query || String(card.dataset.customerSearch || '').includes(query); card.hidden = !visible; if (visible) matches += 1; });
-    const empty = root.querySelector('[data-customer-search-empty]');
-    if (empty) empty.hidden = !query || matches > 0;
+  function setupCustomerSearch() {
+    const input = root?.querySelector('[data-customer-search]');
+    if (!input || input.dataset.ready === 'true') return;
+    input.dataset.ready = 'true';
+    const update = () => {
+      const cursor = input.selectionStart ?? input.value.length;
+      state.customerSearch = input.value;
+      render();
+      requestAnimationFrame(() => {
+        const next = root?.querySelector('[data-customer-search]');
+        if (!next) return;
+        next.focus({ preventScroll: true });
+        next.setSelectionRange(Math.min(cursor, next.value.length), Math.min(cursor, next.value.length));
+      });
+    };
+    input.addEventListener('input', update);
+    input.addEventListener('search', update);
   }
 
   function customersView() {
     const selected = state.rows.customers.find(row => same(row.id, state.customerId));
-    const list = state.rows.customers.map(row => {
+    const query = customerSearchKey(state.customerSearch);
+    const matchingCustomers = state.rows.customers.filter(row => !query || customerSearchText(row).includes(query));
+    const list = matchingCustomers.map(row => {
       const total = state.rows.entries.filter(entry => same(entry.customer_id, row.id)).reduce((sum, entry) => sum + n(entry.executed_hours), 0);
       const removeButton = isManager() ? '<button type="button" class="danger small" data-action="delete-customer" data-id="' + escape(row.id) + '">Löschen</button>' : '';
-      return '<article class="row-card" data-customer-search-item data-customer-search="' + escape(customerSearchText(row)) + '"><button type="button" class="row-main" data-action="customer" data-id="' + escape(row.id) + '"><b>' + escape(row.name) + '</b><span>' + h(total) + ' gesamt</span></button>' + removeButton + '</article>';
-    }).join('') || '<p class="empty">Noch keine Kunden angelegt.</p>';
+      return '<article class="row-card"><button type="button" class="row-main" data-action="customer" data-id="' + escape(row.id) + '"><b>' + escape(row.name) + '</b><span>' + h(total) + ' gesamt</span></button>' + removeButton + '</article>';
+    }).join('') || `<p class="empty">${state.rows.customers.length ? 'Kein passender Kunde gefunden.' : 'Noch keine Kunden angelegt.'}</p>`;
     const edit = selected || state.customerId === 'new'
       ? '<section class="panel" id="customer-profile" tabindex="-1"><h3>' + (selected ? 'Kunde bearbeiten' : 'Neuer Kunde') + '</h3><form data-form="customer" class="entry-form">' + customerFields(selected) + '<button class="primary wide">Kunde speichern</button></form>' + (selected ? '<button type="button" class="secondary wide" data-action="create-order-from-customer" data-id="' + escape(selected.id) + '">Arbeitsschein erstellen</button>' : '') + '</section>'
       : '';
-    return '<section class="page-head"><div><span class="eyebrow">Gemeinsame Daten</span><h2>Kundenliste</h2></div><button type="button" class="secondary" data-action="new-customer">Kunde hinzufügen</button></section>' + edit + '<section class="list-section"><label>Kunden suchen<input type="search" data-customer-search placeholder="Name, Ort, Adresse, Telefon oder E-Mail"></label><p class="empty" data-customer-search-empty hidden>Kein passender Kunde gefunden.</p>' + list + '</section>';
+    return '<section class="page-head"><div><span class="eyebrow">Gemeinsame Daten</span><h2>Kundenliste</h2></div><button type="button" class="secondary" data-action="new-customer">Kunde hinzufügen</button></section>' + edit + '<section class="list-section"><label>Kunden suchen<input type="search" data-customer-search value="' + escape(state.customerSearch) + '" placeholder="Name, Ort, Adresse, Telefon oder E-Mail"></label>' + list + '</section>';
   }
   function messageRecipients() { return state.rows.recipients || []; }
   function personName(person) { return person?.display_name || person?.username || 'Unbekannt'; }
@@ -675,7 +688,6 @@
 
   root.addEventListener('input', event => {
     const input = event.target;
-    if (input.matches('[data-customer-search]')) { filterCustomerList(input.value); return; }
     if (input.name === 'signed_by') { syncSignatureSubmit(input.closest('form[data-form="order"], form[data-form="order-edit"]')); return; }
     const form = input.closest('form[data-form="time"], form[data-form="order"], form[data-form="order-edit"]');
     if (!form || !['start', 'end', 'pause', 'hours'].includes(input.name)) return;
@@ -765,7 +777,7 @@
     const windowRef = window.open('', '_blank'); if (!windowRef) throw new Error('Bitte Pop-ups erlauben, um die PDF zu erstellen.');
     windowRef.document.write(`<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Zeiterfassungsnachweis</title><style>${pdfStyles()}</style></head><body><main class="pdf-page">${pdfBrandHeader('Zeiterfassungsnachweis', state.date.slice(0, 4))}<section class="pdf-grid"><article class="pdf-card"><span class="pdf-card-label">Mitarbeiter</span><b>${escape(person?.display_name || person?.username || '')}</b></article><article class="pdf-card"><span class="pdf-card-label">Jahresübersicht</span>${h(totalHours)} Arbeitsstunden<br>${h(overtime(id))} Überstunden<br>${vacationLeft(id)} Urlaubstage übrig · ${annualSick(id)} Krankheitstage</article></section><section class="pdf-section"><h2>Erfasste Zeiten</h2><table class="pdf-table"><thead><tr><th>Datum</th><th>Kunde</th><th>Von</th><th>Bis</th><th class="number">Pause</th><th class="number">Stunden</th></tr></thead><tbody>${lines || '<tr><td colspan="6" class="pdf-empty">Keine Zeiterfassungen vorhanden.</td></tr>'}</tbody></table></section><p class="pdf-note">Automatisch aus der Arbeitszeiterfassung erstellt.</p></main><script>window.onload=()=>window.print()<\/script></body></html>`); windowRef.document.close(); addPdfReturnBar(windowRef);
   }
-  function render() { if (!root) return; if (!base || !key) { root.innerHTML = '<main class="login-page"><section class="login-card"><h1>Zeiterfassung</h1><p>Die App-Konfiguration fehlt.</p></section></main>'; return; } root.innerHTML = state.session && state.profile ? appView() : loginView(); setupSignaturePads(); }
+  function render() { if (!root) return; if (!base || !key) { root.innerHTML = '<main class="login-page"><section class="login-card"><h1>Zeiterfassung</h1><p>Die App-Konfiguration fehlt.</p></section></main>'; return; } root.innerHTML = state.session && state.profile ? appView() : loginView(); setupCustomerSearch(); setupSignaturePads(); }
   window.addEventListener('unhandledrejection', event => { event.preventDefault(); notice('Die Aktion konnte nicht ausgeführt werden. Bitte erneut versuchen.', true); render(); });
   state.session = parse(localStorage.getItem(storage) || localStorage.getItem('zeiterfassung-session-v700'));
   if (state.session?.access_token) loadApp(); else render();

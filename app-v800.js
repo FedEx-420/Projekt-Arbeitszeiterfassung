@@ -214,18 +214,27 @@
   }
 
   function customerFields(customer) { const fields = customer?.custom_fields || {}; return `<input type="hidden" name="id" value="${customer?.id || ''}"><label>Firmenname<input name="name" required value="${escape(customer?.name || '')}"></label><label>Vorname<input name="first_name" value="${escape(fields.first_name || '')}"></label><label>Straße<input name="street" value="${escape(fields.street || '')}"></label><label>Hausnummer<input name="house_no" value="${escape(fields.house_no || '')}"></label><label>Ort<input name="city" value="${escape(fields.city || '')}"></label><label>Postleitzahl<input name="postal_code" value="${escape(fields.postal_code || '')}"></label><label>Telefon privat<input name="phone_private" value="${escape(fields.phone_private || '')}"></label><label>Telefon mobil<input name="phone_mobile" value="${escape(fields.phone_mobile || '')}"></label><label class="wide">E-Mail-Adresse<input name="email" type="email" value="${escape(fields.email || '')}"></label><label class="wide">Zusätzliche Angaben (eine Zeile je Feld)<textarea name="extra" rows="3">${escape(Object.entries(fields).filter(([name]) => name.startsWith('extra_')).map(([, value]) => value).join('\n'))}</textarea></label>`; }
+  function customerSearchKey(value) { return lower(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replaceAll('ß', 'ss'); }
+  function customerSearchText(customer) { return customerSearchKey([customer?.name || '', ...Object.values(customer?.custom_fields || {})].join(' ')); }
+  function filterCustomerList(value) {
+    const query = customerSearchKey(value), cards = [...root.querySelectorAll('[data-customer-search-item]')];
+    let matches = 0;
+    cards.forEach(card => { const visible = !query || String(card.dataset.customerSearch || '').includes(query); card.hidden = !visible; if (visible) matches += 1; });
+    const empty = root.querySelector('[data-customer-search-empty]');
+    if (empty) empty.hidden = !query || matches > 0;
+  }
 
   function customersView() {
     const selected = state.rows.customers.find(row => same(row.id, state.customerId));
     const list = state.rows.customers.map(row => {
       const total = state.rows.entries.filter(entry => same(entry.customer_id, row.id)).reduce((sum, entry) => sum + n(entry.executed_hours), 0);
       const removeButton = isManager() ? '<button type="button" class="danger small" data-action="delete-customer" data-id="' + escape(row.id) + '">Löschen</button>' : '';
-      return '<article class="row-card"><button type="button" class="row-main" data-action="customer" data-id="' + escape(row.id) + '"><b>' + escape(row.name) + '</b><span>' + h(total) + ' gesamt</span></button>' + removeButton + '</article>';
+      return '<article class="row-card" data-customer-search-item data-customer-search="' + escape(customerSearchText(row)) + '"><button type="button" class="row-main" data-action="customer" data-id="' + escape(row.id) + '"><b>' + escape(row.name) + '</b><span>' + h(total) + ' gesamt</span></button>' + removeButton + '</article>';
     }).join('') || '<p class="empty">Noch keine Kunden angelegt.</p>';
     const edit = selected || state.customerId === 'new'
       ? '<section class="panel" id="customer-profile" tabindex="-1"><h3>' + (selected ? 'Kunde bearbeiten' : 'Neuer Kunde') + '</h3><form data-form="customer" class="entry-form">' + customerFields(selected) + '<button class="primary wide">Kunde speichern</button></form>' + (selected ? '<button type="button" class="secondary wide" data-action="create-order-from-customer" data-id="' + escape(selected.id) + '">Arbeitsschein erstellen</button>' : '') + '</section>'
       : '';
-    return '<section class="page-head"><div><span class="eyebrow">Gemeinsame Daten</span><h2>Kundenliste</h2></div><button type="button" class="secondary" data-action="new-customer">Kunde hinzufügen</button></section>' + edit + '<section class="list-section">' + list + '</section>';
+    return '<section class="page-head"><div><span class="eyebrow">Gemeinsame Daten</span><h2>Kundenliste</h2></div><button type="button" class="secondary" data-action="new-customer">Kunde hinzufügen</button></section>' + edit + '<section class="list-section"><label>Kunden suchen<input type="search" data-customer-search placeholder="Name, Ort, Adresse, Telefon oder E-Mail"></label><p class="empty" data-customer-search-empty hidden>Kein passender Kunde gefunden.</p>' + list + '</section>';
   }
   function messageRecipients() { return state.rows.recipients || []; }
   function personName(person) { return person?.display_name || person?.username || 'Unbekannt'; }
@@ -666,6 +675,7 @@
 
   root.addEventListener('input', event => {
     const input = event.target;
+    if (input.matches('[data-customer-search]')) { filterCustomerList(input.value); return; }
     if (input.name === 'signed_by') { syncSignatureSubmit(input.closest('form[data-form="order"], form[data-form="order-edit"]')); return; }
     const form = input.closest('form[data-form="time"], form[data-form="order"], form[data-form="order-edit"]');
     if (!form || !['start', 'end', 'pause', 'hours'].includes(input.name)) return;

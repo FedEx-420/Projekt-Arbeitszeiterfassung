@@ -10,7 +10,7 @@
   const today = () => new Date().toISOString().slice(0, 10);
   const state = {
     session: null, profile: null, people: [], view: 'home', date: today(), month: today().slice(0, 7),
-    businessId: '', employeeId: '', customerId: '', customerSearch: '', materialId: '', orderId: '', orderCustomer: '', orderOrigin: 'orders', billingKey: '', billingMode: 'open', menu: false, vacationForm: false, appointmentForm: false, composeMessage: false, mailboxFolder: 'received', notice: null, busy: false,
+    businessId: '', businessBrand: null, employeeId: '', customerId: '', customerSearch: '', materialId: '', orderId: '', orderCustomer: '', orderOrigin: 'orders', billingKey: '', billingMode: 'open', menu: false, vacationForm: false, appointmentForm: false, composeMessage: false, mailboxFolder: 'received', notice: null, busy: false,
     rows: { entries: [], orders: [], items: [], customers: [], days: [], vacations: [], messages: [], attachments: [], recipients: [], materials: [], appointments: [], payslips: [], documents: [] }
   };
 
@@ -80,12 +80,14 @@
       state.session = null;
       throw new Error(administratorLogin ? 'Dieses Konto ist kein Administratorkonto.' : 'Das Administratorkonto meldet sich ohne Firma an.');
     }
+    state.view = 'home'; state.menu = false; state.customerId = ''; state.customerSearch = ''; state.orderId = ''; state.billingKey = ''; state.vacationForm = false; state.composeMessage = false;
     localStorage.setItem(storage, JSON.stringify(data)); await loadApp();
   }
-  function logout() { state.session = null; state.profile = null; localStorage.removeItem(storage); render(); }
+  function logout() { state.session = null; state.profile = null; state.businessBrand = null; localStorage.removeItem(storage); render(); }
 
   async function loadApp() {
     if (!state.session?.user?.id) return render();
+    state.view = 'home'; state.menu = false; state.customerId = ''; state.orderId = ''; state.billingKey = ''; state.vacationForm = false; state.composeMessage = false;
     state.busy = true; render();
     try {
       const own = await rows('profiles', `select=*&id=eq.${encodeURIComponent(state.session.user.id)}`);
@@ -106,6 +108,10 @@
       load('payslips', 'employee_payslips', 'select=*&order=created_at.desc'), load('documents', 'work_order_documents'), loadRecipients()
     ]);
     state.people = state.rows.people;
+    if (!isManager()) {
+      try { state.businessBrand = (await api('/rest/v1/rpc/current_business_branding', { method: 'POST', body: {} }))?.[0] || null; }
+      catch { state.businessBrand = null; }
+    } else state.businessBrand = null;
     if (isAdmin() && !businesses().some(person => same(person.id, state.businessId))) state.businessId = businesses()[0]?.id || '';
     if (!workers().some(person => same(person.id, state.employeeId))) state.employeeId = workers()[0]?.id || state.profile.id;
   }
@@ -125,7 +131,7 @@
   }
   function worker() { return workers().find(person => same(person.id, state.employeeId)) || workers()[0] || state.profile; }
   function workerId() { return worker()?.id || ''; }
-  function managerBusiness() { return businesses().find(person => same(person.id, businessId())) || (isBusiness() ? state.profile : null); }
+  function managerBusiness() { return businesses().find(person => same(person.id, businessId())) || (isBusiness() ? state.profile : null) || state.businessBrand; }
   function companyLogoUrl(business = managerBusiness()) { return publicObjectUrl('company-logos', business?.company_logo_path); }
   function dayEntries(id = workerId(), date = state.date) { return state.rows.entries.filter(row => same(row.employee_id, id) && row.work_date === date); }
   function dayHours(id = workerId(), date = state.date) { return dayEntries(id, date).reduce((sum, row) => sum + n(row.executed_hours), 0); }

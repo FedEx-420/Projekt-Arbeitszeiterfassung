@@ -131,7 +131,12 @@
   }
   function worker() { return workers().find(person => same(person.id, state.employeeId)) || workers()[0] || state.profile; }
   function workerId() { return worker()?.id || ''; }
-  function managerBusiness() { return businesses().find(person => same(person.id, businessId())) || (isBusiness() ? state.profile : null) || state.businessBrand; }
+  function managerBusiness() {
+    // The authenticated branding lookup is the authoritative source for employees.
+    // It prevents an incomplete profile cache from hiding a business logo.
+    if (!isManager() && state.businessBrand) return state.businessBrand;
+    return businesses().find(person => same(person.id, businessId())) || (isBusiness() ? state.profile : null) || state.businessBrand;
+  }
   function companyLogoUrl(business = managerBusiness()) { return publicObjectUrl('company-logos', business?.company_logo_path); }
   function dayEntries(id = workerId(), date = state.date) { return state.rows.entries.filter(row => same(row.employee_id, id) && row.work_date === date); }
   function dayHours(id = workerId(), date = state.date) { return dayEntries(id, date).reduce((sum, row) => sum + n(row.executed_hours), 0); }

@@ -36,3 +36,10 @@
   .home-company-logo{width:100%;height:clamp(116px,32vw,160px);align-self:center}
   .home-company-copy h3{font-size:25px}
 }
+
+
+/* Tagesnavigation: Die Datumsauswahl bleibt auf Smartphones über die volle Breite sichtbar. */
+.date-picker{display:grid;grid-template-columns:44px minmax(0,1fr) 44px;align-items:end;gap:8px;flex:1;width:100%;max-width:430px;margin:0}
+.date-picker .date-field{width:100%}
+.date-picker button{min-width:44px;min-height:44px;padding:6px;font-size:24px;line-height:1}
+@media(max-width:850px){.page-head .date-picker{max-width:none;width:100%}}

@@ -55,6 +55,12 @@
     if (!response.ok) throw new Error('Die Datei konnte nicht heruntergeladen werden.');
     const url = URL.createObjectURL(await response.blob()), link = document.createElement('a'); link.href = url; link.download = name || 'Datei'; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
+  async function removeStoredFile(bucket, path) {
+    const response = await fetch(`${base}/storage/v1/object/${bucket}/${path.split('/').map(encodeURIComponent).join('/')}`, { method: 'DELETE', headers: { apikey: key, Authorization: `Bearer ${state.session.access_token}` } });
+    // A missing file is already fully removed, so only actual API failures stop
+    // the database deletion.
+    if (!response.ok && response.status !== 404) throw new Error('Ein zugehöriges Dokument konnte nicht gelöscht werden.');
+  }
 
   function loginCompanyKey(value) { return lower(value).normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48); }
   function loginUsernameKey(value) { return `u${Array.from(new TextEncoder().encode(String(value || '').trim().normalize('NFKC').toLocaleLowerCase('de-DE')), byte => byte.toString(16).padStart(2, '0')).join('')}`; }
@@ -217,7 +223,7 @@
   function timeView() {
     const id = workerId(), list = dayEntries(id), previous = list.at(-1)?.end_time?.slice(0, 5) || '07:30';
     const selected = list.find(row => same(row.id, state.timeEntryId));
-    const detail = selected ? `<section class="panel"><section class="page-head"><div><span class="eyebrow">Ausgewählte Zeiterfassung</span><h3>${escape(selected.customer_name)}</h3></div><button type="button" class="secondary small" data-action="close-time">Schließen</button></section><p>${timeText(selected.start_time)} – ${timeText(selected.end_time)} · Pause ${h(selected.pause_hours)} · ${h(selected.executed_hours)}</p>${selected.custom_fields?.notes ? `<p><b>Notiz:</b><br>${escape(selected.custom_fields.notes).replace(/\n/g, '<br>')}</p>` : ''}</section>` : '';
+    const detail = selected ? `<section class="panel"><section class="page-head"><div><span class="eyebrow">Ausgewählte Zeiterfassung</span><h3>${escape(selected.customer_name)}</h3></div><div class="actions"><button type="button" class="danger small" data-action="delete-time" data-id="${selected.id}">Zeiterfassung löschen</button><button type="button" class="secondary small" data-action="close-time">Schließen</button></div></section><p>${timeText(selected.start_time)} – ${timeText(selected.end_time)} · Pause ${h(selected.pause_hours)} · ${h(selected.executed_hours)}</p>${selected.custom_fields?.notes ? `<p><b>Notiz:</b><br>${escape(selected.custom_fields.notes).replace(/\n/g, '<br>')}</p>` : ''}</section>` : '';
     const form = locked(id) ? `<div class="locked">${escape(lockedText(id))}</div>` : `<section class="panel"><h3>Arbeitszeit hinzufügen</h3><form data-form="time" class="entry-form"><label class="wide">Kunde<input name="customer" required list="customers"></label><label>Arbeitsbeginn${timeInput('start', previous)}</label><label>Arbeitsende${timeInput('end', '')}</label><label>Pause in Stunden<input name="pause" type="number" min="0" step="0.25" value="0"></label><label>Ausgeführte Stunden<input name="hours" type="number" min="0.25" step="0.25" required></label>${noteTemplates()}<label class="wide">Notiz<textarea name="notes" rows="4" placeholder="Zusätzliche Informationen zur Arbeitszeit"></textarea></label><button class="primary wide">Speichern</button></form>${customerList()}</section>`;
     const cards = list.map(row => `<article class="row-card"><button type="button" class="row-main" data-action="open-time" data-id="${row.id}"><b>${escape(row.customer_name)}</b><span>${timeText(row.start_time)} – ${timeText(row.end_time)} · ${h(row.executed_hours)} · Öffnen</span>${row.custom_fields?.notes ? `<small>${escape(row.custom_fields.notes)}</small>` : ''}</button><button type="button" class="danger small" data-action="delete-time" data-id="${row.id}">Löschen</button></article>`).join('') || '<p class="empty">Keine Einträge vorhanden.</p>';
     return `<section class="page-head"><div><span class="eyebrow">Zeiterfassung von ${escape(worker()?.username || '')}</span><h2>${dateText(state.date)}</h2></div><label class="date-field">Tag<input type="date" data-date value="${state.date}"></label></section>${detail}${form}<section class="list-section"><h3>Einträge des Tages</h3>${cards}</section>`;
@@ -235,7 +241,7 @@
     const documents = state.rows.documents.filter(document => same(document.work_order_id, order.id));
     const rows = items.length ? items.map(materialRow).join('') : materialRow();
     const invoiceButton = isManager() && !order.invoiced ? `<button type="button" class="primary small" data-action="invoice-order" data-id="${order.id}">Rechnung erstellen</button><button type="button" class="secondary small" data-action="mark-invoice-order" data-id="${order.id}">Als abgerechnet markieren</button>` : order.invoiced ? '<span class="badge">Bereits abgerechnet</span>' : '';
-    return `<section class="panel"><div class="page-head"><div><span class="eyebrow">Arbeitsschein bearbeiten</span><h3>${escape(order.customer_name || 'Ohne Kunde')}</h3></div><div class="actions">${invoiceButton}<button type="button" class="secondary small" data-action="order-pdf" data-id="${order.id}">PDF drucken / speichern</button><button type="button" class="secondary small" data-action="close-order">Schließen</button></div></div><form data-form="order-edit" class="entry-form"><input type="hidden" name="id" value="${order.id}"><label>Datum<input name="work_date" type="date" value="${order.work_date}"></label><label class="wide">Kunde<input name="customer" required list="customers" value="${escape(order.customer_name || '')}"></label><label class="wide">Beschreibung<input name="title" value="${escape(order.title || '')}"></label><div class="wide" id="material-lines">${rows}</div><button type="button" class="secondary wide" data-action="more-material">Weiteres Material</button><p class="wide">Arbeitsstunden werden beim Speichern automatisch als <b>${escape(hourlyNameForEmployee(order.employee_id))}</b> mit dem Preis aus der Materialliste ergänzt.</p><label>Arbeitsbeginn${timeInput('start', order.start_time?.slice(0, 5))}</label><label>Arbeitsende${timeInput('end', order.end_time?.slice(0, 5))}</label><label>Pause in Stunden<input name="pause" type="number" min="0" step="0.25" value="${n(order.pause_hours)}"></label><label>Ausgeführte Stunden<input name="hours" type="number" min="0.25" step="0.25" value="${n(order.executed_hours)}" required></label>${noteTemplates()}<label class="wide">Notiz / Dokumentation<textarea name="documentation" rows="4">${escape(order.documentation || '')}</textarea></label><label class="wide">Weitere Dokumente hochladen<input name="documents" type="file" multiple accept="image/*,.pdf,.doc,.docx"></label>${documents.length ? `<p class="wide">Vorhandene Dokumente: ${documents.map(document => escape(document.file_name)).join(', ')}</p>` : ''}${signatureFields(order)}<button class="primary wide" data-signature-submit>Änderungen speichern</button></form>${customerList()}${materialList()}</section>`;
+    return `<section class="panel"><div class="page-head"><div><span class="eyebrow">Arbeitsschein bearbeiten</span><h3>${escape(order.customer_name || 'Ohne Kunde')}</h3></div><div class="actions">${invoiceButton}<button type="button" class="secondary small" data-action="order-pdf" data-id="${order.id}">PDF drucken / speichern</button><button type="button" class="danger small" data-action="delete-order" data-id="${order.id}">Arbeitsschein löschen</button><button type="button" class="secondary small" data-action="close-order">Schließen</button></div></div><form data-form="order-edit" class="entry-form"><input type="hidden" name="id" value="${order.id}"><label>Datum<input name="work_date" type="date" value="${order.work_date}"></label><label class="wide">Kunde<input name="customer" required list="customers" value="${escape(order.customer_name || '')}"></label><label class="wide">Beschreibung<input name="title" value="${escape(order.title || '')}"></label><div class="wide" id="material-lines">${rows}</div><button type="button" class="secondary wide" data-action="more-material">Weiteres Material</button><p class="wide">Arbeitsstunden werden beim Speichern automatisch als <b>${escape(hourlyNameForEmployee(order.employee_id))}</b> mit dem Preis aus der Materialliste ergänzt.</p><label>Arbeitsbeginn${timeInput('start', order.start_time?.slice(0, 5))}</label><label>Arbeitsende${timeInput('end', order.end_time?.slice(0, 5))}</label><label>Pause in Stunden<input name="pause" type="number" min="0" step="0.25" value="${n(order.pause_hours)}"></label><label>Ausgeführte Stunden<input name="hours" type="number" min="0.25" step="0.25" value="${n(order.executed_hours)}" required></label>${noteTemplates()}<label class="wide">Notiz / Dokumentation<textarea name="documentation" rows="4">${escape(order.documentation || '')}</textarea></label><label class="wide">Weitere Dokumente hochladen<input name="documents" type="file" multiple accept="image/*,.pdf,.doc,.docx"></label>${documents.length ? `<p class="wide">Vorhandene Dokumente: ${documents.map(document => escape(document.file_name)).join(', ')}</p>` : ''}${signatureFields(order)}<button class="primary wide" data-signature-submit>Änderungen speichern</button></form>${customerList()}${materialList()}</section>`;
   }
   function orderDetailView() { const order = state.rows.orders.find(row => same(row.id, state.orderId)); return order ? orderEditor(order) : `<section class="panel"><h2>Arbeitsschein nicht gefunden</h2><p>Der Arbeitsschein ist nicht mehr verfügbar.</p><button type="button" class="secondary" data-action="close-order">Zurück</button></section>`; }
   function ordersView() {
@@ -513,6 +519,17 @@
   async function saveDocuments(form, order, employee) {
     for (const file of [...(form.elements.documents?.files || [])]) { const safe = file.name.replace(/[^A-Za-z0-9._-]/g, '_'); const path = `${employee}/${order.id}-${Date.now()}-${safe}`; await upload('work-order-documents', path, file); await write('work_order_documents', { work_order_id: order.id, employee_id: employee, file_path: path, file_name: file.name, mime_type: file.type || null }); }
   }
+  async function deleteWorkOrderCompletely(orderId) {
+    const id = String(orderId || '');
+    if (!id) throw new Error('Der Arbeitsschein wurde nicht gefunden.');
+    const documents = state.rows.documents.filter(document => same(document.work_order_id, id));
+    for (const document of documents) await removeStoredFile('work-order-documents', document.file_path);
+    const query = `work_order_id=eq.${encodeURIComponent(id)}`;
+    await remove('work_order_items', query);
+    await remove('work_order_documents', query);
+    await remove('time_entries', query);
+    await remove('work_orders', `id=eq.${encodeURIComponent(id)}`);
+  }
   function signatureValues(form) {
     const signedBy = String(form.elements.signed_by?.value || '').trim(), signatureData = String(form.elements.signature_data?.value || '');
     if (!signedBy) throw new Error('Bitte eintragen, wer unterschrieben hat.');
@@ -743,8 +760,20 @@
       return;
     }
     if (action === 'download-mail-attachment') { const attachment = state.rows.attachments.find(row => same(row.id, button.dataset.id)); if (!attachment) { notice('Der Anhang wurde nicht gefunden.', true); render(); return; } return download('mailbox-attachments', attachment.file_path, attachment.file_name); }
-    if (action === 'delete-time') return confirm('Zeiterfassung wirklich löschen?') && perform('Zeiterfassung wurde gelöscht.', () => remove('time_entries', `id=eq.${encodeURIComponent(button.dataset.id)}`));
-    if (action === 'delete-order') return confirm('Arbeitsschein wirklich löschen?') && perform('Arbeitsschein wurde gelöscht.', async () => { const id = encodeURIComponent(button.dataset.id); await remove('work_order_items', `work_order_id=eq.${id}`); await remove('work_order_documents', `work_order_id=eq.${id}`); await remove('time_entries', `work_order_id=eq.${id}`); await remove('work_orders', `id=eq.${id}`); });
+    if (action === 'delete-time') {
+      const id = button.dataset.id;
+      return confirm('Zeiterfassung wirklich vollständig löschen?') && perform('Zeiterfassung wurde vollständig gelöscht.', async () => {
+        await remove('time_entries', `id=eq.${encodeURIComponent(id)}`);
+        if (same(state.timeEntryId, id)) state.timeEntryId = '';
+      });
+    }
+    if (action === 'delete-order') {
+      const id = button.dataset.id;
+      return confirm('Arbeitsschein inklusive Material, Dokumenten und zugehöriger Zeiterfassung wirklich vollständig löschen?') && perform('Arbeitsschein wurde vollständig gelöscht.', async () => {
+        await deleteWorkOrderCompletely(id);
+        if (same(state.orderId, id)) { state.orderId = ''; state.view = state.orderOrigin || 'orders'; }
+      });
+    }
     if (action === 'delete-customer') return confirm('Kunde wirklich löschen?') && perform('Kunde wurde gelöscht.', () => remove('customers', `id=eq.${encodeURIComponent(button.dataset.id)}`));
     if (action === 'delete-material') { const material = state.rows.materials.find(row => same(row.id, button.dataset.id)); if (isHourlyMaterial(material)) { notice('Diese Stundenposition ist geschützt und kann nicht gelöscht werden.'); render(); return; } return confirm('Material wirklich löschen?') && perform('Material wurde gelöscht.', () => remove('materials', `id=eq.${encodeURIComponent(button.dataset.id)}`)); }
     if (action === 'invoice') return perform('Arbeitsschein wurde als abgerechnet markiert.', async () => { const order = state.rows.orders.find(row => same(row.id, button.dataset.id)); if (!order) throw new Error('Der Arbeitsschein wurde nicht gefunden.'); await snapshotCurrentPrices([order]); await write('work_orders', { invoiced: true }, 'PATCH', `id=eq.${encodeURIComponent(button.dataset.id)}`); });

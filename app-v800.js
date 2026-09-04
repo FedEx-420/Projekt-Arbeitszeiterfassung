@@ -10,7 +10,7 @@
   const today = () => new Date().toISOString().slice(0, 10);
   const state = {
     session: null, profile: null, people: [], view: 'home', date: today(), month: today().slice(0, 7),
-    businessId: '', businessBrand: null, employeeId: '', customerId: '', customerSearch: '', materialId: '', orderId: '', orderCustomer: '', orderOrigin: 'orders', billingKey: '', billingMode: 'open', menu: false, vacationForm: false, appointmentForm: false, composeMessage: false, mailboxFolder: 'received', notice: null, busy: false,
+    businessId: '', businessBrand: null, employeeId: '', customerId: '', customerSearch: '', materialId: '', orderId: '', timeEntryId: '', orderCustomer: '', orderOrigin: 'orders', billingKey: '', billingMode: 'open', menu: false, vacationForm: false, appointmentForm: false, composeMessage: false, mailboxFolder: 'received', notice: null, busy: false,
     rows: { entries: [], orders: [], items: [], customers: [], days: [], vacations: [], messages: [], attachments: [], recipients: [], materials: [], appointments: [], payslips: [], documents: [] }
   };
 
@@ -80,14 +80,14 @@
       state.session = null;
       throw new Error(administratorLogin ? 'Dieses Konto ist kein Administratorkonto.' : 'Das Administratorkonto meldet sich ohne Firma an.');
     }
-    state.view = 'home'; state.menu = false; state.customerId = ''; state.customerSearch = ''; state.orderId = ''; state.billingKey = ''; state.vacationForm = false; state.composeMessage = false;
+    state.view = 'home'; state.menu = false; state.customerId = ''; state.customerSearch = ''; state.orderId = ''; state.timeEntryId = ''; state.billingKey = ''; state.vacationForm = false; state.composeMessage = false;
     localStorage.setItem(storage, JSON.stringify(data)); await loadApp();
   }
   function logout() { state.session = null; state.profile = null; state.businessBrand = null; localStorage.removeItem(storage); render(); }
 
   async function loadApp() {
     if (!state.session?.user?.id) return render();
-    state.view = 'home'; state.menu = false; state.customerId = ''; state.orderId = ''; state.billingKey = ''; state.vacationForm = false; state.composeMessage = false;
+    state.view = 'home'; state.menu = false; state.customerId = ''; state.orderId = ''; state.timeEntryId = ''; state.billingKey = ''; state.vacationForm = false; state.composeMessage = false;
     state.busy = true; render();
     try {
       const own = await rows('profiles', `select=*&id=eq.${encodeURIComponent(state.session.user.id)}`);
@@ -138,7 +138,27 @@
     return businesses().find(person => same(person.id, businessId())) || (isBusiness() ? state.profile : null) || state.businessBrand;
   }
   function companyLogoUrl(business = managerBusiness()) { return publicObjectUrl('company-logos', business?.company_logo_path); }
-  function dayEntries(id = workerId(), date = state.date) { return state.rows.entries.filter(row => same(row.employee_id, id) && row.work_date === date); }
+  function sameWorkTime(entry, order) {
+    const customerMatches = entry.customer_id && order.customer_id
+      ? same(entry.customer_id, order.customer_id)
+      : lower(entry.customer_name) === lower(order.customer_name);
+    return same(entry.employee_id, order.employee_id)
+      && entry.work_date === order.work_date
+      && customerMatches
+      && String(entry.start_time || '').slice(0, 5) === String(order.start_time || '').slice(0, 5)
+      && String(entry.end_time || '').slice(0, 5) === String(order.end_time || '').slice(0, 5)
+      && Math.abs(n(entry.pause_hours) - n(order.pause_hours)) < 0.001
+      && Math.abs(n(entry.executed_hours) - n(order.executed_hours)) < 0.001;
+  }
+  function effectiveTimeEntries(id = workerId(), date = '') {
+    return state.rows.entries.filter(row => {
+      if (!same(row.employee_id, id) || (date && row.work_date !== date)) return false;
+      // A manually saved entry and a work order with precisely the same job
+      // represent one working period. Keep the work-order source once.
+      return row.work_order_id || !state.rows.orders.some(order => sameWorkTime(row, order));
+    });
+  }
+  function dayEntries(id = workerId(), date = state.date) { return effectiveTimeEntries(id, date); }
   function dayHours(id = workerId(), date = state.date) { return dayEntries(id, date).reduce((sum, row) => sum + n(row.executed_hours), 0); }
   function dateAt(year, month, day) { return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`; }
   function addDate(date, days) { const value = new Date(`${date}T12:00:00`); value.setDate(value.getDate() + days); return value.toISOString().slice(0, 10); }
@@ -163,8 +183,8 @@
     // not arrived yet, so it can never be counted twice.
     const year = state.date.slice(0, 4), days = new Map(), linkedOrders = new Set();
     const add = (date, hours) => days.set(date, n(days.get(date)) + n(hours));
-    state.rows.entries
-      .filter(row => same(row.employee_id, id) && String(row.work_date || '').startsWith(year))
+    effectiveTimeEntries(id)
+      .filter(row => String(row.work_date || '').startsWith(year))
       .forEach(row => { add(row.work_date, row.executed_hours); if (row.work_order_id) linkedOrders.add(String(row.work_order_id)); });
     state.rows.orders
       .filter(row => same(row.employee_id, id) && String(row.work_date || '').startsWith(year) && !linkedOrders.has(String(row.id)))
@@ -193,8 +213,15 @@
   }
   function timeInput(name, value) { return `<input name="${name}" type="time" step="900" value="${value || ''}">`; }
   function customerList() { return `<datalist id="customers">${state.rows.customers.map(row => `<option value="${escape(row.name)}"></option>`).join('')}</datalist>`; }
-  function noteTemplates() { return `<div class="actions wide note-templates"><button type="button" class="secondary small" data-action="insert-note-template" data-note="Aufräumung des Firmenfahrzeugs">Aufräumung Firmenfahrzeug</button><button type="button" class="secondary small" data-action="insert-note-template" data-note="Aufräumen des Firmenlagers">Aufräumen Firmenlager</button></div>`; }
-  function timeView() { const id = workerId(), list = dayEntries(id), previous = list.at(-1)?.end_time?.slice(0, 5) || '07:30'; return `<section class="page-head"><div><span class="eyebrow">Zeiterfassung von ${escape(worker()?.username || '')}</span><h2>${dateText(state.date)}</h2></div><label class="date-field">Tag<input type="date" data-date value="${state.date}"></label></section>${locked(id) ? `<div class="locked">${escape(lockedText(id))}</div>` : `<section class="panel"><h3>Arbeitszeit hinzufügen</h3><form data-form="time" class="entry-form"><label class="wide">Kunde<input name="customer" required list="customers"></label><label>Arbeitsbeginn${timeInput('start', previous)}</label><label>Arbeitsende${timeInput('end', '')}</label><label>Pause in Stunden<input name="pause" type="number" min="0" step="0.25" value="0"></label><label>Ausgeführte Stunden<input name="hours" type="number" min="0.25" step="0.25" required></label>${noteTemplates()}<label class="wide">Notiz<textarea name="notes" rows="4" placeholder="Zusätzliche Informationen zur Arbeitszeit"></textarea></label><button class="primary wide">Speichern</button></form>${customerList()}</section>`}<section class="list-section"><h3>Einträge des Tages</h3>${list.map(row => `<article class="row-card"><div><b>${escape(row.customer_name)}</b><span>${timeText(row.start_time)} – ${timeText(row.end_time)} · ${h(row.executed_hours)}</span>${row.custom_fields?.notes ? `<small>${escape(row.custom_fields.notes)}</small>` : ''}</div><button type="button" class="danger small" data-action="delete-time" data-id="${row.id}">Löschen</button></article>`).join('') || '<p class="empty">Keine Einträge vorhanden.</p>'}</section>`; }
+  function noteTemplates() { return `<div class="actions wide note-templates"><button type="button" class="secondary small" data-action="insert-note-template" data-note="Aufräumen des Firmenfahrzeugs">Aufräumen Firmenfahrzeug</button><button type="button" class="secondary small" data-action="insert-note-template" data-note="Aufräumen des Firmenlagers">Aufräumen Firmenlager</button></div>`; }
+  function timeView() {
+    const id = workerId(), list = dayEntries(id), previous = list.at(-1)?.end_time?.slice(0, 5) || '07:30';
+    const selected = list.find(row => same(row.id, state.timeEntryId));
+    const detail = selected ? `<section class="panel"><section class="page-head"><div><span class="eyebrow">Ausgewählte Zeiterfassung</span><h3>${escape(selected.customer_name)}</h3></div><button type="button" class="secondary small" data-action="close-time">Schließen</button></section><p>${timeText(selected.start_time)} – ${timeText(selected.end_time)} · Pause ${h(selected.pause_hours)} · ${h(selected.executed_hours)}</p>${selected.custom_fields?.notes ? `<p><b>Notiz:</b><br>${escape(selected.custom_fields.notes).replace(/\n/g, '<br>')}</p>` : ''}</section>` : '';
+    const form = locked(id) ? `<div class="locked">${escape(lockedText(id))}</div>` : `<section class="panel"><h3>Arbeitszeit hinzufügen</h3><form data-form="time" class="entry-form"><label class="wide">Kunde<input name="customer" required list="customers"></label><label>Arbeitsbeginn${timeInput('start', previous)}</label><label>Arbeitsende${timeInput('end', '')}</label><label>Pause in Stunden<input name="pause" type="number" min="0" step="0.25" value="0"></label><label>Ausgeführte Stunden<input name="hours" type="number" min="0.25" step="0.25" required></label>${noteTemplates()}<label class="wide">Notiz<textarea name="notes" rows="4" placeholder="Zusätzliche Informationen zur Arbeitszeit"></textarea></label><button class="primary wide">Speichern</button></form>${customerList()}</section>`;
+    const cards = list.map(row => `<article class="row-card"><button type="button" class="row-main" data-action="open-time" data-id="${row.id}"><b>${escape(row.customer_name)}</b><span>${timeText(row.start_time)} – ${timeText(row.end_time)} · ${h(row.executed_hours)} · Öffnen</span>${row.custom_fields?.notes ? `<small>${escape(row.custom_fields.notes)}</small>` : ''}</button><button type="button" class="danger small" data-action="delete-time" data-id="${row.id}">Löschen</button></article>`).join('') || '<p class="empty">Keine Einträge vorhanden.</p>';
+    return `<section class="page-head"><div><span class="eyebrow">Zeiterfassung von ${escape(worker()?.username || '')}</span><h2>${dateText(state.date)}</h2></div><label class="date-field">Tag<input type="date" data-date value="${state.date}"></label></section>${detail}${form}<section class="list-section"><h3>Einträge des Tages</h3>${cards}</section>`;
+  }
 
   function materialRow(item = {}) { return `<div class="material-row"><label>Material<input name="material" list="materials" value="${escape(item.position_name || item.name || '')}"></label><label>Stückzahl<input name="quantity" type="number" min="0.25" step="0.25" value="${escape(item.quantity || 1)}"></label></div>`; }
   function materialList() { return `<datalist id="materials">${state.rows.materials.filter(row => row.active !== false).map(row => `<option value="${escape(row.name)}"></option>`).join('')}</datalist>`; }
@@ -235,7 +262,12 @@
       return `<button type="button" class="${classes}" data-action="pick-day" data-date="${date}" aria-label="${escape(label)}"><b>${Number(date.slice(-2))}</b><span class="day-flags">${flags}</span></button>`;
     }).join('');
     const records = state.rows.orders.filter(row => same(row.employee_id, id) && row.work_date === state.date);
-    return `<section class="page-head"><div><span class="eyebrow">Kalender von ${escape(worker()?.username || '')}</span><h2>${dateText(state.date)}</h2></div><label class="date-field">Tag<input type="date" data-date value="${state.date}"></label></section><section class="stat-grid"><article><span>Überstunden</span><strong>${dayEntries(id).length ? h(dayHours(id) - dueHours(state.date)) : '—'}</strong></article><article><span>Urlaub</span><strong>${vacation(id) ? 'Genehmigt' : '—'}</strong></article><article><span>Krank</span><strong>${sick(id) ? 'Ja' : '—'}</strong></article></section><section class="panel calendar-panel"><div class="calendar-head"><button type="button" aria-label="Vorheriger Monat" data-action="month" data-value="-1">‹</button><h3>${monthText(state.month)}</h3><button type="button" aria-label="Nächster Monat" data-action="month" data-value="1">›</button></div><div class="calendar-legend"><span class="legend-order">Arbeitsschein</span><span class="legend-requested">Urlaub beantragt</span><span class="legend-approved">Urlaub genehmigt</span><span class="legend-sick">Krankheitstag</span><span class="legend-holiday">Feiertag NRW</span></div><div class="month-grid"><span class="weekday">Mo</span><span class="weekday">Di</span><span class="weekday">Mi</span><span class="weekday">Do</span><span class="weekday">Fr</span><span class="weekday">Sa</span><span class="weekday">So</span>${grid}</div><div class="actions"><button type="button" class="secondary" data-action="sick">${sick(id) ? 'Krankheitstag entfernen' : 'Krank melden'}</button><button type="button" class="primary" data-action="vacation-form">Urlaub beantragen</button></div></section>${state.vacationForm ? `<section class="panel"><h3>Urlaub beantragen</h3><form data-form="vacation" class="entry-form"><label>Von<input name="start" type="date" required value="${state.date}"></label><label>Bis<input name="end" type="date" required value="${state.date}"></label><button class="primary">Antrag senden</button></form></section>` : ''}<section class="list-section"><h3>Durchgeführt</h3>${nrwHoliday(state.date) ? `<p class="locked">${escape(nrwHoliday(state.date))} in NRW</p>` : ''}${records.map(row => `<article class="row-card"><div><b>${escape(row.customer_name)}</b><span>${escape(row.title || '')} · ${h(row.executed_hours)}</span></div></article>`).join('') || '<p class="empty">Für diesen Tag existiert kein Arbeitsschein.</p>'}</section>`;
+    const manualEntries = dayEntries(id).filter(row => !row.work_order_id);
+    const recordCards = [
+      ...records.map(row => `<article class="row-card"><button type="button" class="row-main" data-action="open-order" data-id="${row.id}"><b>${escape(row.customer_name)}</b><span>${escape(row.title || '')} · ${h(row.executed_hours)} · Arbeitsschein öffnen</span></button></article>`),
+      ...manualEntries.map(row => `<article class="row-card"><button type="button" class="row-main" data-action="open-time" data-id="${row.id}"><b>${escape(row.customer_name)}</b><span>${timeText(row.start_time)} – ${timeText(row.end_time)} · ${h(row.executed_hours)} · Zeiterfassung öffnen</span></button></article>`)
+    ].join('') || '<p class="empty">Für diesen Tag existiert kein Arbeitsschein oder keine Zeiterfassung.</p>';
+    return `<section class="page-head"><div><span class="eyebrow">Kalender von ${escape(worker()?.username || '')}</span><h2>${dateText(state.date)}</h2></div><label class="date-field">Tag<input type="date" data-date value="${state.date}"></label></section><section class="stat-grid"><article><span>Überstunden</span><strong>${dayEntries(id).length ? h(dayHours(id) - dueHours(state.date)) : '—'}</strong></article><article><span>Urlaub</span><strong>${vacation(id) ? 'Genehmigt' : '—'}</strong></article><article><span>Krank</span><strong>${sick(id) ? 'Ja' : '—'}</strong></article></section><section class="panel calendar-panel"><div class="calendar-head"><button type="button" aria-label="Vorheriger Monat" data-action="month" data-value="-1">‹</button><h3>${monthText(state.month)}</h3><button type="button" aria-label="Nächster Monat" data-action="month" data-value="1">›</button></div><div class="calendar-legend"><span class="legend-order">Arbeitsschein</span><span class="legend-requested">Urlaub beantragt</span><span class="legend-approved">Urlaub genehmigt</span><span class="legend-sick">Krankheitstag</span><span class="legend-holiday">Feiertag NRW</span></div><div class="month-grid"><span class="weekday">Mo</span><span class="weekday">Di</span><span class="weekday">Mi</span><span class="weekday">Do</span><span class="weekday">Fr</span><span class="weekday">Sa</span><span class="weekday">So</span>${grid}</div><div class="actions"><button type="button" class="secondary" data-action="sick">${sick(id) ? 'Krankheitstag entfernen' : 'Krank melden'}</button><button type="button" class="primary" data-action="vacation-form">Urlaub beantragen</button></div></section>${state.vacationForm ? `<section class="panel"><h3>Urlaub beantragen</h3><form data-form="vacation" class="entry-form"><label>Von<input name="start" type="date" required value="${state.date}"></label><label>Bis<input name="end" type="date" required value="${state.date}"></label><button class="primary">Antrag senden</button></form></section>` : ''}<section class="list-section"><h3>Durchgeführt</h3>${nrwHoliday(state.date) ? `<p class="locked">${escape(nrwHoliday(state.date))} in NRW</p>` : ''}${recordCards}</section>`;
   }
 
   function customerFields(customer) { const fields = customer?.custom_fields || {}; return `<input type="hidden" name="id" value="${customer?.id || ''}"><label>Firmenname<input name="name" required value="${escape(customer?.name || '')}"></label><label>Vorname<input name="first_name" value="${escape(fields.first_name || '')}"></label><label>Straße<input name="street" value="${escape(fields.street || '')}"></label><label>Hausnummer<input name="house_no" value="${escape(fields.house_no || '')}"></label><label>Ort<input name="city" value="${escape(fields.city || '')}"></label><label>Postleitzahl<input name="postal_code" value="${escape(fields.postal_code || '')}"></label><label>Telefon privat<input name="phone_private" value="${escape(fields.phone_private || '')}"></label><label>Telefon mobil<input name="phone_mobile" value="${escape(fields.phone_mobile || '')}"></label><label class="wide">E-Mail-Adresse<input name="email" type="email" value="${escape(fields.email || '')}"></label><label class="wide">Zusätzliche Angaben (eine Zeile je Feld)<textarea name="extra" rows="3">${escape(Object.entries(fields).filter(([name]) => name.startsWith('extra_')).map(([, value]) => value).join('\n'))}</textarea></label>`; }
@@ -266,7 +298,7 @@
   function customersView() {
     const selected = state.rows.customers.find(row => same(row.id, state.customerId));
     const list = state.rows.customers.map(row => {
-      const total = state.rows.entries.filter(entry => same(entry.customer_id, row.id)).reduce((sum, entry) => sum + n(entry.executed_hours), 0);
+      const total = effectiveTimeEntries().filter(entry => same(entry.customer_id, row.id)).reduce((sum, entry) => sum + n(entry.executed_hours), 0);
       const removeButton = isManager() ? '<button type="button" class="danger small" data-action="delete-customer" data-id="' + escape(row.id) + '">Löschen</button>' : '';
       return '<article class="row-card" data-customer-search-item data-customer-search="' + escape(customerSearchText(row)) + '"><button type="button" class="row-main" data-action="customer" data-id="' + escape(row.id) + '"><b>' + escape(row.name) + '</b><span>' + h(total) + ' gesamt</span></button>' + removeButton + '</article>';
     }).join('') || '<p class="empty">Noch keine Kunden angelegt.</p>';
@@ -669,13 +701,24 @@
       return;
     }
     if (action === 'menu') { state.menu = !state.menu; render(); return; }
-    if (action === 'nav') { state.view = button.dataset.view; state.menu = false; state.vacationForm = false; state.composeMessage = false; state.orderId = ''; state.orderCustomer = ''; state.orderOrigin = 'orders'; state.billingKey = ''; render(); return; }
+    if (action === 'nav') { state.view = button.dataset.view; state.menu = false; state.vacationForm = false; state.composeMessage = false; state.orderId = ''; state.timeEntryId = ''; state.orderCustomer = ''; state.orderOrigin = 'orders'; state.billingKey = ''; render(); return; }
     if (action === 'logout') return logout();
     if (action === 'forgot') return perform('Die zuständige Verwaltung wurde informiert.', () => api('/functions/v1/request-password-help', { method: 'POST', body: { username: root.querySelector('[name="username"]')?.value || '' } }));
-    if (action === 'pick-day') { state.date = button.dataset.date; state.month = state.date.slice(0, 7); state.vacationForm = false; render(); return; }
+    if (action === 'pick-day') { state.date = button.dataset.date; state.month = state.date.slice(0, 7); state.timeEntryId = ''; state.vacationForm = false; render(); return; }
     if (action === 'month') { const date = new Date(`${state.month}-01T12:00:00`); date.setMonth(date.getMonth() + n(button.dataset.value)); state.month = date.toISOString().slice(0, 7); render(); return; }
     if (action === 'vacation-form') { state.vacationForm = true; render(); return; }
-    if (action === 'open-order') { const order = state.rows.orders.find(row => same(row.id, button.dataset.id)); if (!order) return; const person = state.rows.people.find(row => same(row.id, order.employee_id)); if (isAdmin() && person?.business_id) state.businessId = person.business_id; state.employeeId = order.employee_id; state.date = order.work_date; state.month = state.date.slice(0, 7); state.orderId = order.id; state.orderOrigin = ['invoices', 'invoices-paid', 'billing-detail'].includes(state.view) ? state.view : 'orders'; state.view = 'order-detail'; state.menu = false; render(); return; }
+    if (action === 'open-order') { const order = state.rows.orders.find(row => same(row.id, button.dataset.id)); if (!order) return; const person = state.rows.people.find(row => same(row.id, order.employee_id)); if (isAdmin() && person?.business_id) state.businessId = person.business_id; state.employeeId = order.employee_id; state.date = order.work_date; state.month = state.date.slice(0, 7); state.orderId = order.id; state.timeEntryId = ''; state.orderOrigin = ['invoices', 'invoices-paid', 'billing-detail'].includes(state.view) ? state.view : 'orders'; state.view = 'order-detail'; state.menu = false; render(); return; }
+    if (action === 'open-time') {
+      const entry = state.rows.entries.find(row => same(row.id, button.dataset.id));
+      if (!entry) return;
+      const linkedOrder = entry.work_order_id && state.rows.orders.find(order => same(order.id, entry.work_order_id));
+      if (linkedOrder) { button.dataset.id = linkedOrder.id; button.dataset.action = 'open-order'; button.click(); return; }
+      const person = state.rows.people.find(row => same(row.id, entry.employee_id));
+      if (isAdmin() && person?.business_id) state.businessId = person.business_id;
+      state.employeeId = entry.employee_id; state.date = entry.work_date; state.month = state.date.slice(0, 7);
+      state.timeEntryId = entry.id; state.orderId = ''; state.view = 'time'; state.menu = false; render(); return;
+    }
+    if (action === 'close-time') { state.timeEntryId = ''; render(); return; }
     if (action === 'close-order') { state.orderId = ''; state.view = state.orderOrigin || 'orders'; render(); return; }
     if (action === 'open-billing') { state.billingKey = button.dataset.key; state.billingMode = button.dataset.mode === 'paid' ? 'paid' : 'open'; state.view = 'billing-detail'; state.menu = false; render(); return; }
     if (action === 'close-billing') { state.view = state.billingMode === 'paid' ? 'invoices-paid' : 'invoices'; state.billingKey = ''; render(); return; }
@@ -751,9 +794,9 @@
     const input = event.target;
     if (input.matches('input[type="time"]')) { input.value = roundTime(input.value); input.dispatchEvent(new Event('input', { bubbles: true })); return; }
     if (input.matches('[name="administrator_login"]')) { const form = input.closest('form[data-form="login"]'), company = form?.elements.company; if (company) { company.disabled = input.checked; company.required = !input.checked; if (input.checked) company.value = ''; } return; }
-    if (input.matches('[data-date]')) { state.date = input.value || today(); state.month = state.date.slice(0, 7); render(); return; }
-    if (input.matches('[data-select="business"]')) { state.businessId = input.value; state.employeeId = ''; render(); return; }
-    if (input.matches('[data-select="employee"]')) { state.employeeId = input.value; render(); }
+    if (input.matches('[data-date]')) { state.date = input.value || today(); state.month = state.date.slice(0, 7); state.timeEntryId = ''; render(); return; }
+    if (input.matches('[data-select="business"]')) { state.businessId = input.value; state.employeeId = ''; state.timeEntryId = ''; render(); return; }
+    if (input.matches('[data-select="employee"]')) { state.employeeId = input.value; state.timeEntryId = ''; render(); }
   });
 
   root.addEventListener('submit', event => {
@@ -816,7 +859,7 @@
     windowRef.document.write(`<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Arbeitsnachweis</title><style>${pdfStyles()}</style></head><body><main class="pdf-page">${pdfBrandHeader('Arbeitsnachweis', dateText(order.work_date))}<section class="pdf-grid"><article class="pdf-card"><span class="pdf-card-label">Kunde</span><b>${escape(order.customer_name || 'Ohne Kunde')}</b><br>${escape(order.title || 'Ohne Beschreibung')}</article><article class="pdf-card"><span class="pdf-card-label">Ausgeführt von</span><b>${escape(employeeName)}</b><br>${timeText(order.start_time)} bis ${timeText(order.end_time)} · Pause ${h(order.pause_hours)}<br>${h(order.executed_hours)} ausgeführte Stunden</article></section>${documentation ? `<section class="pdf-section"><h2>Dokumentation</h2><article class="pdf-card">${escape(documentation).replace(/\n/g, '<br>')}</article></section>` : ''}${signatureSection}<section class="pdf-section"><h2>Leistungen und Material</h2>${items.length ? `<table class="pdf-table"><thead><tr><th>Position</th><th class="number">Menge</th><th class="number">Einzelpreis</th><th class="number">Gesamt</th></tr></thead><tbody>${materialRows}</tbody></table>` : '<p class="pdf-empty">Keine Positionen erfasst.</p>'}</section><div class="pdf-total"><b>Gesamtsumme</b><b>${money(total)}</b></div><p class="pdf-note">Monteur- und Aushilfsstunden erscheinen als Arbeitszeitpositionen mit ihrem jeweiligen Preis.</p></main><script>window.onload=()=>window.print()<\/script></body></html>`); windowRef.document.close(); addPdfReturnBar(windowRef);
   }
   function printPdf() {
-    const person = worker(), id = workerId(), ownEntries = state.rows.entries.filter(row => same(row.employee_id, id)), totalHours = ownEntries.reduce((sum, row) => sum + n(row.executed_hours), 0);
+    const person = worker(), id = workerId(), ownEntries = effectiveTimeEntries(id), totalHours = ownEntries.reduce((sum, row) => sum + n(row.executed_hours), 0);
     const lines = ownEntries.map(row => `<tr><td>${dateText(row.work_date)}</td><td>${escape(row.customer_name)}</td><td>${timeText(row.start_time)}</td><td>${timeText(row.end_time)}</td><td class="number">${h(row.pause_hours)}</td><td class="number">${h(row.executed_hours)}</td></tr>`).join('');
     const windowRef = window.open('', '_blank'); if (!windowRef) throw new Error('Bitte Pop-ups erlauben, um die PDF zu erstellen.');
     windowRef.document.write(`<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Zeiterfassungsnachweis</title><style>${pdfStyles()}</style></head><body><main class="pdf-page">${pdfBrandHeader('Zeiterfassungsnachweis', state.date.slice(0, 4))}<section class="pdf-grid"><article class="pdf-card"><span class="pdf-card-label">Mitarbeiter</span><b>${escape(person?.display_name || person?.username || '')}</b></article><article class="pdf-card"><span class="pdf-card-label">Jahresübersicht</span>${h(totalHours)} Arbeitsstunden<br>${h(overtime(id))} Überstunden<br>${vacationLeft(id)} Urlaubstage übrig · ${annualSick(id)} Krankheitstage</article></section><section class="pdf-section"><h2>Erfasste Zeiten</h2><table class="pdf-table"><thead><tr><th>Datum</th><th>Kunde</th><th>Von</th><th>Bis</th><th class="number">Pause</th><th class="number">Stunden</th></tr></thead><tbody>${lines || '<tr><td colspan="6" class="pdf-empty">Keine Zeiterfassungen vorhanden.</td></tr>'}</tbody></table></section><p class="pdf-note">Automatisch aus der Arbeitszeiterfassung erstellt.</p></main><script>window.onload=()=>window.print()<\/script></body></html>`); windowRef.document.close(); addPdfReturnBar(windowRef);

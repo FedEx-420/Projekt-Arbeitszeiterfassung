@@ -940,5 +940,46 @@
   window.addEventListener('unhandledrejection', event => { event.preventDefault(); notice('Die Aktion konnte nicht ausgeführt werden. Bitte erneut versuchen.', true); render(); });
   state.session = parse(localStorage.getItem(storage) || localStorage.getItem('zeiterfassung-session-v700'));
   if (state.session?.access_token) loadApp(); else render();
-})();
 
+  // Safety net: always load every available result page and never clear a verified history after a temporary connection error.
+  async function allRows(table, query = 'select=*') {
+    const pageSize = 500; let lastError = null;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const result = [];
+        for (let offset = 0; ; offset += pageSize) {
+          const page = await rows(table, `${query}&limit=${pageSize}&offset=${offset}`) || [];
+          result.push(...page); if (page.length < pageSize) return result;
+        }
+      } catch (error) { lastError = error; }
+    }
+    throw lastError || new Error('Die Daten konnten nicht geladen werden.');
+  }
+  async function reload() {
+    const issues = [];
+    const load = async (name, table, query = 'select=*') => { try { state.rows[name] = await allRows(table, query); } catch { issues.push(name); } };
+    const loadRecipients = async () => { try { state.rows.recipients = (await api('/functions/v1/mailbox-send', { method: 'POST', body: { action: 'recipients' } }))?.recipients || []; } catch { issues.push('recipients'); } };
+    await Promise.all([
+      load('people', 'profiles'), load('entries', 'time_entries', 'select=*&order=work_date.desc,created_at.desc'), load('orders', 'work_orders', 'select=*&order=work_date.desc,created_at.desc'),
+      load('items', 'work_order_items'), load('customers', 'customers', 'select=*&order=name.asc'), load('days', 'work_days'), load('vacations', 'vacation_requests', 'select=*&order=created_at.desc'),
+      load('messages', 'mailbox_messages', 'select=*&order=created_at.desc'), load('attachments', 'mailbox_attachments', 'select=*&order=created_at.asc'), load('materials', 'materials', 'select=*&order=name.asc'), load('appointments', 'appointments'),
+      load('payslips', 'employee_payslips', 'select=*&order=created_at.desc'), load('documents', 'work_order_documents'), loadRecipients()
+    ]);
+    state.people = state.rows.people;
+    if (!isManager()) { try { state.businessBrand = (await api('/rest/v1/rpc/current_business_branding', { method: 'POST', body: {} }))?.[0] || null; } catch { state.businessBrand = null; } } else state.businessBrand = null;
+    if (isAdmin() && !businesses().some(person => same(person.id, state.businessId))) state.businessId = businesses()[0]?.id || '';
+    if (!workers().some(person => same(person.id, state.employeeId))) state.employeeId = workers()[0]?.id || state.profile.id;
+    if (issues.length) notice('Ein Teil der Daten konnte gerade nicht erneut synchronisiert werden. Bereits geladene Aufträge bleiben sichtbar.', true);
+  }
+  function recordedPeriods(id = workerId(), date = '') {
+    const entries = effectiveTimeEntries(id, date);
+    const orders = state.rows.orders.filter(order => same(order.employee_id, id) && (!date || order.work_date === date) && !entries.some(entry => same(entry.work_order_id, order.id) || sameWorkTime(entry, order))).map(order => ({ ...order, id: `work-order-${order.id}`, work_order_id: order.id }));
+    return [...entries, ...orders];
+  }
+  function dayHours(id = workerId(), date = state.date) { return recordedPeriods(id, date).reduce((sum, row) => sum + n(row.executed_hours), 0); }
+  function overtime(id = workerId()) {
+    const year = state.date.slice(0, 4), days = new Map();
+    recordedPeriods(id).filter(row => String(row.work_date || '').startsWith(year)).forEach(row => days.set(row.work_date, n(days.get(row.work_date)) + n(row.executed_hours)));
+    return [...days].reduce((sum, [date, hours]) => sum + hours - dueHours(date), 0);
+  }
+})();

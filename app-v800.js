@@ -881,13 +881,45 @@
     windowRef.document.write(`<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Rechnung ${escape(invoiceNumber)}</title><style>${pdfStyles()}</style></head><body><main class="pdf-page">${pdfBrandHeader('Rechnung', invoiceNumber, company)}<section class="pdf-grid"><article class="pdf-card"><span class="pdf-card-label">Rechnung an</span><b>${escape([fields.first_name, customerName].filter(Boolean).join(' ') || customerName)}</b>${customerAddress.length ? `<br>${customerAddress.map(escape).join('<br>')}` : ''}</article><article class="pdf-card"><span class="pdf-card-label">Rechnungsdaten</span>Ausgestellt am ${dateText(today())}<br>Leistungszeitraum: ${dateText(first?.work_date)}${same(first?.work_date, last?.work_date) ? '' : ` bis ${dateText(last?.work_date)}`}<br>${group.orders.length} Arbeitsschein(e)</article></section><section class="pdf-execution"><b>Ausführung durch</b>${executionRows}</section><section class="pdf-section"><h2>Leistungen und Material</h2><table class="pdf-table"><thead><tr><th>Datum</th><th>Position / Ausführung</th><th class="number">Menge</th><th class="number">Einzelpreis</th><th class="number">Gesamt</th></tr></thead><tbody>${itemRows}</tbody></table></section><div class="pdf-total"><b>Rechnungsbetrag</b><b>${money(total)}</b></div><p class="pdf-note">Diese Rechnung wurde automatisch aus ${group.orders.length} Arbeitsschein(en) erstellt.</p></main></body></html>`);
     windowRef.document.close(); addPdfReturnBar(windowRef); return windowRef;
   }
+  function billingDayGroups(orders) {
+    const groups = new Map();
+    orders.forEach(order => {
+      const key = String(order.work_date || '');
+      const group = groups.get(key) || { date: key, orders: [] };
+      group.orders.push(order); groups.set(key, group);
+    });
+    return [...groups.values()].sort((left, right) => String(left.date).localeCompare(String(right.date)));
+  }
   function printBillingPdf(key, invoiced) {
     const group = invoiceGroups(invoiced).find(item => same(item.key, key)); if (!group) throw new Error('Die Abrechnung wurde nicht gefunden.');
     const money = value => n(value).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
-    const detailRows = group.orders.map(order => { const person = state.rows.people.find(row => same(row.id, order.employee_id)), employeeName = person?.display_name || person?.username || 'Mitarbeiter nicht verfügbar', items = state.rows.items.filter(item => same(item.work_order_id, order.id)); const rows = items.length ? items.map(item => { const price = invoiceItemPrice(item, order), name = invoiceItemName(item, order); return `<tr><td>${escape(name)}${isHourlyMaterial(name) ? '<span class="pdf-tag">Arbeitszeit</span>' : ''}</td><td class="number">${n(item.quantity).toLocaleString('de-DE')}</td><td class="number">${money(price)}</td><td class="number">${money(n(item.quantity) * price)}</td></tr>`; }).join('') : '<tr><td colspan="4" class="pdf-empty">Kein Material erfasst.</td></tr>'; return `<section class="pdf-section"><h2>${dateText(order.work_date)} · ${escape(order.title || 'Arbeitsnachweis')}</h2><div class="pdf-card"><b>${escape(employeeName)}</b><br><span class="pdf-muted">${timeText(order.start_time)} bis ${timeText(order.end_time)} · Pause ${h(order.pause_hours)} · ${h(order.executed_hours)}</span>${order.documentation ? `<br><br><b>Dokumentation</b><br>${escape(order.documentation).replace(/\n/g, '<br>')}` : ''}</div><table class="pdf-table"><thead><tr><th>Leistung / Material</th><th class="number">Menge</th><th class="number">Einzelpreis</th><th class="number">Gesamt</th></tr></thead><tbody>${rows}</tbody></table></section>`; }).join('');
+    const dayGroups = billingDayGroups(group.orders);
+    const detailRows = dayGroups.map(day => {
+      const team = new Map();
+      day.orders.forEach(order => {
+        const person = state.rows.people.find(row => same(row.id, order.employee_id));
+        const employeeName = person?.display_name || person?.username || 'Mitarbeiter nicht verfügbar';
+        const employee = team.get(String(order.employee_id)) || { name: employeeName, shifts: [], hours: 0 };
+        employee.shifts.push(`${timeText(order.start_time)} bis ${timeText(order.end_time)} · Pause ${h(order.pause_hours)}`);
+        employee.hours += n(order.executed_hours); team.set(String(order.employee_id), employee);
+      });
+      const teamRows = [...team.values()].map(employee => `<li><b>${escape(employee.name)}</b>: ${escape(employee.shifts.join(' / '))} · ${h(employee.hours)}</li>`).join('');
+      const documentations = day.orders.filter(order => String(order.documentation || '').trim()).map(order => {
+        const person = state.rows.people.find(row => same(row.id, order.employee_id));
+        return `<li><b>${escape(person?.display_name || person?.username || 'Mitarbeiter')}</b>: ${escape(order.documentation).replace(/\n/g, '<br>')}</li>`;
+      }).join('');
+      const rows = day.orders.flatMap(order => {
+        const items = state.rows.items.filter(item => same(item.work_order_id, order.id));
+        return items.map(item => {
+          const price = invoiceItemPrice(item, order), name = invoiceItemName(item, order);
+          return `<tr><td>${escape(name)}${isHourlyMaterial(name) ? '<span class="pdf-tag">Arbeitszeit</span>' : ''}${order.title ? `<small>${escape(order.title)}</small>` : ''}</td><td class="number">${n(item.quantity).toLocaleString('de-DE')}</td><td class="number">${money(price)}</td><td class="number">${money(n(item.quantity) * price)}</td></tr>`;
+        });
+      }).join('') || '<tr><td colspan="4" class="pdf-empty">Kein Material erfasst.</td></tr>';
+      return `<section class="pdf-section"><h2>${dateText(day.date)}</h2><div class="pdf-card"><span class="pdf-card-label">Mitarbeiter auf der Baustelle</span><ul style="margin:6px 0 0;padding-left:20px">${teamRows}</ul>${documentations ? `<br><b>Dokumentation</b><ul style="margin:6px 0 0;padding-left:20px">${documentations}</ul>` : ''}</div><table class="pdf-table"><thead><tr><th>Leistung / Material</th><th class="number">Menge</th><th class="number">Einzelpreis</th><th class="number">Gesamt</th></tr></thead><tbody>${rows}</tbody></table></section>`;
+    }).join('');
     const totalHours = group.orders.reduce((sum, order) => sum + n(order.executed_hours), 0), totalMaterial = group.orders.reduce((sum, order) => sum + state.rows.items.filter(item => same(item.work_order_id, order.id)).reduce((itemSum, item) => itemSum + n(item.quantity) * invoiceItemPrice(item, order), 0), 0);
     const windowRef = window.open('', '_blank'); if (!windowRef) throw new Error('Bitte Pop-ups erlauben, um die PDF zu erstellen.');
-    windowRef.document.write(`<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Arbeitsnachweis</title><style>${pdfStyles()}</style></head><body><main class="pdf-page">${pdfBrandHeader('Arbeitsnachweis', invoiced ? 'Bereits abgerechnet' : 'Offen zur Abrechnung')}<section class="pdf-grid"><article class="pdf-card"><span class="pdf-card-label">Kunde</span><b>${escape(group.customerName)}</b></article><article class="pdf-card"><span class="pdf-card-label">Übersicht</span>${group.orders.length} Arbeitsschein(e)<br>${h(totalHours)} Arbeitszeit</article></section>${detailRows}<div class="pdf-total"><b>Gesamtsumme</b><b>${money(totalMaterial)}</b></div><p class="pdf-note">Dieser Arbeitsnachweis fasst alle enthaltenen Arbeitsscheine mit Material- und Stundenpositionen zusammen.</p></main><script>window.onload=()=>window.print()<\/script></body></html>`); windowRef.document.close(); addPdfReturnBar(windowRef);
+    windowRef.document.write(`<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Arbeitsnachweis</title><style>${pdfStyles()}</style></head><body><main class="pdf-page">${pdfBrandHeader('Arbeitsnachweis', invoiced ? 'Bereits abgerechnet' : 'Offen zur Abrechnung')}<section class="pdf-grid"><article class="pdf-card"><span class="pdf-card-label">Kunde</span><b>${escape(group.customerName)}</b></article><article class="pdf-card"><span class="pdf-card-label">Übersicht</span>${group.orders.length} Arbeitsschein(e) · ${dayGroups.length} Einsatztag(e)<br>${h(totalHours)} Arbeitszeit</article></section>${detailRows}<div class="pdf-total"><b>Gesamtsumme</b><b>${money(totalMaterial)}</b></div><p class="pdf-note">Dieser Arbeitsnachweis fasst alle enthaltenen Arbeitsscheine je Einsatztag zusammen. Die beteiligten Mitarbeiter stehen gemeinsam unter dem jeweiligen Datum.</p></main><script>window.onload=()=>window.print()<\/script></body></html>`); windowRef.document.close(); addPdfReturnBar(windowRef);
   }
   function printOrderPdf(orderId) {
     const order = state.rows.orders.find(row => same(row.id, orderId)); if (!order) throw new Error('Der Arbeitsschein wurde nicht gefunden.');

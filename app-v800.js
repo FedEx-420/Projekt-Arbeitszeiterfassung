@@ -982,7 +982,6 @@
     recordedPeriods(id).filter(row => String(row.work_date || '').startsWith(year)).forEach(row => days.set(row.work_date, n(days.get(row.work_date)) + n(row.executed_hours)));
     return [...days].reduce((sum, [date, hours]) => sum + hours - dueHours(date), 0);
   }
-}
   function reportOvertime(entries) { const days = new Map(); entries.forEach(row => days.set(row.work_date, n(days.get(row.work_date)) + n(row.executed_hours))); return [...days].reduce((sum, [date, hours]) => sum + hours - dueHours(date), 0); }
   function receiptTabs(selected) { return [['fuel','Tankbelege'],['vacations','Urlaubsanträge'],['sick','Krankmeldungen'],['training','Schulungstage']].map(([id,title]) => `<button type="button" class="${id === selected ? 'primary' : 'secondary'} small" data-action="receipt-section" data-section="${id}">${title}</button>`).join(''); }
   function receiptsView() {

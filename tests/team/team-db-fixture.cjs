@@ -20,6 +20,9 @@ async function fixture({legacyRecords=false}={}) {
     create table public.materials(id uuid primary key default gen_random_uuid(),business_id uuid,name text,unit_price numeric default 0,active boolean default true,unique(business_id,name));
     create table public.work_order_items(id uuid primary key default gen_random_uuid(),work_order_id uuid references work_orders(id) on delete cascade,material_id uuid references materials(id),position_name text,quantity numeric,unit_price numeric);
     create table public.work_order_documents(id uuid primary key default gen_random_uuid(),work_order_id uuid references work_orders(id),employee_id uuid,file_path text,file_name text,mime_type text);
+    create table public.mailbox_messages(id uuid primary key default gen_random_uuid(),recipient_id uuid not null references profiles(id) on delete cascade,sender_id uuid references profiles(id) on delete set null,message_type text not null check(message_type in ('password_help','vacation_request','vacation_decision','info','direct')),title text not null,body jsonb not null default '{}',read_at timestamptz,created_at timestamptz default now(),deleted_at timestamptz);
+    alter table public.mailbox_messages enable row level security;
+    create policy mailbox_read on public.mailbox_messages for select to authenticated using(recipient_id=auth.uid() or sender_id=auth.uid());
     create table storage.objects(id uuid primary key default gen_random_uuid(),bucket_id text,name text);
     create function app_private.fixture_manager(p_person uuid) returns boolean language sql stable security definer as $$select exists(select 1 from profiles actor where actor.id=auth.uid() and (actor.role='administrator' or (actor.role='business' and exists(select 1 from profiles p where p.id=p_person and (p.business_id=actor.id or p.id=actor.id)))))$$;
     create function app_private.fixture_company(p_person uuid) returns uuid language sql stable security definer set search_path=public,pg_temp as $$select case when role='business' then id else business_id end from profiles where id=p_person$$;
@@ -68,6 +71,7 @@ async function fixture({legacyRecords=false}={}) {
     times:(await db.query('select to_jsonb(t) record from time_entries t order by id')).rows.map(r=>r.record)
   } : null;
   await db.exec(fs.readFileSync(path.resolve(__dirname,'../../supabase/release853_team_work_orders.sql'),'utf8'));
+  await db.exec(fs.readFileSync(path.resolve(__dirname,'../../supabase/migrations/20261004173800_planning_approval_v854.sql'),'utf8'));
   const actor = async name => { await db.exec('reset role'); await db.query("select set_config('request.jwt.claim.sub',$1,false)",[ids[name]]); await db.exec('set role authenticated'); };
   const admin = async () => db.exec('reset role');
   const order = {employee_id:ids.anna,work_date:'2026-10-05',customer_id:ids.customer,title:'Gemeinsame Montage',documentation:'Testnotiz',signed_by:'Testkunde',signature_data:'data:image/png;base64,'+'A'.repeat(220)};

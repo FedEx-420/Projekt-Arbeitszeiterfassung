@@ -36,7 +36,7 @@ async function main(){
             else throw Error('Unexpected RPC '+name);
             return send(result);
           }
-          const table=url.pathname.split('/').at(-1),tables=['profiles','customers','appointments','work_days','vacation_requests','time_entries','work_orders','work_order_items','materials','work_order_documents'];
+          const table=url.pathname.split('/').at(-1),tables=['profiles','customers','appointments','planning_requests','mailbox_messages','work_days','vacation_requests','time_entries','work_orders','work_order_items','materials','work_order_documents'];
           if(!tables.includes(table))return send([]);
           const params=[],conditions=[];
           for(const [field,value] of url.searchParams){if(value.startsWith('eq.')&&/^[a-z_]+$/.test(field)){params.push(value.slice(3));conditions.push(field+'=$'+params.length);}}
@@ -147,4 +147,3 @@ async function main(){
   }finally{await browser.close();server.close();await db.close();}
 }
 main().catch(e=>{console.error(e.stack);process.exit(1)});
-

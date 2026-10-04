@@ -36,7 +36,7 @@ const database = {
   ],
   time_entries: [], work_orders: [], work_order_items: [],
   materials: [{ id: 'labor', business_id: 'company-one', name: 'Monteurstunde', unit_price: 55, active: true }],
-  mailbox_messages: [], mailbox_attachments: [], employee_payslips: [], work_order_documents: []
+  mailbox_messages: [], mailbox_attachments: [], employee_payslips: [], work_order_documents: [], planning_requests: []
 };
 const notifications = [], writes = [], pageErrors = [], tests = [];
 let failPlanningGet = false;
@@ -225,12 +225,12 @@ async function main() {
       } finally { database.customers[0].custom_fields.street = 'Teststraße'; }
     });
     await setRole('anna');
-    await test('Employees see only their own assignments and cannot create planning', async () => {
+    await test('Employees see their assignments and may propose, but cannot directly publish planning', async () => {
       assert.equal(await page.locator('.plan-person').count(), 1);
-      assert.equal(await page.locator('[data-action="plan-new"]').count(), 0);
+      assert.equal(await page.locator('[data-action="plan-new"]').count(), 1);
       assert.equal(await page.locator('[data-id="max-plan"]').count(), 0);
-      const result = await page.evaluate(async () => { try { await window.__appTest.savePlanning({}); return ''; } catch (error) { return error.message; } });
-      assert.match(result, /nur durch Administrator oder Geschäftskonto/);
+      const result = await page.evaluate(async () => { try { await window.__appTest.savePlanning({elements:{proposal:{value:''}}}); return ''; } catch (error) { return error.message; } });
+      assert.match(result, /Planungsvorschläge/);
     });
     await test('Confirmation immediately opens a persistent prefilled work order draft without adding working time', async () => {
       await page.locator('[data-action="plan-open"][data-id="' + created.id + '"]').click();
@@ -390,4 +390,3 @@ async function main() {
   } finally { await browser.close(); server.close(); }
 }
 main().catch(error => { console.error(error); server.close(); process.exitCode = 1; });
-

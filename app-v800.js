@@ -11,7 +11,7 @@
   const state = {
     session: null, profile: null, people: [], view: 'home', date: today(), month: today().slice(0, 7),
     businessId: '', businessBrand: null, employeeId: '', customerId: '', customerSearch: '', materialId: '', orderId: '', timeEntryId: '', orderCustomer: '', orderOrigin: 'orders', billingKey: '', billingMode: 'open', menu: false, vacationForm: false, appointmentForm: false, composeMessage: false, mailboxFolder: 'received', notice: null, busy: false,
-    rows: { entries: [], orders: [], items: [], customers: [], days: [], vacations: [], messages: [], attachments: [], recipients: [], materials: [], appointments: [], payslips: [], documents: [] }
+    rows: { entries: [], orders: [], items: [], customers: [], days: [], vacations: [], messages: [], attachments: [], recipients: [], materials: [], appointments: [], planningRequests: [], payslips: [], documents: [] }
   };
 
   const escape = value => String(value ?? '').replace(/[&<>'"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[ch]);
@@ -965,7 +965,7 @@
       load('people', 'profiles'), load('entries', 'time_entries', 'select=*&order=work_date.desc,created_at.desc'), load('orders', 'work_orders', 'select=*&order=work_date.desc,created_at.desc'),
       load('items', 'work_order_items'), load('customers', 'customers', 'select=*&order=name.asc'), load('days', 'work_days'), load('vacations', 'vacation_requests', 'select=*&order=created_at.desc'),
       load('messages', 'mailbox_messages', 'select=*&order=created_at.desc'), load('attachments', 'mailbox_attachments', 'select=*&order=created_at.asc'), load('materials', 'materials', 'select=*&order=name.asc'), load('appointments', 'appointments'),
-      load('payslips', 'employee_payslips', 'select=*&order=created_at.desc'), load('documents', 'work_order_documents'), loadRecipients()
+      load('payslips', 'employee_payslips', 'select=*&order=created_at.desc'), load('documents', 'work_order_documents'), loadRecipients(), loadPlanningRequests()
     ]);
     state.people = state.rows.people;
     if (!isManager()) { try { state.businessBrand = (await api('/rest/v1/rpc/current_business_branding', { method: 'POST', body: {} }))?.[0] || null; } catch { state.businessBrand = null; } } else state.businessBrand = null;
@@ -1043,6 +1043,20 @@
     const allowed = new Set(planningPeople().map(person => String(person.id)));
     return state.rows.appointments.filter(row => planEmployeeIds(row).some(id => allowed.has(id)));
   }
+  async function loadPlanningRequests() {
+    try { state.rows.planningRequests = await allRows('planning_requests', 'select=*&order=created_at.desc,id.asc'); state.planningRequestsReady = true; }
+    catch { state.planningRequestsReady = false; /* Preserve loaded proposals during temporary outages. */ }
+  }
+  function planningRequests() {
+    return (state.rows.planningRequests || []).filter(row => same(row.business_id,businessId()) && (isManager() || same(row.submitted_by,state.profile?.id))).map(row => ({...row,_planningRequest:true}));
+  }
+  function planningSelection() { return planningRows().find(row => same(row.id,state.planId)) || planningRequests().find(row => same(row.id,state.planId)); }
+  function requestStatusText(value) { return ({pending:'Zur Freigabe',approved:'Genehmigt',rejected:'Abgelehnt',withdrawn:'Zurückgezogen'}[value] || 'Zur Freigabe'); }
+  function planningRequestList() {
+    const list = planningRequests().filter(row => row.status === 'pending' || !isManager() && row.status === 'rejected');
+    if (!list.length) return '';
+    return `<section class="panel plan-requests"><h3>${isManager() ? 'Planungen zur Freigabe' : 'Meine Planungsvorschläge'} · ${list.length}</h3><p class="plan-customer-hint">Noch nicht veröffentlicht. Erst die Freigabe durch die Geschäftsleitung macht den Auftrag für die Beteiligten sichtbar.</p>${list.map(row => `<article class="row-card"><button type="button" class="row-main" data-action="plan-open" data-id="${escape(row.id)}"><b>${escape(row.customer_name)} · ${escape(row.title)}</b><span>${dateText(row.event_date)} · ${escape(planningMeta(row).start)} - ${escape(planningMeta(row).end)} Uhr</span><small>${escape(requestStatusText(row.status))} · Eingereicht von ${escape(personName(teamPerson(row.submitted_by)))}${row.review_note ? ' · '+escape(row.review_note) : ''}</small></button></article>`).join('')}</section>`;
+  }
   function planningCustomers(employeeId = workerId()) {
     const person = teamPerson(employeeId) || state.profile;
     const companyId = person?.role === 'business' ? person.id : person?.business_id || businessId();
@@ -1108,6 +1122,46 @@
     return ({ planned: 'Geplant', confirmed: 'Bestätigt · Arbeitsschein-Entwurf', completed: 'Erledigt', cancelled: 'Abgesagt' }[value] || 'Geplant');
   }
   function planningPriorityText(value) { return ({ high: 'Hoch', normal: 'Normal', low: 'Niedrig' }[value] || 'Normal'); }
+  function planningPdfForm() {
+    const days=planningDays();
+    return `<section class="panel"><h3>Planung als PDF herunterladen</h3><p class="plan-customer-hint">${isManager() ? 'Veröffentlichte Aufträge aller Mitarbeiter der ausgewählten Firma.' : 'Ihre veröffentlichten Aufträge.'} Vorschläge zur Freigabe werden nicht exportiert.</p><form data-form="planning-pdf" class="entry-form"><label>Von<input name="from" type="date" required value="${escape(state.planPdfFrom || days[0])}"></label><label>Bis<input name="to" type="date" required value="${escape(state.planPdfTo || days.at(-1))}"></label><button class="primary wide">PDF herunterladen</button></form></section>`;
+  }
+  function planningPdfData(from,to) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || !Number.isFinite(Date.parse(from+'T12:00:00')) || !Number.isFinite(Date.parse(to+'T12:00:00')) || from>to) throw new Error('Bitte einen gültigen Zeitraum von/bis auswählen.');
+    const span=Math.round((Date.parse(to+'T12:00:00Z')-Date.parse(from+'T12:00:00Z'))/86400000)+1;
+    if (span>366) throw new Error('Bitte höchstens 366 Tage pro PDF auswählen.');
+    const people=planningPeople(),list=planningRows().filter(row=>row.event_date>=from && row.event_date<=to && planningMeta(row).status!=='cancelled');
+    const days=Array.from({length:span},(_,index)=>{
+      const day=addDate(from,index);
+      return {label:new Intl.DateTimeFormat('de-DE',{weekday:'long',day:'2-digit',month:'long',year:'numeric'}).format(new Date(day+'T12:00:00')),monthLabel:monthText(day.slice(0,7)),holiday:nrwHoliday(day),absences:people.flatMap(person=>sick(person.id,day)?[personName(person)+': Krank gemeldet']:vacation(person.id,day)?[personName(person)+': Urlaub genehmigt']:requestedVacation(person.id,day)?[personName(person)+': Urlaub beantragt']:[]),orders:list.filter(row=>row.event_date===day).sort((a,b)=>planningMeta(a).start.localeCompare(planningMeta(b).start)).map(row=>{
+        const meta=planningMeta(row),actual=matchingPlanOrder(row),fields=planningCustomerInformation(row)?.custom_fields || {};
+        return {time:(meta.start || 'Zeit offen')+(meta.end?' - '+meta.end+' Uhr':''),customer:row.customer_name || 'Ohne Kunde',title:row.title || 'Auftrag',people:planEmployeeIds(row).map(id=>personName(teamPerson(id))).join(', '),status:planningStatusText(actual?'completed':meta.status),priority:planningPriorityText(meta.priority),address:[fields.street,fields.house_no,fields.postal_code,fields.city].filter(Boolean).join(' '),details:meta.details,actual:actual?orderPeriods(actual).map(period=>`${period.employee_name || personName(teamPerson(period.employee_id))}: ${timeText(period.start_time)} - ${timeText(period.end_time)} (${h(period.executed_hours)})`).join('; '):''};
+      })};
+    });
+    return {company:managerBusiness()?.company_name || 'Zeiterfassung',rangeLabel:dateText(from)+' - '+dateText(to),generatedLabel:new Intl.DateTimeFormat('de-DE',{dateStyle:'short',timeStyle:'short'}).format(new Date()),summary:`${list.length} ${list.length===1?'veröffentlichter Auftrag':'veröffentlichte Aufträge'} · ${span} Kalendertage`,peopleLabel:(isManager()?'Mitarbeiter: ':'Persönliche Planung: ')+people.map(personName).join(', '),days};
+  }
+  async function planningLogoBytes() {
+    const url=companyLogoUrl();if (!url) return null;
+    try {
+      const response=await fetch(url,{signal:AbortSignal.timeout(8000)});if (!response.ok) return null;
+      const blob=await response.blob(),objectUrl=URL.createObjectURL(blob);
+      try {
+        const image=new Image();image.src=objectUrl;await image.decode();
+        const canvas=document.createElement('canvas'),scale=Math.min(1,1200/image.naturalWidth,500/image.naturalHeight);
+        canvas.width=Math.max(1,Math.round(image.naturalWidth*scale));canvas.height=Math.max(1,Math.round(image.naturalHeight*scale));
+        const context=canvas.getContext('2d');context.fillStyle='#ffffff';context.fillRect(0,0,canvas.width,canvas.height);context.drawImage(image,0,0,canvas.width,canvas.height);
+        const base64=canvas.toDataURL('image/jpeg',.92).split(',')[1];return Uint8Array.from(atob(base64),char=>char.charCodeAt(0));
+      } finally { URL.revokeObjectURL(objectUrl); }
+    } catch { return null; }
+  }
+  async function downloadPlanningPdf(form) {
+    const from=form.elements.from.value,to=form.elements.to.value;
+    planningPdfData(from,to);await refreshPlanningData();
+    const data=planningPdfData(from,to);data.logoBytes=await planningLogoBytes();
+    const bytes=await window.PlanningPdf.create(data),url=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'})),link=document.createElement('a');
+    link.href=url;link.download=`Planung_${from}_bis_${to}.pdf`;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
+    state.planPdfFrom=from;state.planPdfTo=to;
+  }
   function requestedVacation(id, date) { return state.rows.vacations.some(row => same(row.employee_id, id) && row.status === 'requested' && row.start_date <= date && row.end_date >= date); }
   function timesOverlap(firstStart, firstEnd, secondStart, secondEnd) {
     if (!firstStart || !firstEnd || !secondStart || !secondEnd) return false;
@@ -1133,6 +1187,7 @@
     return `<button type="button" class="plan-card ${stateClass}" data-action="plan-open" data-id="${escape(appointment.id)}"><b>${escape(actual?.customer_name || appointment.customer_name || 'Ohne Kunde')}</b><span>${escape(actual ? String(actual.start_time || '').slice(0, 5) || '—' : meta.start || '—')} – ${escape(actual ? String(actual.end_time || '').slice(0, 5) || '—' : meta.end || '—')} · ${escape(actual?.title || appointment.title || 'Auftrag')}${actual ? ' · ' + h(orderHours(actual)) : ''}</span><small>${escape(planningStatusText(actual ? 'completed' : meta.status))} · Priorität ${escape(planningPriorityText(meta.priority))}${issue && !actual && meta.status !== 'cancelled' && meta.status !== 'completed' ? ` · ${escape(issue.text)}` : ''}</small></button>`;
   }
   function matchingPlanOrder(appointment) {
+    if (appointment?._planningRequest) return null;
     const meta = planningMeta(appointment);
     return state.rows.orders.find(order => same(order.employee_id, appointment.employee_id) && same(order.id, meta.workOrderId || appointment.id)) || state.rows.orders.find(order =>
       same(order.employee_id, appointment.employee_id) && order.work_date === appointment.event_date &&
@@ -1141,6 +1196,7 @@
     );
   }
   function planActions(appointment) {
+    if (appointment?._planningRequest) return '';
     const meta = planningMeta(appointment), order = matchingPlanOrder(appointment);
     if (order) return `<div class="actions"><button type="button" class="primary" data-action="open-order" data-id="${escape(order.id)}">Arbeitsschein öffnen</button></div>`;
     if (meta.status === 'completed' || meta.status === 'cancelled' || locked(appointment.employee_id, appointment.event_date) || !canUse('orders')) return '';
@@ -1176,6 +1232,7 @@
     ]);
     if (!same(actor, state.profile?.id)) throw new Error('Das Benutzerkonto hat sich geändert. Bitte die Planung erneut öffnen.');
     Object.assign(state.rows, { appointments, days, vacations, orders, entries, customers });
+    await loadPlanningRequests();
   }
   function revealPlanningDetail() {
     const detail = root.querySelector('#planning-detail');
@@ -1197,33 +1254,54 @@
     const employeeId = appointment?.employee_id || workerId() || people[0]?.id || '';
     const options = people.map(person => `<option value="${escape(person.id)}" ${same(person.id, employeeId) ? 'selected' : ''}>${escape(personName(person))}</option>`).join('');
     const customer = planningCustomerFor(appointment), customerInformation = planningCustomerInformation(appointment);
-    if (!isManager()) return '';
-    return `<section class="panel" id="planning-detail"><div class="page-head"><div><span class="eyebrow">${selected ? 'Auftrag bearbeiten' : 'Neuen Auftrag planen'}</span><h3>${selected ? escape(appointment.customer_name || 'Geplanter Auftrag') : 'Planung anlegen'}</h3></div><button type="button" class="secondary small" data-action="plan-close">Schließen</button></div>${selected ? planActions(appointment) + planningActualSummary(appointment) : ''}<form data-form="planning" class="entry-form"><input type="hidden" name="id" value="${escape(selected)}"><input type="hidden" name="plan_customer_id" value="${escape(customer?.id || appointment?.customer_id || '')}"><label>Mitarbeiter<select name="employee" required>${options}</select></label>${teamChoice(employeeId,appointment?.team_employee_ids || [],true)}<label>Datum<input name="event_date" type="date" required value="${escape(defaultDate)}"></label><label class="wide">Kunde<input name="customer" required list="planning-customers" autocomplete="off" placeholder="Kundenname eingeben oder auswählen" value="${escape(customer?.name || appointment?.customer_name || '')}"></label><div class="wide plan-customer-matches" data-plan-customer-matches aria-label="Passende Kunden"></div><section class="wide plan-customer-details"><h4>Adresse und Kontaktdaten</h4><div data-plan-customer-details>${planningCustomerDetailsHtml(customerInformation)}</div></section><label class="wide">Auftrag / Beschreibung<input name="title" maxlength="160" required value="${escape(appointment?.title || '')}" placeholder="Zum Beispiel: Steckdosen erneuern"></label><label>Beginn${timeInput('start', meta.start || '07:30')}</label><label>Ende${timeInput('end', meta.end || '08:30')}</label><label>Priorität<select name="priority"><option value="low" ${meta.priority === 'low' ? 'selected' : ''}>Niedrig</option><option value="normal" ${meta.priority !== 'low' && meta.priority !== 'high' ? 'selected' : ''}>Normal</option><option value="high" ${meta.priority === 'high' ? 'selected' : ''}>Hoch</option></select></label><label>Status<select name="status"><option value="planned" ${meta.status === 'planned' ? 'selected' : ''}>Geplant</option><option value="confirmed" ${meta.status === 'confirmed' ? 'selected' : ''}>Bestätigt</option><option value="completed" ${meta.status === 'completed' ? 'selected' : ''}>Erledigt</option><option value="cancelled" ${meta.status === 'cancelled' ? 'selected' : ''}>Abgesagt</option></select></label><label class="wide">Hinweise<textarea name="details" rows="3" placeholder="Adresse, Ansprechpartner, Besonderheiten">${escape(meta.details || '')}</textarea></label><div class="wide" data-plan-warnings aria-live="polite"></div><button class="primary wide">${selected ? 'Planung speichern' : 'Auftrag einplanen'}</button></form>${selected ? '<button type="button" class="danger wide" data-action="plan-delete" data-id="' + escape(selected) + '">Auftrag löschen</button>' : ''}${`<datalist id="planning-customers">${planningCustomers(employeeId).map(row => `<option value="${escape(row.name)}"></option>`).join('')}</datalist>`}</section>`;
+    const proposal = !!appointment?._planningRequest || !isManager();
+    if (!isManager() && selected && (!proposal || !same(appointment.submitted_by,state.profile.id))) return '';
+    const statusField = proposal ? '<input type="hidden" name="status" value="planned">' : `<label>Status<select name="status"><option value="planned" ${meta.status === 'planned' ? 'selected' : ''}>Geplant</option><option value="confirmed" ${meta.status === 'confirmed' ? 'selected' : ''}>Bestätigt</option><option value="completed" ${meta.status === 'completed' ? 'selected' : ''}>Erledigt</option><option value="cancelled" ${meta.status === 'cancelled' ? 'selected' : ''}>Abgesagt</option></select></label>`;
+    return `<section class="panel" id="planning-detail">
+      <div class="page-head"><div><span class="eyebrow">${proposal ? 'Planungsvorschlag · '+escape(requestStatusText(appointment?.status)) : selected ? 'Auftrag bearbeiten' : 'Neuen Auftrag planen'}</span><h3>${selected ? escape(appointment.customer_name || 'Geplanter Auftrag') : proposal ? 'Planung zur Freigabe einreichen' : 'Planung anlegen'}</h3></div><button type="button" class="secondary small" data-action="plan-close">Schließen</button></div>
+      ${proposal ? '<p class="plan-alert">Noch nicht veröffentlicht. Die Geschäftsleitung kann alle Angaben bearbeiten und den Vorschlag anschließend genehmigen.</p>' : selected ? planActions(appointment)+planningActualSummary(appointment) : ''}
+      <form data-form="planning" class="entry-form">
+        <input type="hidden" name="id" value="${escape(selected)}"><input type="hidden" name="proposal" value="${proposal ? 'yes' : ''}"><input type="hidden" name="revision" value="${escape(appointment?.revision || '')}"><input type="hidden" name="plan_customer_id" value="${escape(customer?.id || appointment?.customer_id || '')}">
+        <label>Mitarbeiter<select name="employee" required>${options}</select></label>${teamChoice(employeeId,appointment?.team_employee_ids || [],true)}
+        <label>Datum<input name="event_date" type="date" required value="${escape(defaultDate)}"></label>
+        <label class="wide">Kunde<input name="customer" required list="planning-customers" autocomplete="off" placeholder="Kundenname eingeben oder auswählen" value="${escape(customer?.name || appointment?.customer_name || '')}"></label><div class="wide plan-customer-matches" data-plan-customer-matches aria-label="Passende Kunden"></div>
+        <section class="wide plan-customer-details"><h4>Adresse und Kontaktdaten</h4><div data-plan-customer-details>${planningCustomerDetailsHtml(customerInformation)}</div></section>
+        <label class="wide">Auftrag / Beschreibung<input name="title" maxlength="160" required value="${escape(appointment?.title || '')}" placeholder="Zum Beispiel: Steckdosen erneuern"></label>
+        <label>Beginn${timeInput('start',meta.start || '07:30')}</label><label>Ende${timeInput('end',meta.end || '08:30')}</label>
+        <label>Priorität<select name="priority"><option value="low" ${meta.priority==='low'?'selected':''}>Niedrig</option><option value="normal" ${!['low','high'].includes(meta.priority)?'selected':''}>Normal</option><option value="high" ${meta.priority==='high'?'selected':''}>Hoch</option></select></label>${statusField}
+        <label class="wide">Hinweise<textarea name="details" rows="3" placeholder="Adresse, Ansprechpartner, Besonderheiten">${escape(meta.details || '')}</textarea></label><div class="wide" data-plan-warnings aria-live="polite"></div>
+        <button class="primary wide" name="decision" value="save">${proposal ? isManager() ? 'Änderungen als Vorschlag speichern' : 'Zur Freigabe senden' : selected ? 'Planung speichern' : 'Auftrag einplanen'}</button>
+        ${proposal && isManager() ? '<button class="primary wide" name="decision" value="approve">Genehmigen und veröffentlichen</button>' : ''}
+      </form>
+      ${proposal && selected && appointment.status==='pending' ? isManager() ? `<label>Begründung (optional)<textarea data-plan-reason rows="2"></textarea></label><button type="button" class="danger" data-action="plan-reject" data-id="${escape(selected)}">Vorschlag ablehnen</button>` : `<button type="button" class="danger" data-action="plan-withdraw" data-id="${escape(selected)}">Vorschlag zurückziehen</button>` : !proposal && selected ? `<button type="button" class="danger wide" data-action="plan-delete" data-id="${escape(selected)}">Auftrag löschen</button>` : ''}
+      <datalist id="planning-customers">${planningCustomers(employeeId).map(row=>`<option value="${escape(row.name)}"></option>`).join('')}</datalist>
+    </section>`;
   }
   function planningView() {
     state.planWeek = planningWeekStart();
-    const days = planningDays(), people = planningPeople(), selected = planningRows().find(row => same(row.id, state.planId));
+    const days = planningDays(), people = planningPeople(), selected = planningSelection();
     const grid = people.map(person => `<div class="plan-person">${escape(personName(person))}</div><div class="plan-week">${days.map(day => {
       const records = planningRows().filter(row => planEmployeeIds(row).includes(String(person.id)) && row.event_date === day).sort((left, right) => String(planningMeta(left).start).localeCompare(String(planningMeta(right).start)));
       const holiday = nrwHoliday(day), unavailable = locked(person.id, day), requested = requestedVacation(person.id, day);
       return `<section class="plan-day ${day === today() ? 'today' : ''}"><h4>${escape(new Intl.DateTimeFormat('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' }).format(new Date(`${day}T12:00:00`)))}</h4>${holiday ? `<div class="plan-alert holiday">${escape(holiday)}</div>` : ''}${sick(person.id, day) ? '<div class="plan-alert blocked">Krank gemeldet</div>' : ''}${vacation(person.id, day) ? '<div class="plan-alert vacation">Urlaub genehmigt</div>' : ''}${!unavailable && requested ? '<div class="plan-alert">Urlaub beantragt</div>' : ''}${records.map(planBadge).join('') || '<p class="plan-empty">Keine Planung</p>'}</section>`;
     }).join('')}</div>`).join('') || '<p class="empty">Für dieses Geschäftskonto sind noch keine Mitarbeiter angelegt.</p>';
-    const employeeHint = !isManager() ? '<section class="panel"><p>Hier sehen Sie Ihre geplanten Einsätze. Sobald der Tag frei ist, können Sie einen Auftrag direkt als vorausgefüllten Arbeitsschein übernehmen.</p></section>' : '';
-    return `${planningStyles()}<section class="page-head"><div><span class="eyebrow">Aufträge planen und abstimmen</span><h2>Planungsübersicht</h2></div></section><section class="panel"><div class="plan-toolbar"><div class="actions"><button type="button" class="secondary small" data-action="plan-week" data-days="-7">‹ Vorige Woche</button><button type="button" class="secondary small" data-action="plan-today">Heute</button><button type="button" class="secondary small" data-action="plan-week" data-days="7">Nächste Woche ›</button></div><label>Woche auswählen<input type="date" data-plan-week value="${escape(days[0])}"></label><button type="button" class="secondary small" data-action="plan-refresh">Aktualisieren</button><b>${dateText(days[0])} – ${dateText(days.at(-1))}</b>${isManager() ? '<button type="button" class="primary small" data-action="plan-new">+ Auftrag planen</button>' : ''}</div></section>${selected ? isManager() ? planForm(selected) : planEmployeeDetail(selected) : state.planForm ? planForm() : ''}${employeeHint}<section class="panel">${grid}</section>`;
+    const employeeHint = !isManager() ? '<section class="panel"><p>Hier sehen Sie Ihre freigegebenen Einsätze. Eigene Vorschläge können Sie zur Freigabe einreichen. Ein genehmigter Auftrag lässt sich wie bisher als Arbeitsschein übernehmen.</p></section>' : '';
+    return `${planningStyles()}<section class="page-head"><div><span class="eyebrow">Aufträge planen und abstimmen</span><h2>Planungsübersicht</h2></div></section><section class="panel"><div class="plan-toolbar"><div class="actions"><button type="button" class="secondary small" data-action="plan-week" data-days="-7">‹ Vorige Woche</button><button type="button" class="secondary small" data-action="plan-today">Heute</button><button type="button" class="secondary small" data-action="plan-week" data-days="7">Nächste Woche ›</button></div><label>Woche auswählen<input type="date" data-plan-week value="${escape(days[0])}"></label><button type="button" class="secondary small" data-action="plan-refresh">Aktualisieren</button><b>${dateText(days[0])} – ${dateText(days.at(-1))}</b>${isManager() || state.planningRequestsReady ? `<button type="button" class="primary small" data-action="plan-new">${isManager() ? '+ Auftrag planen' : '+ Planung vorschlagen'}</button>` : ''}<button type="button" class="secondary small" data-action="plan-pdf-toggle">Planung als PDF herunterladen</button></div></section>${state.planPdfForm ? planningPdfForm() : ''}${selected ? selected._planningRequest || isManager() ? planForm(selected) : planEmployeeDetail(selected) : state.planForm ? planForm() : ''}${planningRequestList()}${employeeHint}<section class="panel">${grid}</section>`;
   }
   function planEmployeeDetail(appointment) {
     const meta = planningMeta(appointment), actual = matchingPlanOrder(appointment), customerInformation = planningCustomerInformation(appointment), blocked = locked(appointment.employee_id, appointment.event_date) || meta.status === 'cancelled' || meta.status === 'completed';
     return `<section class="panel" id="planning-detail"><h3>${escape(actual?.customer_name || appointment.customer_name || 'Geplanter Auftrag')}</h3><p><b>${escape(actual?.title || appointment.title || '')}</b><br>${dateText(appointment.event_date)} · ${escape(actual ? String(actual.start_time || '').slice(0, 5) || '—' : meta.start || '—')} – ${escape(actual ? String(actual.end_time || '').slice(0, 5) || '—' : meta.end || '—')} Uhr · ${planningStatusText(actual ? 'completed' : meta.status)}</p>${customerInformation ? planningCustomerPanel(customerInformation) : ''}${planningActualSummary(appointment)}${meta.details ? `<p>${escape(meta.details).replace(/\n/g, '<br>')}</p>` : ''}${blocked ? `<p class="locked">${meta.status === 'completed' ? 'Der Auftrag wurde bereits abgeschlossen.' : locked(appointment.employee_id, appointment.event_date) ? escape(lockedText(appointment.employee_id, appointment.event_date)) : 'Dieser Auftrag ist abgesagt.'}</p>` : ''}${planActions(appointment)}<button type="button" class="secondary" data-action="plan-close">Zurück zur Planung</button></section>`;
   }
-  async function savePlanning(form) {
-    if (!isManager()) throw new Error('Aufträge können nur durch Administrator oder Geschäftskonto geplant werden.');
+  async function savePlanning(form, approve = false) {
+    const proposal = form.elements.proposal?.value === 'yes';
+    if (!isManager() && (!proposal || !state.planningRequestsReady)) throw new Error('Planungsvorschläge sind gerade nicht verfügbar. Bitte erneut laden.');
     state.planSaveWarning = '';
     await refreshPlanningData();
     const id = String(form.elements.id.value || ''), employeeId = String(form.elements.employee.value || ''), eventDate = String(form.elements.event_date.value || ''), customerName = String(form.elements.customer.value || '').trim(), title = String(form.elements.title.value || '').trim().slice(0, 160);
     const start = roundTime(form.elements.start.value), end = roundTime(form.elements.end.value);
     if (!planningPeople().some(person => same(person.id, employeeId))) throw new Error('Bitte einen Mitarbeiter dieses Geschäftskontos auswählen.');
     if (!eventDate || !customerName || !title || !start || !end || toMinutes(end) <= toMinutes(start)) throw new Error('Bitte Kunde, Auftrag, Datum sowie eine gültige Anfangs- und Endzeit eingeben.');
-    const old = planningRows().find(row => same(row.id, id));
+    const old = (proposal ? planningRequests() : planningRows()).find(row => same(row.id,id));
     if (id && !old) throw new Error('Dieser Auftrag wurde zwischenzeitlich gelöscht. Bitte erneut laden.');
     if (old && matchingPlanOrder(old) && (!same(old.employee_id, employeeId) || old.event_date !== eventDate || !(old.customer_id && same(old.customer_id, form.elements.plan_customer_id?.value)) && lower(old.customer_name) !== lower(customerName) || planningMeta(old).start !== start || planningMeta(old).end !== end)) throw new Error('Zu dieser Planung existiert bereits ein Arbeitsschein. Bitte Mitarbeiter, Kunde und ausgeführte Zeiten direkt im Arbeitsschein bearbeiten.');
     const participantIds = teamEnabled() ? selectedPlanTeam(form) : [];
@@ -1235,6 +1313,17 @@
     const candidates = planningCustomers(employeeId), selectedCustomer = candidates.find(row => same(row.id, form.elements.plan_customer_id?.value) && normalized(row.name) === normalized(customerName));
     const customer = selectedCustomer || await ensureCustomer(customerName, employeeId, candidates);
     if (!customer?.id) throw new Error('Der Kunde konnte nicht gespeichert werden.');
+    if (proposal) {
+      const saved = await api('/rest/v1/rpc/save_planning_request',{method:'POST',body:{p_data:{id:id || null,employee_id:employeeId,team_employee_ids:participantIds,event_date:eventDate,customer_id:customer.id,title,start,end,priority:form.elements.priority.value,details:form.elements.details.value},p_revision:id ? n(form.elements.revision.value) : null}});
+      if (!saved?.id) throw new Error('Der Vorschlag konnte nicht gespeichert werden.');
+      state.planId = ''; state.planForm = false; state.planWeek = planningWeekStart(eventDate);
+      if (approve) {
+        if (!isManager()) throw new Error('Nur die Geschäftsleitung darf Planungen genehmigen.');
+        try { await api('/rest/v1/rpc/review_planning_request',{method:'POST',body:{p_id:saved.id,p_revision:saved.revision,p_action:'approve',p_note:''}}); }
+        catch (error) { await loadPlanningRequests(); state.planId=saved.id; throw new Error('Der Vorschlag wurde gespeichert, aber noch nicht veröffentlicht: '+error.message); }
+      }
+      return;
+    }
     const meta = { start, end, priority: form.elements.priority.value, status: form.elements.status.value, details: form.elements.details.value, workOrderId: planningMeta(old).workOrderId, customerDetails: planningCustomerSnapshot(customer) };
     const data = { ...(teamEnabled() ? {team_employee_ids: participantIds} : {}), employee_id: employeeId, event_date: eventDate, customer_id: customer.id, customer_name: customer.name, title, notes: planningNotes(meta) };
     const saved = id ? await write('appointments', data, 'PATCH', `id=eq.${encodeURIComponent(id)}`) : await write('appointments', data);
@@ -1298,6 +1387,17 @@
     if (action === 'plan-new') { state.planId = ''; state.planForm = true; render(); revealPlanningDetail(); return; }
     if (action === 'plan-open') { state.planId = button.dataset.id; state.planForm = false; render(); revealPlanningDetail(); return; }
     if (action === 'plan-close') { state.planId = ''; state.planForm = false; render(); return; }
+    if (action === 'plan-pdf-toggle') { state.planPdfForm = !state.planPdfForm; render(); return; }
+    if (action === 'plan-reject' || action === 'plan-withdraw') {
+      if (state.busy) return;
+      const request = planningRequests().find(row=>same(row.id,button.dataset.id)); if (!request) return;
+      const note = root.querySelector('[data-plan-reason]')?.value || '';
+      if (!confirm(action==='plan-reject' ? 'Planungsvorschlag ablehnen?' : 'Eigenen Vorschlag zurückziehen?')) return;
+      return perform(action==='plan-reject' ? 'Der Vorschlag wurde abgelehnt.' : 'Der Vorschlag wurde zurückgezogen.',async()=>{
+        await api('/rest/v1/rpc/review_planning_request',{method:'POST',body:{p_id:request.id,p_revision:request.revision,p_action:action==='plan-reject'?'reject':'withdraw',p_note:note}});
+        state.planId='';state.planForm=false;
+      });
+    }
     if (action === 'plan-delete') {
       if (!isManager() || state.busy || !confirm('Geplanten Auftrag wirklich löschen?')) return;
       return perform('Der geplante Auftrag wurde gelöscht.', async () => {
@@ -1337,9 +1437,11 @@
   });
   root.addEventListener('submit', event => {
     const form = event.target;
+    if (form instanceof HTMLFormElement && form.dataset.form==='planning-pdf') { event.preventDefault();if (!state.busy) perform('Die Planungs-PDF wurde erstellt.',()=>downloadPlanningPdf(form));return; }
     if (!(form instanceof HTMLFormElement) || form.dataset.form !== 'planning') return;
     event.preventDefault(); if (state.busy) return;
-    perform('Die Planung wurde sofort gespeichert.', () => savePlanning(form)).then(() => { if (state.planSaveWarning) { notice(state.planSaveWarning); state.planSaveWarning = ''; render(); } });
+    const approve = event.submitter?.value === 'approve';
+    perform(approve ? 'Die Planung wurde genehmigt und veröffentlicht.' : form.elements.proposal?.value==='yes' ? 'Der Planungsvorschlag wurde gespeichert und zur Freigabe eingereicht.' : 'Die Planung wurde sofort gespeichert.', () => savePlanning(form,approve)).then(() => { if (state.planSaveWarning) { notice(state.planSaveWarning); state.planSaveWarning = ''; render(); } });
   });
 
   root.addEventListener('input', event => {

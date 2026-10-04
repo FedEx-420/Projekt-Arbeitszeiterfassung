@@ -1,0 +1,11 @@
+{
+  "name": "arbeitszeiterfassung-regression-tests",
+  "private": true,
+  "scripts": {
+    "test": "node --check app-v800.js && node tests/team/planning.test.cjs && node tests/team/team-database.test.cjs && node tests/team/team-browser.test.cjs"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.8",
+    "playwright": "1.62.1"
+  }
+}

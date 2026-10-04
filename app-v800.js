@@ -161,7 +161,7 @@
       if (!same(row.employee_id, id) || (date && row.work_date !== date)) return false;
       // A manually saved entry and a work order with precisely the same job
       // represent one working period. Keep the work-order source once.
-      return row.work_order_id || !state.rows.orders.some(order => sameWorkTime(row, order));
+      return row.work_order_id || row.team_work_order_id || !state.rows.orders.some(order => orderPeriods(order).some(period => sameWorkTime(row,{...order,...period})));
     });
   }
   function dayEntries(id = workerId(), date = state.date) { return effectiveTimeEntries(id, date); }
@@ -217,10 +217,10 @@
   function homeView() {
     const id = workerId(), extra = overtime(id), company = managerBusiness() || {}, logo = companyLogoUrl(company), companyName = company.company_name || 'Ihr Geschäftskonto';
     const companyBanner = `<section class="home-company-banner"><div class="home-company-logo">${logo ? `<img src="${escape(logo)}" alt="Firmenlogo von ${escape(companyName)}">` : '<span>ZE</span>'}</div><div class="home-company-copy"><span class="eyebrow">Ihr Geschäftskonto</span><h3>${escape(companyName)}</h3><p>${logo ? 'Firmenlogo und Unternehmensprofil' : 'Firmenlogo kann in den Einstellungen hinterlegt werden.'}</p></div></section>`;
-    const dayOrders = state.rows.orders.filter(row => same(row.employee_id, id) && row.work_date === state.date);
-    const manualEntries = dayEntries(id).filter(row => !row.work_order_id);
+    const dayOrders = state.rows.orders.filter(row => orderForEmployee(row,id) && row.work_date === state.date);
+    const manualEntries = dayEntries(id).filter(row => !row.work_order_id && !row.team_work_order_id);
     const activityCards = [
-      ...dayOrders.map(row => `<article class="row-card"><button type="button" class="row-main" data-action="open-order" data-id="${row.id}"><b>${escape(row.customer_name || 'Ohne Kunde')}</b><span>${escape(row.title || 'Arbeitsschein')} · ${timeText(row.start_time)} – ${timeText(row.end_time)} · Arbeitsschein öffnen</span></button></article>`),
+      ...dayOrders.map(row => `<article class="row-card"><button type="button" class="row-main" data-action="open-order" data-id="${row.id}"><b>${escape(row.customer_name || 'Ohne Kunde')}</b><span>${escape(row.title || 'Arbeitsschein')} · ${orderEmployeeTimeText(row,id)} · Arbeitsschein öffnen</span></button></article>`),
       ...manualEntries.map(row => `<article class="row-card"><button type="button" class="row-main" data-action="open-time" data-id="${row.id}"><b>${escape(row.customer_name || 'Ohne Kunde')}</b><span>${timeText(row.start_time)} – ${timeText(row.end_time)} · Zeiterfassung öffnen</span></button></article>`)
     ].join('');
     const activities = activityCards ? `<section class="list-section"><h3>Kunden des ausgewählten Tages</h3>${activityCards}</section>` : '';
@@ -250,15 +250,15 @@
     const documents = state.rows.documents.filter(document => same(document.work_order_id, order.id));
     const rows = items.length ? items.map(materialRow).join('') : materialRow();
     const invoiceButton = isManager() && !order.invoiced ? `<button type="button" class="primary small" data-action="invoice-order" data-id="${order.id}">Rechnung erstellen</button><button type="button" class="secondary small" data-action="mark-invoice-order" data-id="${order.id}">Als abgerechnet markieren</button>` : order.invoiced ? '<span class="badge">Bereits abgerechnet</span>' : '';
-    return `<section class="panel"><div class="page-head"><div><span class="eyebrow">Arbeitsschein bearbeiten</span><h3>${escape(order.customer_name || 'Ohne Kunde')}</h3></div><div class="actions">${invoiceButton}<button type="button" class="secondary small" data-action="order-pdf" data-id="${order.id}">PDF drucken / speichern</button><button type="button" class="danger small" data-action="delete-order" data-id="${order.id}">Arbeitsschein löschen</button><button type="button" class="secondary small" data-action="close-order">Schließen</button></div></div><form data-form="order-edit" class="entry-form"><input type="hidden" name="id" value="${order.id}">${orderDatePicker(order.work_date)}<label class="wide">Kunde<input name="customer" required list="customers" value="${escape(order.customer_name || '')}"></label><label class="wide">Beschreibung<input name="title" value="${escape(order.title || '')}"></label><div class="wide" id="material-lines">${rows}</div><button type="button" class="secondary wide" data-action="more-material">Weiteres Material</button><p class="wide">Arbeitsstunden werden beim Speichern automatisch als <b>${escape(hourlyNameForEmployee(order.employee_id))}</b> mit dem Preis aus der Materialliste ergänzt.</p><label>Arbeitsbeginn${timeInput('start', order.start_time?.slice(0, 5))}</label><label>Arbeitsende${timeInput('end', order.end_time?.slice(0, 5))}</label><label>Pause in Stunden<input name="pause" type="number" min="0" step="0.25" value="${n(order.pause_hours)}"></label><label>Ausgeführte Stunden<input name="hours" type="number" min="0.25" step="0.25" value="${n(order.executed_hours)}" required></label>${noteTemplates()}<label class="wide">Notiz / Dokumentation<textarea name="documentation" rows="4">${escape(order.documentation || '')}</textarea></label><label class="wide">Weitere Dokumente hochladen<input name="documents" type="file" multiple accept="image/*,.pdf,.doc,.docx"></label>${documents.length ? `<p class="wide">Vorhandene Dokumente: ${documents.map(document => escape(document.file_name)).join(', ')}</p>` : ''}${signatureFields(order)}<button class="primary wide" data-signature-submit>Änderungen speichern</button></form>${customerList()}${materialList()}</section>`;
+    return `<section class="panel"><div class="page-head"><div><span class="eyebrow">Arbeitsschein bearbeiten</span><h3>${escape(order.customer_name || 'Ohne Kunde')}</h3></div><div class="actions">${invoiceButton}<button type="button" class="secondary small" data-action="order-pdf" data-id="${order.id}">PDF drucken / speichern</button><button type="button" class="danger small" data-action="delete-order" data-id="${order.id}">Arbeitsschein löschen</button><button type="button" class="secondary small" data-action="close-order">Schließen</button></div></div><form data-form="order-edit" class="entry-form"><input type="hidden" name="id" value="${order.id}">${orderDatePicker(order.work_date)}<label class="wide">Kunde<input name="customer" required list="customers" value="${escape(order.customer_name || '')}"></label><label class="wide">Beschreibung<input name="title" value="${escape(order.title || '')}"></label><div class="wide" id="material-lines">${rows}</div><button type="button" class="secondary wide" data-action="more-material">Weiteres Material</button>${teamEnabled() ? '' : `<p class="wide">Arbeitsstunden werden beim Speichern automatisch als <b>${escape(hourlyNameForEmployee(order.employee_id))}</b> mit dem Preis aus der Materialliste ergänzt.</p>`}${teamOrderTimeFields(order.employee_id,orderPeriods(order),`<label>Arbeitsbeginn${timeInput('start', order.start_time?.slice(0, 5))}</label><label>Arbeitsende${timeInput('end', order.end_time?.slice(0, 5))}</label><label>Pause in Stunden<input name="pause" type="number" min="0" step="0.25" value="${n(order.pause_hours)}"></label><label>Ausgeführte Stunden<input name="hours" type="number" min="0.25" step="0.25" value="${n(order.executed_hours)}" required></label>`)}${noteTemplates()}<label class="wide">Notiz / Dokumentation<textarea name="documentation" rows="4">${escape(order.documentation || '')}</textarea></label><label class="wide">Weitere Dokumente hochladen<input name="documents" type="file" multiple accept="image/*,.pdf,.doc,.docx"></label>${documents.length ? `<p class="wide">Vorhandene Dokumente: ${documents.map(document => escape(document.file_name)).join(', ')}</p>` : ''}${signatureFields(order)}<button class="primary wide" data-signature-submit>Änderungen speichern</button></form>${customerList()}${materialList()}</section>`;
   }
   function orderDetailView() { const order = state.rows.orders.find(row => same(row.id, state.orderId)); return order ? orderEditor(order) : `<section class="panel"><h2>Arbeitsschein nicht gefunden</h2><p>Der Arbeitsschein ist nicht mehr verfügbar.</p><button type="button" class="secondary" data-action="close-order">Zurück</button></section>`; }
   function ordersView() {
-    const id = workerId(), list = state.rows.orders.filter(row => same(row.employee_id, id) && row.work_date === state.date);
+    const id = workerId(), list = state.rows.orders.filter(row => orderForEmployee(row,id) && row.work_date === state.date);
     const previous = dayEntries(id).at(-1)?.end_time?.slice(0, 5) || '07:30';
     const selected = list.find(row => same(row.id, state.orderId));
     const newOrder = locked(id) ? `<div class="locked">${escape(lockedText(id))}</div>` : `<section class="panel"><h3>Neuer Arbeitsschein</h3><form data-form="order" class="entry-form"><label class="wide">Kunde<input name="customer" required list="customers" value="${escape(state.orderCustomer || '')}"></label><label class="wide">Beschreibung<input name="title" placeholder="Ausgeführte Arbeiten"></label><div class="wide" id="material-lines">${materialRow()}</div><button type="button" class="secondary wide" data-action="more-material">Weiteres Material</button><p class="wide">Arbeitsstunden werden beim Speichern automatisch als <b>${escape(hourlyNameForEmployee(id))}</b> mit dem Preis aus der Materialliste ergänzt.</p><label>Arbeitsbeginn${timeInput('start', previous)}</label><label>Arbeitsende${timeInput('end', '')}</label><label>Pause in Stunden<input name="pause" type="number" min="0" step="0.25" value="0"></label><label>Ausgeführte Stunden<input name="hours" type="number" min="0.25" step="0.25" required></label>${noteTemplates()}<label class="wide">Notiz / Dokumentation<textarea name="documentation" rows="4"></textarea></label><label class="wide">Dokumente hochladen<input name="documents" type="file" multiple accept="image/*,.pdf,.doc,.docx"></label>${signatureFields()}<button class="primary wide" data-signature-submit>Arbeitsschein speichern</button></form>${customerList()}${materialList()}</section>`;
-    return `<section class="page-head"><div><span class="eyebrow">Arbeitsscheine von ${escape(worker()?.username || '')}</span><h2>${dateText(state.date)}</h2></div>${dayPicker()}</section>${selected ? orderEditor(selected) : newOrder}<section class="list-section"><h3>Arbeitsscheine des ausgewählten Tages</h3>${list.map(row => `<article class="row-card"><button type="button" class="row-main" data-action="open-order" data-id="${row.id}"><b>${escape(row.customer_name || 'Ohne Kunde')}</b><span>${dateText(row.work_date)} · ${escape(row.title || '')} · ${timeText(row.start_time)} – ${timeText(row.end_time)} · ${h(row.executed_hours)} · Öffnen</span></button><button type="button" class="danger small" data-action="delete-order" data-id="${row.id}">Löschen</button></article>`).join('') || '<p class="empty">Keine Arbeitsscheine für diesen Tag vorhanden.</p>'}</section>`;
+    return `<section class="page-head"><div><span class="eyebrow">Arbeitsscheine von ${escape(worker()?.username || '')}</span><h2>${dateText(state.date)}</h2></div>${dayPicker()}</section>${selected ? orderEditor(selected) : newOrder}<section class="list-section"><h3>Arbeitsscheine des ausgewählten Tages</h3>${list.map(row => `<article class="row-card"><button type="button" class="row-main" data-action="open-order" data-id="${row.id}"><b>${escape(row.customer_name || 'Ohne Kunde')}</b><span>${dateText(row.work_date)} · ${escape(row.title || '')} · ${orderEmployeeTimeText(row,id)} · ${h(orderHours(row,id))} · Öffnen</span></button><button type="button" class="danger small" data-action="delete-order" data-id="${row.id}">Löschen</button></article>`).join('') || '<p class="empty">Keine Arbeitsscheine für diesen Tag vorhanden.</p>'}</section>`;
   }
 
   function monthDays() {
@@ -270,16 +270,16 @@
     const grid = monthDays().map(date => {
       const holiday = nrwHoliday(date), isSick = sick(id, date), isApproved = Boolean(vacation(id, date));
       const isRequested = state.rows.vacations.some(row => same(row.employee_id, id) && row.status === 'requested' && row.start_date <= date && row.end_date >= date);
-      const hasOrder = state.rows.orders.some(row => same(row.employee_id, id) && row.work_date === date);
+      const hasOrder = state.rows.orders.some(row => orderForEmployee(row,id) && row.work_date === date);
       const classes = ['month-day', date.slice(0, 7) === state.month ? '' : 'outside', date === state.date ? 'selected' : '', holiday ? 'holiday' : '', isSick ? 'sick' : '', isApproved ? 'approved' : '', isRequested ? 'requested' : '', hasOrder ? 'has-order' : ''].join(' ');
       const flags = `${holiday ? `<i class="flag-holiday">${escape(holiday)}</i>` : ''}${isSick ? '<i class="flag-sick">Krank</i>' : ''}${isApproved ? '<i class="flag-approved">Urlaub</i>' : ''}${isRequested ? '<i class="flag-requested">Beantragt</i>' : ''}${hasOrder ? '<i class="flag-order">Arbeitsschein</i>' : ''}`;
       const label = [dateText(date), holiday ? `${holiday} in NRW` : '', isSick ? 'Krankheitstag' : '', isApproved ? 'Urlaub genehmigt' : '', isRequested ? 'Urlaub beantragt' : '', hasOrder ? 'Arbeitsschein vorhanden' : ''].filter(Boolean).join(', ');
       return `<button type="button" class="${classes}" data-action="pick-day" data-date="${date}" aria-label="${escape(label)}"><b>${Number(date.slice(-2))}</b><span class="day-flags">${flags}</span></button>`;
     }).join('');
-    const records = state.rows.orders.filter(row => same(row.employee_id, id) && row.work_date === state.date);
-    const manualEntries = dayEntries(id).filter(row => !row.work_order_id);
+    const records = state.rows.orders.filter(row => orderForEmployee(row,id) && row.work_date === state.date);
+    const manualEntries = dayEntries(id).filter(row => !row.work_order_id && !row.team_work_order_id);
     const recordCards = [
-      ...records.map(row => `<article class="row-card"><button type="button" class="row-main" data-action="open-order" data-id="${row.id}"><b>${escape(row.customer_name)}</b><span>${escape(row.title || '')} · ${h(row.executed_hours)} · Arbeitsschein öffnen</span></button></article>`),
+      ...records.map(row => `<article class="row-card"><button type="button" class="row-main" data-action="open-order" data-id="${row.id}"><b>${escape(row.customer_name)}</b><span>${escape(row.title || '')} · ${h(orderHours(row,id))} · Arbeitsschein öffnen</span></button></article>`),
       ...manualEntries.map(row => `<article class="row-card"><button type="button" class="row-main" data-action="open-time" data-id="${row.id}"><b>${escape(row.customer_name)}</b><span>${timeText(row.start_time)} – ${timeText(row.end_time)} · ${h(row.executed_hours)} · Zeiterfassung öffnen</span></button></article>`)
     ].join('') || '<p class="empty">Für diesen Tag existiert kein Arbeitsschein oder keine Zeiterfassung.</p>';
     return `<section class="page-head"><div><span class="eyebrow">Kalender von ${escape(worker()?.username || '')}</span><h2>${dateText(state.date)}</h2></div><label class="date-field">Tag<input type="date" data-date value="${state.date}"></label></section><section class="stat-grid"><article><span>Überstunden</span><strong>${dayEntries(id).length ? h(dayHours(id) - dueHours(state.date)) : '—'}</strong></article><article><span>Urlaub</span><strong>${vacation(id) ? 'Genehmigt' : '—'}</strong></article><article><span>Krank</span><strong>${sick(id) ? 'Ja' : '—'}</strong></article></section><section class="panel calendar-panel"><div class="calendar-head"><button type="button" aria-label="Vorheriger Monat" data-action="month" data-value="-1">‹</button><h3>${monthText(state.month)}</h3><button type="button" aria-label="Nächster Monat" data-action="month" data-value="1">›</button></div><div class="calendar-legend"><span class="legend-order">Arbeitsschein</span><span class="legend-requested">Urlaub beantragt</span><span class="legend-approved">Urlaub genehmigt</span><span class="legend-sick">Krankheitstag</span><span class="legend-holiday">Feiertag NRW</span></div><div class="month-grid"><span class="weekday">Mo</span><span class="weekday">Di</span><span class="weekday">Mi</span><span class="weekday">Do</span><span class="weekday">Fr</span><span class="weekday">Sa</span><span class="weekday">So</span>${grid}</div><div class="actions"><button type="button" class="secondary" data-action="sick">${sick(id) ? 'Krankheitstag entfernen' : 'Krank melden'}</button><button type="button" class="primary" data-action="vacation-form">Urlaub beantragen</button></div></section>${state.vacationForm ? `<section class="panel"><h3>Urlaub beantragen</h3><form data-form="vacation" class="entry-form"><label>Von<input name="start" type="date" required value="${state.date}"></label><label>Bis<input name="end" type="date" required value="${state.date}"></label><button class="primary">Antrag senden</button></form></section>` : ''}<section class="list-section"><h3>Durchgeführt</h3>${nrwHoliday(state.date) ? `<p class="locked">${escape(nrwHoliday(state.date))} in NRW</p>` : ''}${recordCards}</section>`;
@@ -531,9 +531,11 @@
   async function deleteWorkOrderCompletely(orderId) {
     const id = String(orderId || '');
     if (!id) throw new Error('Der Arbeitsschein wurde nicht gefunden.');
+    if (state.rows.orders.find(order => same(order.id,id))?.team_periods?.length && state.rows.orders.find(order => same(order.id,id))?.invoiced) throw new Error('Ein bereits abgerechneter gemeinsamer Arbeitsschein kann nicht gelöscht werden.');
     const documents = state.rows.documents.filter(document => same(document.work_order_id, id));
     for (const document of documents) await removeStoredFile('work-order-documents', document.file_path);
     const query = `work_order_id=eq.${encodeURIComponent(id)}`;
+    if (state.rows.orders.find(order => same(order.id,id))?.team_periods?.length) { await api('/rest/v1/rpc/delete_team_work_order',{method:'POST',body:{p_id:id}}); return; }
     await remove('work_order_items', query);
     await remove('work_order_documents', query);
     await remove('time_entries', query);
@@ -656,7 +658,7 @@
     });
   }
   async function saveOrder(form) { const id = workerId(); if (locked(id)) throw new Error(lockedText(id)); const customer = await ensureCustomer(form.elements.customer.value, id); const value = timeValues(form), signature = signatureValues(form); const created = await write('work_orders', { employee_id: id, work_date: state.date, customer_id: customer.id, customer_name: customer.name, title: String(form.elements.title.value || '').trim(), start_time: value.start, end_time: value.end, pause_hours: value.pause, executed_hours: value.hours, calculation_mode: 'end_time', documentation: String(form.elements.documentation.value || ''), ...signature }); const order = created?.[0]; if (!order) throw new Error('Der Arbeitsschein konnte nicht gespeichert werden.'); await saveMaterials(form, order); await saveHourlyMaterial(order, value.hours); await saveDocuments(form, order, id); state.orderCustomer = ''; }
-  async function updateOrder(form) { const order = state.rows.orders.find(row => same(row.id, form.elements.id.value)); if (!order) throw new Error('Der Arbeitsschein wurde nicht gefunden.'); const id = order.employee_id, workDate = form.elements.work_date.value || order.work_date; if (workDate !== order.work_date && locked(id, workDate)) throw new Error(lockedText(id, workDate)); const customer = await ensureCustomer(form.elements.customer.value, id), value = timeValues(form), signature = signatureValues(form); const changes = { customer_id: customer.id, customer_name: customer.name, title: String(form.elements.title.value || '').trim(), start_time: value.start, end_time: value.end, pause_hours: value.pause, executed_hours: value.hours, calculation_mode: 'end_time', documentation: String(form.elements.documentation.value || ''), ...signature }; if (workDate !== order.work_date) changes.work_date = workDate; await write('work_orders', changes, 'PATCH', `id=eq.${encodeURIComponent(order.id)}`); await saveMaterials(form, order, true); await saveHourlyMaterial(order, value.hours); await saveDocuments(form, order, id); state.orderId = ''; state.view = state.orderOrigin || 'orders'; }
+  async function updateOrder(form) { if (teamEnabled() || state.rows.orders.find(row => same(row.id, form.elements.id.value))?.team_periods?.length) return saveTeamOrder(form, state.rows.orders.find(row => same(row.id, form.elements.id.value))); const order = state.rows.orders.find(row => same(row.id, form.elements.id.value)); if (!order) throw new Error('Der Arbeitsschein wurde nicht gefunden.'); const id = order.employee_id, workDate = form.elements.work_date.value || order.work_date; if (workDate !== order.work_date && locked(id, workDate)) throw new Error(lockedText(id, workDate)); const customer = await ensureCustomer(form.elements.customer.value, id), value = timeValues(form), signature = signatureValues(form); const changes = { customer_id: customer.id, customer_name: customer.name, title: String(form.elements.title.value || '').trim(), start_time: value.start, end_time: value.end, pause_hours: value.pause, executed_hours: value.hours, calculation_mode: 'end_time', documentation: String(form.elements.documentation.value || ''), ...signature }; if (workDate !== order.work_date) changes.work_date = workDate; await write('work_orders', changes, 'PATCH', `id=eq.${encodeURIComponent(order.id)}`); await saveMaterials(form, order, true); await saveHourlyMaterial(order, value.hours); await saveDocuments(form, order, id); state.orderId = ''; state.view = state.orderOrigin || 'orders'; }
   function permissions(form) { return Object.fromEntries(['time', 'customers', 'orders', 'calendar'].map(name => [name, form.elements[`perm-${name}`]?.checked !== false])); }
   async function saveCustomer(form) { const id = String(form.elements.id.value || ''); const custom = Object.fromEntries(['first_name','street','house_no','city','postal_code','phone_private','phone_mobile','email'].map(name => [name, String(form.elements[name].value || '').trim()])); String(form.elements.extra.value || '').split('\n').map(value => value.trim()).filter(Boolean).forEach((value, index) => { custom[`extra_${index + 1}`] = value; }); const data = { name: String(form.elements.name.value || '').trim(), custom_fields: custom }; if (!data.name) throw new Error('Bitte einen Kundennamen eingeben.'); if (id) await write('customers', data, 'PATCH', `id=eq.${encodeURIComponent(id)}`); else await write('customers', { ...data, employee_id: workerId() }); state.customerId = ''; }
 
@@ -739,7 +741,7 @@
     if (action === 'open-time') {
       const entry = state.rows.entries.find(row => same(row.id, button.dataset.id));
       if (!entry) return;
-      const linkedOrder = entry.work_order_id && state.rows.orders.find(order => same(order.id, entry.work_order_id));
+      const linkedOrder = (entry.team_work_order_id || entry.work_order_id) && state.rows.orders.find(order => same(order.id, entry.team_work_order_id || entry.work_order_id));
       if (linkedOrder) { button.dataset.id = linkedOrder.id; button.dataset.action = 'open-order'; button.click(); return; }
       const person = state.rows.people.find(row => same(row.id, entry.employee_id));
       if (isAdmin() && person?.business_id) state.businessId = person.business_id;
@@ -873,8 +875,8 @@
     const customerAddress = [[fields.street, fields.house_no].filter(Boolean).join(' '), [fields.postal_code, fields.city].filter(Boolean).join(' '), fields.email].filter(Boolean);
     const first = [...group.orders].sort((left, right) => String(left.work_date).localeCompare(String(right.work_date)))[0], last = [...group.orders].sort((left, right) => String(right.work_date).localeCompare(String(left.work_date)))[0];
     const invoiceNumber = `RE-${today().replaceAll('-', '')}-${String(first?.id || '').replace(/[^a-z0-9]/gi, '').slice(0, 8).toUpperCase() || 'OFFEN'}`;
-    const employeeInfo = order => { const person = state.rows.people.find(row => same(row.id, order.employee_id)); return { name: person?.display_name || person?.username || 'Mitarbeiter nicht verfügbar', time: `${timeText(order.start_time)} – ${timeText(order.end_time)}`, hours: h(order.executed_hours) }; };
-    const executionRows = group.orders.map(order => { const employee = employeeInfo(order); return `<div class="pdf-execution-row"><b>${escape(employee.name)}</b><br><span class="pdf-muted">${dateText(order.work_date)} · ${escape(employee.time)} · ${escape(employee.hours)}</span></div>`; }).join('');
+    const employeeInfo = order => { const person = state.rows.people.find(row => same(row.id, order.employee_id)); if (order.team_periods?.length) return { name: [...new Set(order.team_periods.map(p=>p.employee_name || personName(teamPerson(p.employee_id))))].join(', '), time: order.team_periods.map(p=>timeText(p.start_time)+' – '+timeText(p.end_time)).join(' / '), hours:h(orderHours(order)) }; return { name: person?.display_name || person?.username || 'Mitarbeiter nicht verfügbar', time: `${timeText(order.start_time)} – ${timeText(order.end_time)}`, hours: h(order.executed_hours) }; };
+    const executionRows = group.orders.map(order => { const employee = employeeInfo(order); if (order.team_periods?.length) return `<div><b>${dateText(order.work_date)}</b>${teamExecutionHtml(order)}</div>`; return `<div class="pdf-execution-row"><b>${escape(employee.name)}</b><br><span class="pdf-muted">${dateText(order.work_date)} · ${escape(employee.time)} · ${escape(employee.hours)}</span></div>`; }).join('');
     const itemRows = group.orders.flatMap(order => { const employee = employeeInfo(order), orderItems = state.rows.items.filter(item => same(item.work_order_id, order.id)), items = orderItems.length ? orderItems : [{ position_name: order.title || 'Arbeitsleistung', quantity: n(order.executed_hours), unit_price: 0 }]; return items.map(item => { const price = invoiceItemPrice(item, order), name = invoiceItemName(item, order), hourly = isHourlyMaterial(name); return `<tr><td>${dateText(order.work_date)}</td><td><b>${escape(name)}</b>${hourly ? '<span class="pdf-tag">Arbeitszeit</span>' : ''}<small>${escape(employee.name)} · ${escape(employee.time)}${order.title ? ` · ${escape(order.title)}` : ''}</small></td><td class="number">${n(item.quantity).toLocaleString('de-DE')}</td><td class="number">${money(price)}</td><td class="number">${money(n(item.quantity) * price)}</td></tr>`; }); }).join('');
     const total = group.orders.reduce((sum, order) => sum + state.rows.items.filter(item => same(item.work_order_id, order.id)).reduce((itemSum, item) => itemSum + n(item.quantity) * invoiceItemPrice(item, order), 0), 0);
     const windowRef = window.open('', '_blank'); if (!windowRef) throw new Error('Bitte Pop-ups erlauben, um die Rechnung als PDF zu erstellen.');
@@ -896,13 +898,13 @@
     const dayGroups = billingDayGroups(group.orders);
     const detailRows = dayGroups.map(day => {
       const team = new Map();
-      day.orders.forEach(order => {
-        const person = state.rows.people.find(row => same(row.id, order.employee_id));
-        const employeeName = person?.display_name || person?.username || 'Mitarbeiter nicht verfügbar';
-        const employee = team.get(String(order.employee_id)) || { name: employeeName, shifts: [], hours: 0 };
-        employee.shifts.push(`${timeText(order.start_time)} bis ${timeText(order.end_time)} · Pause ${h(order.pause_hours)}`);
-        employee.hours += n(order.executed_hours); team.set(String(order.employee_id), employee);
-      });
+      day.orders.forEach(order => orderPeriods(order).forEach(period => {
+        const person = state.rows.people.find(row => same(row.id, period.employee_id));
+        const employeeName = period.employee_name || person?.display_name || person?.username || 'Mitarbeiter nicht verfügbar';
+        const employee = team.get(String(period.employee_id)) || { name: employeeName, shifts: [], hours: 0 };
+        employee.shifts.push(`${timeText(period.start_time)} bis ${timeText(period.end_time)} · Pause ${h(period.pause_hours)}`);
+        employee.hours += n(period.executed_hours); team.set(String(period.employee_id), employee);
+      }));
       const teamRows = [...team.values()].map(employee => `<li><b>${escape(employee.name)}</b>: ${escape(employee.shifts.join(' / '))} · ${h(employee.hours)}</li>`).join('');
       const documentations = day.orders.filter(order => String(order.documentation || '').trim()).map(order => {
         const person = state.rows.people.find(row => same(row.id, order.employee_id));
@@ -917,7 +919,7 @@
       }).join('') || '<tr><td colspan="4" class="pdf-empty">Kein Material erfasst.</td></tr>';
       return `<section class="pdf-section"><h2>${dateText(day.date)}</h2><div class="pdf-card"><span class="pdf-card-label">Mitarbeiter auf der Baustelle</span><ul style="margin:6px 0 0;padding-left:20px">${teamRows}</ul>${documentations ? `<br><b>Dokumentation</b><ul style="margin:6px 0 0;padding-left:20px">${documentations}</ul>` : ''}</div><table class="pdf-table"><thead><tr><th>Leistung / Material</th><th class="number">Menge</th><th class="number">Einzelpreis</th><th class="number">Gesamt</th></tr></thead><tbody>${rows}</tbody></table></section>`;
     }).join('');
-    const totalHours = group.orders.reduce((sum, order) => sum + n(order.executed_hours), 0), totalMaterial = group.orders.reduce((sum, order) => sum + state.rows.items.filter(item => same(item.work_order_id, order.id)).reduce((itemSum, item) => itemSum + n(item.quantity) * invoiceItemPrice(item, order), 0), 0);
+    const totalHours = group.orders.reduce((sum, order) => sum + orderHours(order), 0), totalMaterial = group.orders.reduce((sum, order) => sum + state.rows.items.filter(item => same(item.work_order_id, order.id)).reduce((itemSum, item) => itemSum + n(item.quantity) * invoiceItemPrice(item, order), 0), 0);
     const windowRef = window.open('', '_blank'); if (!windowRef) throw new Error('Bitte Pop-ups erlauben, um die PDF zu erstellen.');
     windowRef.document.write(`<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Arbeitsnachweis</title><style>${pdfStyles()}</style></head><body><main class="pdf-page">${pdfBrandHeader('Arbeitsnachweis', invoiced ? 'Bereits abgerechnet' : 'Offen zur Abrechnung')}<section class="pdf-grid"><article class="pdf-card"><span class="pdf-card-label">Kunde</span><b>${escape(group.customerName)}</b></article><article class="pdf-card"><span class="pdf-card-label">Übersicht</span>${group.orders.length} Arbeitsschein(e) · ${dayGroups.length} Einsatztag(e)<br>${h(totalHours)} Arbeitszeit</article></section>${detailRows}<div class="pdf-total"><b>Gesamtsumme</b><b>${money(totalMaterial)}</b></div><p class="pdf-note">Dieser Arbeitsnachweis fasst alle enthaltenen Arbeitsscheine je Einsatztag zusammen. Die beteiligten Mitarbeiter stehen gemeinsam unter dem jeweiligen Datum.</p></main><script>window.onload=()=>window.print()<\/script></body></html>`); windowRef.document.close(); addPdfReturnBar(windowRef);
   }
@@ -928,7 +930,7 @@
     const total = items.reduce((sum, item) => sum + n(item.quantity) * invoiceItemPrice(item, order), 0), documentation = String(order.documentation || '').trim(), employeeName = person?.display_name || person?.username || 'Mitarbeiter';
     const signature = String(order.signature_data || ''), signatureSection = signature.startsWith('data:image/png;base64,') ? `<section class="pdf-section"><h2>Unterschrift</h2><article class="pdf-card"><img src="${escape(signature)}" alt="Unterschrift" style="display:block;width:min(100%,380px);height:120px;object-fit:contain;object-position:left;border-bottom:1px solid #d9e6e3;margin-bottom:9px"><b>Unterschrieben von:</b> ${escape(order.signed_by || '—')}</article></section>` : '';
     const windowRef = window.open('', '_blank'); if (!windowRef) throw new Error('Bitte Pop-ups erlauben, um die PDF zu erstellen.');
-    windowRef.document.write(`<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Arbeitsnachweis</title><style>${pdfStyles()}</style></head><body><main class="pdf-page">${pdfBrandHeader('Arbeitsnachweis', dateText(order.work_date))}<section class="pdf-grid"><article class="pdf-card"><span class="pdf-card-label">Kunde</span><b>${escape(order.customer_name || 'Ohne Kunde')}</b><br>${escape(order.title || 'Ohne Beschreibung')}</article><article class="pdf-card"><span class="pdf-card-label">Ausgeführt von</span><b>${escape(employeeName)}</b><br>${timeText(order.start_time)} bis ${timeText(order.end_time)} · Pause ${h(order.pause_hours)}<br>${h(order.executed_hours)} ausgeführte Stunden</article></section>${documentation ? `<section class="pdf-section"><h2>Dokumentation</h2><article class="pdf-card">${escape(documentation).replace(/\n/g, '<br>')}</article></section>` : ''}${signatureSection}<section class="pdf-section"><h2>Leistungen und Material</h2>${items.length ? `<table class="pdf-table"><thead><tr><th>Position</th><th class="number">Menge</th><th class="number">Einzelpreis</th><th class="number">Gesamt</th></tr></thead><tbody>${materialRows}</tbody></table>` : '<p class="pdf-empty">Keine Positionen erfasst.</p>'}</section><div class="pdf-total"><b>Gesamtsumme</b><b>${money(total)}</b></div><p class="pdf-note">Monteur- und Aushilfsstunden erscheinen als Arbeitszeitpositionen mit ihrem jeweiligen Preis.</p></main><script>window.onload=()=>window.print()<\/script></body></html>`); windowRef.document.close(); addPdfReturnBar(windowRef);
+    windowRef.document.write(`<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Arbeitsnachweis</title><style>${pdfStyles()}</style></head><body><main class="pdf-page">${pdfBrandHeader('Arbeitsnachweis', dateText(order.work_date))}<section class="pdf-grid"><article class="pdf-card"><span class="pdf-card-label">Kunde</span><b>${escape(order.customer_name || 'Ohne Kunde')}</b><br>${escape(order.title || 'Ohne Beschreibung')}</article><article class="pdf-card"><span class="pdf-card-label">Ausgeführt von</span>${teamExecutionHtml(order)}</article></section>${documentation ? `<section class="pdf-section"><h2>Dokumentation</h2><article class="pdf-card">${escape(documentation).replace(/\n/g, '<br>')}</article></section>` : ''}${signatureSection}<section class="pdf-section"><h2>Leistungen und Material</h2>${items.length ? `<table class="pdf-table"><thead><tr><th>Position</th><th class="number">Menge</th><th class="number">Einzelpreis</th><th class="number">Gesamt</th></tr></thead><tbody>${materialRows}</tbody></table>` : '<p class="pdf-empty">Keine Positionen erfasst.</p>'}</section><div class="pdf-total"><b>Gesamtsumme</b><b>${money(total)}</b></div><p class="pdf-note">Monteur- und Aushilfsstunden erscheinen als Arbeitszeitpositionen mit ihrem jeweiligen Preis.</p></main><script>window.onload=()=>window.print()<\/script></body></html>`); windowRef.document.close(); addPdfReturnBar(windowRef);
   }
   function printPdf() {
     const person = worker(), id = workerId(), ownEntries = effectiveTimeEntries(id), totalHours = ownEntries.reduce((sum, row) => sum + n(row.executed_hours), 0);
@@ -969,11 +971,12 @@
     if (!isManager()) { try { state.businessBrand = (await api('/rest/v1/rpc/current_business_branding', { method: 'POST', body: {} }))?.[0] || null; } catch { state.businessBrand = null; } } else state.businessBrand = null;
     if (isAdmin() && !businesses().some(person => same(person.id, state.businessId))) state.businessId = businesses()[0]?.id || '';
     if (!workers().some(person => same(person.id, state.employeeId))) state.employeeId = workers()[0]?.id || state.profile.id;
+    await loadTeamContext();
     if (issues.length) notice('Ein Teil der Daten konnte gerade nicht erneut synchronisiert werden. Bereits geladene Aufträge bleiben sichtbar.', true);
   }
   function recordedPeriods(id = workerId(), date = '') {
     const entries = effectiveTimeEntries(id, date);
-    const orders = state.rows.orders.filter(order => same(order.employee_id, id) && (!date || order.work_date === date) && !entries.some(entry => same(entry.work_order_id, order.id) || sameWorkTime(entry, order))).map(order => ({ ...order, id: `work-order-${order.id}`, work_order_id: order.id }));
+    const orders = state.rows.orders.filter(order => orderForEmployee(order,id) && (!date || order.work_date === date)).flatMap(order => orderPeriods(order).filter(period => same(period.employee_id,id) && !entries.some(entry => (period.key ? same(entry.team_work_order_id,order.id) && same(entry.team_period_key,period.key) : same(entry.work_order_id,order.id)) || sameWorkTime(entry,{...order,...period}))).map(period => ({...order,...period,id:`work-order-${order.id}-${period.key || 'single'}`,work_order_id:order.id})));
     return [...entries, ...orders];
   }
   function dayHours(id = workerId(), date = state.date) { return recordedPeriods(id, date).reduce((sum, row) => sum + n(row.executed_hours), 0); }
@@ -1038,13 +1041,13 @@
   }
   function planningRows() {
     const allowed = new Set(planningPeople().map(person => String(person.id)));
-    return state.rows.appointments.filter(row => allowed.has(String(row.employee_id)));
+    return state.rows.appointments.filter(row => planEmployeeIds(row).some(id => allowed.has(id)));
   }
   function planningCustomers(employeeId = workerId()) {
-    const person = state.people.find(row => same(row.id, employeeId)) || state.profile;
+    const person = teamPerson(employeeId) || state.profile;
     const companyId = person?.role === 'business' ? person.id : person?.business_id || businessId();
     return state.rows.customers.filter(row => {
-      const owner = state.people.find(item => same(item.id, row.employee_id));
+      const owner = teamPerson(row.employee_id);
       return same(row.business_id, companyId) || same(row.employee_id, companyId) || same(row.employee_id, employeeId) || same(owner?.business_id, companyId);
     });
   }
@@ -1116,7 +1119,7 @@
     else if (requestedVacation(employee, date)) issues.push({ kind: 'warning', text: 'Für diesen Tag liegt bereits ein offener Urlaubsantrag vor.' });
     const overlap = planningRows().some(row => {
       const meta = planningMeta(row);
-      return !same(row.id, ignoredId) && same(row.employee_id, employee) && row.event_date === date && meta.status !== 'cancelled' && timesOverlap(values.start, values.end, meta.start, meta.end);
+      return !same(row.id, ignoredId) && planEmployeeIds(row).includes(String(employee)) && row.event_date === date && meta.status !== 'cancelled' && timesOverlap(values.start, values.end, meta.start, meta.end);
     });
     if (overlap) issues.push({ kind: 'blocked', text: 'Dieser Mitarbeiter hat zu dieser Zeit bereits einen geplanten Auftrag.' });
     const recorded = recordedPeriods(employee, date).some(row => !same(row.work_order_id, ignoredId) && timesOverlap(values.start, values.end, row.start_time, row.end_time));
@@ -1127,7 +1130,7 @@
     const meta = planningMeta(appointment), actual = matchingPlanOrder(appointment), conflicts = planConflicts({ employeeId: appointment.employee_id, eventDate: appointment.event_date, start: meta.start, end: meta.end }, appointment.id);
     const stateClass = actual || meta.status === 'completed' ? 'positive' : meta.status === 'cancelled' ? 'negative' : '';
     const issue = conflicts.find(item => item.kind === 'blocked') || conflicts[0];
-    return `<button type="button" class="plan-card ${stateClass}" data-action="plan-open" data-id="${escape(appointment.id)}"><b>${escape(actual?.customer_name || appointment.customer_name || 'Ohne Kunde')}</b><span>${escape(actual ? String(actual.start_time || '').slice(0, 5) || '—' : meta.start || '—')} – ${escape(actual ? String(actual.end_time || '').slice(0, 5) || '—' : meta.end || '—')} · ${escape(actual?.title || appointment.title || 'Auftrag')}${actual ? ' · ' + h(actual.executed_hours) : ''}</span><small>${escape(planningStatusText(actual ? 'completed' : meta.status))} · Priorität ${escape(planningPriorityText(meta.priority))}${issue && !actual && meta.status !== 'cancelled' && meta.status !== 'completed' ? ` · ${escape(issue.text)}` : ''}</small></button>`;
+    return `<button type="button" class="plan-card ${stateClass}" data-action="plan-open" data-id="${escape(appointment.id)}"><b>${escape(actual?.customer_name || appointment.customer_name || 'Ohne Kunde')}</b><span>${escape(actual ? String(actual.start_time || '').slice(0, 5) || '—' : meta.start || '—')} – ${escape(actual ? String(actual.end_time || '').slice(0, 5) || '—' : meta.end || '—')} · ${escape(actual?.title || appointment.title || 'Auftrag')}${actual ? ' · ' + h(orderHours(actual)) : ''}</span><small>${escape(planningStatusText(actual ? 'completed' : meta.status))} · Priorität ${escape(planningPriorityText(meta.priority))}${issue && !actual && meta.status !== 'cancelled' && meta.status !== 'completed' ? ` · ${escape(issue.text)}` : ''}</small></button>`;
   }
   function matchingPlanOrder(appointment) {
     const meta = planningMeta(appointment);
@@ -1146,17 +1149,22 @@
   function planningActualSummary(appointment) {
     const actual = matchingPlanOrder(appointment); if (!actual) return '';
     const meta = planningMeta(appointment), plannedHours = meta.start && meta.end ? (toMinutes(meta.end) - toMinutes(meta.start)) / 60 : null;
+    if (actual.team_periods?.length) {
+      const participants=[...new Set(actual.team_periods.map(period => period.employee_id))];
+      const summary=participants.map(id => { const periods=actual.team_periods.filter(period => same(period.employee_id,id)), total=orderHours(actual,id), difference=plannedHours===null ? null : total-plannedHours; return `<article><h4>${escape(periods[0].employee_name || personName(teamPerson(id)))}</h4>${periods.map(period => `<p>${timeText(period.start_time)} – ${timeText(period.end_time)} · Pause ${h(period.pause_hours)} · ${h(period.executed_hours)}</p>`).join('')}<p><b>${h(total)} insgesamt</b>${difference===null ? '' : `<br>Abweichung zur Planung: ${difference>0 ? '+' : ''}${h(difference)}`}</p></article>`; }).join('');
+      return `<section class="plan-customer-details"><h4>Erledigt · Tatsächliche Ausführung</h4>${summary}<p><b>${h(orderHours(actual))} Mitarbeiterstunden insgesamt</b></p></section>`;
+    }
     const difference = plannedHours === null ? null : n(actual.executed_hours) - plannedHours;
     return `<section class="plan-customer-details"><h4>Erledigt · Tatsächliche Ausführung</h4><p>${escape(actual.customer_name || appointment.customer_name)} · ${dateText(actual.work_date)}${actual.title ? '<br>' + escape(actual.title) : ''}</p><p><b>${timeText(actual.start_time)} – ${timeText(actual.end_time)}</b> · ${h(actual.executed_hours)} Arbeitszeit · ${h(actual.pause_hours)} Pause</p>${plannedHours === null ? '' : `<p class="plan-customer-hint">Geplant: ${escape(meta.start)} – ${escape(meta.end)} Uhr · ${h(plannedHours)}${difference ? `<br>Abweichung: ${difference > 0 ? '+' : ''}${h(difference)} Arbeitszeit gegenüber der Planung.` : '<br>Arbeitszeit entspricht der Planung.'}</p>`}${actual.documentation ? `<p>${escape(actual.documentation).replace(/\n/g, '<br>')}</p>` : ''}</section>`;
   }
   function planningOrderDrafts(employeeId = workerId(), workDate = state.date) {
-    return planningRows().filter(appointment => same(appointment.employee_id, employeeId) && appointment.event_date === workDate && planningMeta(appointment).status === 'confirmed' && !matchingPlanOrder(appointment));
+    return planningRows().filter(appointment => planEmployeeIds(appointment).includes(String(employeeId)) && appointment.event_date === workDate && planningMeta(appointment).status === 'confirmed' && !matchingPlanOrder(appointment));
   }
   function openPlanningOrder(appointment) {
     const meta = planningMeta(appointment), customerDetails = planningCustomerInformation(appointment);
-    state.date = appointment.event_date; state.month = state.date.slice(0, 7); state.employeeId = appointment.employee_id;
+    state.date = appointment.event_date; state.month = state.date.slice(0, 7); state.employeeId = isManager() ? appointment.employee_id : state.profile.id;
     state.orderOrigin = 'planning'; state.menu = false;
-    state.planPrefill = { id: appointment.id, employeeId: appointment.employee_id, date: appointment.event_date, customerName: customerDetails?.name || appointment.customer_name, customerDetails, title: appointment.title, details: meta.details, start: meta.start, end: meta.end, confirmed: meta.status === 'confirmed' };
+    state.planPrefill = { id: appointment.id, employeeId: workerId(), ownerId: appointment.employee_id, participants: planEmployeeIds(appointment), date: appointment.event_date, customerName: customerDetails?.name || appointment.customer_name, customerDetails, title: appointment.title, details: meta.details, start: meta.start, end: meta.end, confirmed: meta.status === 'confirmed' };
     state.orderCustomer = state.planPrefill.customerName; state.orderId = ''; state.view = 'orders';
   }
   async function refreshPlanningData() {
@@ -1175,7 +1183,7 @@
   }
   function updatePlanningWarnings(form) {
     const target = form?.querySelector('[data-plan-warnings]'); if (!target) return;
-    const issues = form.elements.status.value === 'cancelled' ? [] : planConflicts({ employeeId: form.elements.employee.value, eventDate: form.elements.event_date.value, start: form.elements.start.value, end: form.elements.end.value }, form.elements.id.value);
+    const issues = form.elements.status.value === 'cancelled' ? [] : [form.elements.employee.value,...selectedPlanTeam(form)].flatMap(employeeId => planConflicts({ employeeId, eventDate: form.elements.event_date.value, start: form.elements.start.value, end: form.elements.end.value }, form.elements.id.value).map(issue => ({...issue,text:personName(teamPerson(employeeId))+': '+issue.text})));
     target.innerHTML = issues.map(issue => `<p class="plan-alert ${issue.kind === 'blocked' ? 'blocked' : ''}">${escape(issue.text)}</p>`).join('');
   }
   function planningStyles() {
@@ -1190,13 +1198,13 @@
     const options = people.map(person => `<option value="${escape(person.id)}" ${same(person.id, employeeId) ? 'selected' : ''}>${escape(personName(person))}</option>`).join('');
     const customer = planningCustomerFor(appointment), customerInformation = planningCustomerInformation(appointment);
     if (!isManager()) return '';
-    return `<section class="panel" id="planning-detail"><div class="page-head"><div><span class="eyebrow">${selected ? 'Auftrag bearbeiten' : 'Neuen Auftrag planen'}</span><h3>${selected ? escape(appointment.customer_name || 'Geplanter Auftrag') : 'Planung anlegen'}</h3></div><button type="button" class="secondary small" data-action="plan-close">Schließen</button></div>${selected ? planActions(appointment) + planningActualSummary(appointment) : ''}<form data-form="planning" class="entry-form"><input type="hidden" name="id" value="${escape(selected)}"><input type="hidden" name="plan_customer_id" value="${escape(customer?.id || appointment?.customer_id || '')}"><label>Mitarbeiter<select name="employee" required>${options}</select></label><label>Datum<input name="event_date" type="date" required value="${escape(defaultDate)}"></label><label class="wide">Kunde<input name="customer" required list="planning-customers" autocomplete="off" placeholder="Kundenname eingeben oder auswählen" value="${escape(customer?.name || appointment?.customer_name || '')}"></label><div class="wide plan-customer-matches" data-plan-customer-matches aria-label="Passende Kunden"></div><section class="wide plan-customer-details"><h4>Adresse und Kontaktdaten</h4><div data-plan-customer-details>${planningCustomerDetailsHtml(customerInformation)}</div></section><label class="wide">Auftrag / Beschreibung<input name="title" maxlength="160" required value="${escape(appointment?.title || '')}" placeholder="Zum Beispiel: Steckdosen erneuern"></label><label>Beginn${timeInput('start', meta.start || '07:30')}</label><label>Ende${timeInput('end', meta.end || '08:30')}</label><label>Priorität<select name="priority"><option value="low" ${meta.priority === 'low' ? 'selected' : ''}>Niedrig</option><option value="normal" ${meta.priority !== 'low' && meta.priority !== 'high' ? 'selected' : ''}>Normal</option><option value="high" ${meta.priority === 'high' ? 'selected' : ''}>Hoch</option></select></label><label>Status<select name="status"><option value="planned" ${meta.status === 'planned' ? 'selected' : ''}>Geplant</option><option value="confirmed" ${meta.status === 'confirmed' ? 'selected' : ''}>Bestätigt</option><option value="completed" ${meta.status === 'completed' ? 'selected' : ''}>Erledigt</option><option value="cancelled" ${meta.status === 'cancelled' ? 'selected' : ''}>Abgesagt</option></select></label><label class="wide">Hinweise<textarea name="details" rows="3" placeholder="Adresse, Ansprechpartner, Besonderheiten">${escape(meta.details || '')}</textarea></label><div class="wide" data-plan-warnings aria-live="polite"></div><button class="primary wide">${selected ? 'Planung speichern' : 'Auftrag einplanen'}</button></form>${selected ? '<button type="button" class="danger wide" data-action="plan-delete" data-id="' + escape(selected) + '">Auftrag löschen</button>' : ''}${`<datalist id="planning-customers">${planningCustomers(employeeId).map(row => `<option value="${escape(row.name)}"></option>`).join('')}</datalist>`}</section>`;
+    return `<section class="panel" id="planning-detail"><div class="page-head"><div><span class="eyebrow">${selected ? 'Auftrag bearbeiten' : 'Neuen Auftrag planen'}</span><h3>${selected ? escape(appointment.customer_name || 'Geplanter Auftrag') : 'Planung anlegen'}</h3></div><button type="button" class="secondary small" data-action="plan-close">Schließen</button></div>${selected ? planActions(appointment) + planningActualSummary(appointment) : ''}<form data-form="planning" class="entry-form"><input type="hidden" name="id" value="${escape(selected)}"><input type="hidden" name="plan_customer_id" value="${escape(customer?.id || appointment?.customer_id || '')}"><label>Mitarbeiter<select name="employee" required>${options}</select></label>${teamChoice(employeeId,appointment?.team_employee_ids || [],true)}<label>Datum<input name="event_date" type="date" required value="${escape(defaultDate)}"></label><label class="wide">Kunde<input name="customer" required list="planning-customers" autocomplete="off" placeholder="Kundenname eingeben oder auswählen" value="${escape(customer?.name || appointment?.customer_name || '')}"></label><div class="wide plan-customer-matches" data-plan-customer-matches aria-label="Passende Kunden"></div><section class="wide plan-customer-details"><h4>Adresse und Kontaktdaten</h4><div data-plan-customer-details>${planningCustomerDetailsHtml(customerInformation)}</div></section><label class="wide">Auftrag / Beschreibung<input name="title" maxlength="160" required value="${escape(appointment?.title || '')}" placeholder="Zum Beispiel: Steckdosen erneuern"></label><label>Beginn${timeInput('start', meta.start || '07:30')}</label><label>Ende${timeInput('end', meta.end || '08:30')}</label><label>Priorität<select name="priority"><option value="low" ${meta.priority === 'low' ? 'selected' : ''}>Niedrig</option><option value="normal" ${meta.priority !== 'low' && meta.priority !== 'high' ? 'selected' : ''}>Normal</option><option value="high" ${meta.priority === 'high' ? 'selected' : ''}>Hoch</option></select></label><label>Status<select name="status"><option value="planned" ${meta.status === 'planned' ? 'selected' : ''}>Geplant</option><option value="confirmed" ${meta.status === 'confirmed' ? 'selected' : ''}>Bestätigt</option><option value="completed" ${meta.status === 'completed' ? 'selected' : ''}>Erledigt</option><option value="cancelled" ${meta.status === 'cancelled' ? 'selected' : ''}>Abgesagt</option></select></label><label class="wide">Hinweise<textarea name="details" rows="3" placeholder="Adresse, Ansprechpartner, Besonderheiten">${escape(meta.details || '')}</textarea></label><div class="wide" data-plan-warnings aria-live="polite"></div><button class="primary wide">${selected ? 'Planung speichern' : 'Auftrag einplanen'}</button></form>${selected ? '<button type="button" class="danger wide" data-action="plan-delete" data-id="' + escape(selected) + '">Auftrag löschen</button>' : ''}${`<datalist id="planning-customers">${planningCustomers(employeeId).map(row => `<option value="${escape(row.name)}"></option>`).join('')}</datalist>`}</section>`;
   }
   function planningView() {
     state.planWeek = planningWeekStart();
     const days = planningDays(), people = planningPeople(), selected = planningRows().find(row => same(row.id, state.planId));
     const grid = people.map(person => `<div class="plan-person">${escape(personName(person))}</div><div class="plan-week">${days.map(day => {
-      const records = planningRows().filter(row => same(row.employee_id, person.id) && row.event_date === day).sort((left, right) => String(planningMeta(left).start).localeCompare(String(planningMeta(right).start)));
+      const records = planningRows().filter(row => planEmployeeIds(row).includes(String(person.id)) && row.event_date === day).sort((left, right) => String(planningMeta(left).start).localeCompare(String(planningMeta(right).start)));
       const holiday = nrwHoliday(day), unavailable = locked(person.id, day), requested = requestedVacation(person.id, day);
       return `<section class="plan-day ${day === today() ? 'today' : ''}"><h4>${escape(new Intl.DateTimeFormat('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' }).format(new Date(`${day}T12:00:00`)))}</h4>${holiday ? `<div class="plan-alert holiday">${escape(holiday)}</div>` : ''}${sick(person.id, day) ? '<div class="plan-alert blocked">Krank gemeldet</div>' : ''}${vacation(person.id, day) ? '<div class="plan-alert vacation">Urlaub genehmigt</div>' : ''}${!unavailable && requested ? '<div class="plan-alert">Urlaub beantragt</div>' : ''}${records.map(planBadge).join('') || '<p class="plan-empty">Keine Planung</p>'}</section>`;
     }).join('')}</div>`).join('') || '<p class="empty">Für dieses Geschäftskonto sind noch keine Mitarbeiter angelegt.</p>';
@@ -1218,25 +1226,29 @@
     const old = planningRows().find(row => same(row.id, id));
     if (id && !old) throw new Error('Dieser Auftrag wurde zwischenzeitlich gelöscht. Bitte erneut laden.');
     if (old && matchingPlanOrder(old) && (!same(old.employee_id, employeeId) || old.event_date !== eventDate || !(old.customer_id && same(old.customer_id, form.elements.plan_customer_id?.value)) && lower(old.customer_name) !== lower(customerName) || planningMeta(old).start !== start || planningMeta(old).end !== end)) throw new Error('Zu dieser Planung existiert bereits ein Arbeitsschein. Bitte Mitarbeiter, Kunde und ausgeführte Zeiten direkt im Arbeitsschein bearbeiten.');
-    const issues = planConflicts({ employeeId, eventDate, start, end }, id);
+    const participantIds = teamEnabled() ? selectedPlanTeam(form) : [];
+    if (old && matchingPlanOrder(old) && [...(old.team_employee_ids || [])].sort().join(',')!==[...participantIds].sort().join(',')) throw new Error('Dieser Auftrag ist bereits abgeschlossen. Die beteiligten Mitarbeiter bitte direkt im Arbeitsschein ändern.');
+    if (participantIds.some(member => !teamEmployees().some(person => same(person.id,member)))) throw new Error('Bitte nur Mitarbeiter dieser Firma auswählen.');
+    const issues = [employeeId,...participantIds].flatMap(member => planConflicts({ employeeId:member, eventDate, start, end }, id).map(issue => ({...issue,text:personName(teamPerson(member))+': '+issue.text})));
     const blocked = form.elements.status.value === 'cancelled' ? null : issues.find(issue => issue.kind === 'blocked');
     if (blocked) throw new Error(blocked.text);
     const candidates = planningCustomers(employeeId), selectedCustomer = candidates.find(row => same(row.id, form.elements.plan_customer_id?.value) && normalized(row.name) === normalized(customerName));
     const customer = selectedCustomer || await ensureCustomer(customerName, employeeId, candidates);
     if (!customer?.id) throw new Error('Der Kunde konnte nicht gespeichert werden.');
     const meta = { start, end, priority: form.elements.priority.value, status: form.elements.status.value, details: form.elements.details.value, workOrderId: planningMeta(old).workOrderId, customerDetails: planningCustomerSnapshot(customer) };
-    const data = { employee_id: employeeId, event_date: eventDate, customer_id: customer.id, customer_name: customer.name, title, notes: planningNotes(meta) };
+    const data = { ...(teamEnabled() ? {team_employee_ids: participantIds} : {}), employee_id: employeeId, event_date: eventDate, customer_id: customer.id, customer_name: customer.name, title, notes: planningNotes(meta) };
     const saved = id ? await write('appointments', data, 'PATCH', `id=eq.${encodeURIComponent(id)}`) : await write('appointments', data);
     if (!saved?.length) throw new Error('Der Auftrag konnte nicht gespeichert werden. Bitte die Berechtigung prüfen.');
     state.planId = ''; state.planForm = false;
     state.planWeek = planningWeekStart(eventDate); state.planSaveWarning = '';
-    if (!same(employeeId, state.profile?.id)) {
-      const person = state.rows.people.find(row => same(row.id, employeeId));
+    for (const recipientId of [employeeId,...participantIds].filter(member => !same(member,state.profile?.id))) {
+      const person = teamPerson(recipientId);
       const action = id ? 'wurde geändert' : 'wurde geplant';
-      try { await api('/functions/v1/mailbox-send', { method: 'POST', body: { action: 'send', recipientId: employeeId, title: `Geplanter Auftrag: ${customer.name}`.slice(0, 160), message: `Hallo ${personName(person)},\n\nder Auftrag „${title}“ bei ${customer.name} am ${dateText(eventDate)} von ${start} bis ${end} Uhr ${action}.\nStatus: ${planningStatusText(meta.status)}.\n\nBitte prüfen Sie die Planungsübersicht.` } }); } catch { state.planSaveWarning = 'Die Planung ist gespeichert. Die Postfach-Benachrichtigung konnte gerade nicht gesendet werden.'; }
+      try { await api('/functions/v1/mailbox-send', { method: 'POST', body: { action: 'send', recipientId, title: `Geplanter Auftrag: ${customer.name}`.slice(0, 160), message: `Hallo ${personName(person)},\n\nder Auftrag „${title}“ bei ${customer.name} am ${dateText(eventDate)} von ${start} bis ${end} Uhr ${action}.\nStatus: ${planningStatusText(meta.status)}.\n\nBitte prüfen Sie die Planungsübersicht.` } }); } catch { state.planSaveWarning = 'Die Planung ist gespeichert. Die Postfach-Benachrichtigung konnte gerade nicht gesendet werden.'; }
     }
   }
   async function saveOrder(form) {
+    if (teamEnabled()) return saveTeamOrder(form);
     const id = workerId(), planId = String(form.elements.planning_id?.value || '');
     let appointment = null;
     if (planId) {
@@ -1261,11 +1273,11 @@
     state.orderCustomer = ''; state.planPrefill = null;
   }
   function ordersView() {
-    const id = workerId(), list = state.rows.orders.filter(row => same(row.employee_id, id) && row.work_date === state.date), selected = list.find(row => same(row.id, state.orderId)), drafts = planningOrderDrafts(id, state.date), prefill = same(state.planPrefill?.employeeId, id) && state.planPrefill?.date === state.date ? state.planPrefill : null;
+    const id = workerId(), list = state.rows.orders.filter(row => orderForEmployee(row,id) && row.work_date === state.date), selected = list.find(row => same(row.id, state.orderId)), drafts = planningOrderDrafts(id, state.date), prefill = same(state.planPrefill?.employeeId, id) && state.planPrefill?.date === state.date ? state.planPrefill : null;
     const previous = prefill?.start || dayEntries(id).at(-1)?.end_time?.slice(0, 5) || '07:30';
     const prefillEnd = prefill?.end || '';
-    const newOrder = locked(id) ? `<div class="locked">${escape(lockedText(id))}</div>` : `<section class="panel"><h3>Neuer Arbeitsschein</h3>${prefill ? `<p class="plan-alert">Übernahme aus der Planung: ${escape(prefill.title)} · ${escape(prefill.start)} – ${escape(prefill.end)} Uhr</p>` : ''}<form data-form="order" class="entry-form"><input type="hidden" name="planning_id" value="${escape(prefill?.id || '')}"><label class="wide">Kunde<input name="customer" required list="customers" value="${escape(prefill?.customerName || state.orderCustomer || '')}"></label>${prefill?.customerDetails ? planningCustomerPanel(prefill.customerDetails) : ''}<label class="wide">Beschreibung<input name="title" placeholder="Ausgeführte Arbeiten" value="${escape(prefill?.title || '')}"></label><div class="wide" id="material-lines">${materialRow()}</div><button type="button" class="secondary wide" data-action="more-material">Weiteres Material</button><p class="wide">Arbeitsstunden werden beim Speichern automatisch als <b>${escape(hourlyNameForEmployee(id))}</b> mit dem Preis aus der Materialliste ergänzt.</p><label>Arbeitsbeginn${timeInput('start', previous)}</label><label>Arbeitsende${timeInput('end', prefillEnd)}</label><label>Pause in Stunden<input name="pause" type="number" min="0" step="0.25" value="0"></label><label>Ausgeführte Stunden<input name="hours" type="number" min="0.25" step="0.25" required value="${escape(prefill ? String(prefillEnd ? Math.max(0.25, Math.round(((toMinutes(prefillEnd) - toMinutes(previous)) / 60) * 4) / 4) : '') : '')}"></label>${noteTemplates()}<label class="wide">Notiz / Dokumentation<textarea name="documentation" rows="4">${escape(prefill?.details || '')}</textarea></label><label class="wide">Dokumente hochladen<input name="documents" type="file" multiple accept="image/*,.pdf,.doc,.docx"></label>${signatureFields()}<button class="primary wide" data-signature-submit>${prefill?.confirmed ? 'Arbeitsschein abschließen' : 'Arbeitsschein speichern'}</button></form>${customerList()}${materialList()}</section>`;
-    return `${prefill ? planningStyles() : ''}<section class="page-head"><div><span class="eyebrow">Arbeitsscheine von ${escape(worker()?.username || '')}</span><h2>${dateText(state.date)}</h2></div>${dayPicker()}</section>${selected ? orderEditor(selected) : newOrder}${drafts.length ? `<section class="list-section"><h3>Bestätigte Termine · Arbeitsschein-Entwürfe</h3><p class="empty">Die Daten sind bereits vorausgefüllt. Stunden werden erst beim Abschluss gebucht.</p>${drafts.map(appointment => `<article class="row-card"><button type="button" class="row-main" data-action="plan-start" data-id="${escape(appointment.id)}"><b>${escape(appointment.customer_name)}</b><span>${escape(appointment.title)} · ${escape(planningMeta(appointment).start || '—')} – ${escape(planningMeta(appointment).end || '—')} Uhr · Entwurf öffnen</span></button></article>`).join('')}</section>` : ''}<section class="list-section"><h3>Arbeitsscheine des ausgewählten Tages</h3>${list.map(row => `<article class="row-card"><button type="button" class="row-main" data-action="open-order" data-id="${row.id}"><b>${escape(row.customer_name || 'Ohne Kunde')}</b><span>${dateText(row.work_date)} · ${escape(row.title || '')} · ${timeText(row.start_time)} – ${timeText(row.end_time)} · ${h(row.executed_hours)} · Öffnen</span></button><button type="button" class="danger small" data-action="delete-order" data-id="${row.id}">Löschen</button></article>`).join('') || '<p class="empty">Keine Arbeitsscheine für diesen Tag vorhanden.</p>'}</section>`;
+    const newOrder = locked(id) ? `<div class="locked">${escape(lockedText(id))}</div>` : `<section class="panel"><h3>Neuer Arbeitsschein</h3>${prefill ? `<p class="plan-alert">Übernahme aus der Planung: ${escape(prefill.title)} · ${escape(prefill.start)} – ${escape(prefill.end)} Uhr</p>` : ''}<form data-form="order" class="entry-form"><input type="hidden" name="planning_id" value="${escape(prefill?.id || '')}"><label class="wide">Kunde<input name="customer" required list="customers" value="${escape(prefill?.customerName || state.orderCustomer || '')}"></label>${prefill?.customerDetails ? planningCustomerPanel(prefill.customerDetails) : ''}<label class="wide">Beschreibung<input name="title" placeholder="Ausgeführte Arbeiten" value="${escape(prefill?.title || '')}"></label><div class="wide" id="material-lines">${materialRow()}</div><button type="button" class="secondary wide" data-action="more-material">Weiteres Material</button>${teamEnabled() ? '' : `<p class="wide">Arbeitsstunden werden beim Speichern automatisch als <b>${escape(hourlyNameForEmployee(id))}</b> mit dem Preis aus der Materialliste ergänzt.</p>`}${teamOrderTimeFields(prefill?.ownerId || id,newOrderPeriods(prefill,id,previous,prefillEnd),`<label>Arbeitsbeginn${timeInput('start', previous)}</label><label>Arbeitsende${timeInput('end', prefillEnd)}</label><label>Pause in Stunden<input name="pause" type="number" min="0" step="0.25" value="0"></label><label>Ausgeführte Stunden<input name="hours" type="number" min="0.25" step="0.25" required value="${escape(prefill ? String(prefillEnd ? Math.max(0.25, Math.round(((toMinutes(prefillEnd) - toMinutes(previous)) / 60) * 4) / 4) : '') : '')}"></label>`)}${noteTemplates()}<label class="wide">Notiz / Dokumentation<textarea name="documentation" rows="4">${escape(prefill?.details || '')}</textarea></label><label class="wide">Dokumente hochladen<input name="documents" type="file" multiple accept="image/*,.pdf,.doc,.docx"></label>${signatureFields()}<button class="primary wide" data-signature-submit>${prefill?.confirmed ? 'Arbeitsschein abschließen' : 'Arbeitsschein speichern'}</button></form>${customerList()}${materialList()}</section>`;
+    return `${prefill ? planningStyles() : ''}<section class="page-head"><div><span class="eyebrow">Arbeitsscheine von ${escape(worker()?.username || '')}</span><h2>${dateText(state.date)}</h2></div>${dayPicker()}</section>${selected ? orderEditor(selected) : newOrder}${drafts.length ? `<section class="list-section"><h3>Bestätigte Termine · Arbeitsschein-Entwürfe</h3><p class="empty">Die Daten sind bereits vorausgefüllt. Stunden werden erst beim Abschluss gebucht.</p>${drafts.map(appointment => `<article class="row-card"><button type="button" class="row-main" data-action="plan-start" data-id="${escape(appointment.id)}"><b>${escape(appointment.customer_name)}</b><span>${escape(appointment.title)} · ${escape(planningMeta(appointment).start || '—')} – ${escape(planningMeta(appointment).end || '—')} Uhr · Entwurf öffnen</span></button></article>`).join('')}</section>` : ''}<section class="list-section"><h3>Arbeitsscheine des ausgewählten Tages</h3>${list.map(row => `<article class="row-card"><button type="button" class="row-main" data-action="open-order" data-id="${row.id}"><b>${escape(row.customer_name || 'Ohne Kunde')}</b><span>${dateText(row.work_date)} · ${escape(row.title || '')} · ${orderEmployeeTimeText(row,id)} · ${h(orderHours(row,id))} · Öffnen</span></button><button type="button" class="danger small" data-action="delete-order" data-id="${row.id}">Löschen</button></article>`).join('') || '<p class="empty">Keine Arbeitsscheine für diesen Tag vorhanden.</p>'}</section>`;
   }
   root.addEventListener('click', event => {
     const button = event.target.closest('[data-action]'); if (!button) return;
@@ -1302,9 +1314,9 @@
       return perform('Der geplante Auftrag wurde bestätigt.', async () => {
         await refreshPlanningData();
         const appointment = planningRows().find(row => same(row.id, button.dataset.id));
-        if (!appointment || !same(appointment.employee_id, state.profile.id) || planningMeta(appointment).status !== 'planned') throw new Error('Dieser Auftrag kann nicht mehr bestätigt werden.');
+        if (!appointment || !planEmployeeIds(appointment).includes(String(state.profile.id)) || planningMeta(appointment).status !== 'planned') throw new Error('Dieser Auftrag kann nicht mehr bestätigt werden.');
         if (locked(appointment.employee_id, appointment.event_date)) throw new Error(lockedText(appointment.employee_id, appointment.event_date));
-        const confirmed = (await write('appointments', { notes: planningNotes({ ...planningMeta(appointment), status: 'confirmed', customerDetails: planningCustomerInformation(appointment) }) }, 'PATCH', `id=eq.${encodeURIComponent(appointment.id)}`))?.[0];
+        const confirmed = appointment.team_employee_ids?.length ? await api('/rest/v1/rpc/confirm_team_appointment',{method:'POST',body:{p_id:appointment.id}}) : (await write('appointments', { notes: planningNotes({ ...planningMeta(appointment), status: 'confirmed', customerDetails: planningCustomerInformation(appointment) }) }, 'PATCH', `id=eq.${encodeURIComponent(appointment.id)}`))?.[0];
         if (!confirmed) throw new Error('Der Auftrag konnte nicht bestätigt werden.');
         openPlanningOrder(confirmed);
       });
@@ -1316,7 +1328,7 @@
         const appointment = planningRows().find(row => same(row.id, button.dataset.id)); if (!appointment) throw new Error('Der geplante Auftrag wurde entfernt.');
         const meta = planningMeta(appointment), existing = matchingPlanOrder(appointment);
         if (!existing && (locked(appointment.employee_id, appointment.event_date) || meta.status === 'cancelled' || meta.status === 'completed')) throw new Error('Dieser Auftrag kann derzeit nicht als Arbeitsschein begonnen werden.');
-        state.date = appointment.event_date; state.month = state.date.slice(0, 7); state.employeeId = appointment.employee_id;
+        state.date = appointment.event_date; state.month = state.date.slice(0, 7); state.employeeId = isManager() ? appointment.employee_id : state.profile.id;
         state.orderOrigin = 'planning'; state.menu = false;
         if (existing) { state.orderId = existing.id; state.view = 'order-detail'; state.planPrefill = null; return; }
         openPlanningOrder(appointment);
@@ -1365,5 +1377,155 @@
   }
   window.setInterval(syncPlanningIfVisible, 20000);
   document.addEventListener('visibilitychange', syncPlanningIfVisible);
+
+  // Team orders are enabled only after the additive server migration is live.
+  // A missing RPC never disables the existing single-employee workflow.
+  async function loadTeamContext() {
+    const actor = state.profile?.id, company = businessId();
+    if (!actor || !company) { state.teamContext = null; return; }
+    try {
+      const context = await api('/rest/v1/rpc/work_order_team_context', { method: 'POST', body: { p_company: company } });
+      if (same(actor, state.profile?.id) && same(company, businessId())) state.teamContext = context?.version === 1 && Array.isArray(context.roster) ? { ...context, company } : null;
+    } catch {
+      // A cached context may survive a temporary outage, but never a tenant switch.
+      if (!same(state.teamContext?.company, company)) state.teamContext = null;
+    }
+  }
+  function teamEnabled() { return state.teamContext?.version === 1 && same(state.teamContext.company, businessId()); }
+  function teamEmployees() { return teamEnabled() ? state.teamContext.roster.filter(person => same(person.business_id, businessId())) : []; }
+  function teamPerson(id) { return teamEmployees().find(person => same(person.id, id)) || state.people.find(person => same(person.id, id)) || (same(id, state.profile?.id) ? state.profile : null); }
+  function orderPeriods(order) {
+    return Array.isArray(order?.team_periods) && order.team_periods.length ? order.team_periods : [{ employee_id: order?.employee_id, employee_name: personName(teamPerson(order?.employee_id)), start_time: order?.start_time, end_time: order?.end_time, pause_hours: order?.pause_hours, executed_hours: order?.executed_hours }];
+  }
+  function orderForEmployee(order, id) { return orderPeriods(order).some(period => same(period.employee_id, id)); }
+  function orderHours(order, id = '') { return orderPeriods(order).filter(period => !id || same(period.employee_id, id)).reduce((sum, period) => sum + n(period.executed_hours), 0); }
+  function orderEmployeeTimeText(order,id) { return orderPeriods(order).filter(period => same(period.employee_id,id)).map(period => `${timeText(period.start_time)} – ${timeText(period.end_time)}`).join(' / '); }
+  function planEmployeeIds(plan) { return [...new Set([plan?.employee_id, ...(Array.isArray(plan?.team_employee_ids) ? plan.team_employee_ids : [])].filter(Boolean).map(String))]; }
+  function teamStyles() { return `<style>.team-choice{border:1px solid #d9e6e3;border-radius:12px;padding:12px;background:#f7faf9}.team-choice summary{font-weight:700;cursor:pointer}.team-choice-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;padding-top:10px}.team-choice-list label{display:flex;align-items:center;gap:9px;margin:0;padding:10px;border-radius:8px;background:white}.team-choice-list input{width:20px;height:20px;flex:none}.team-person{min-width:0;border:1px solid #d9e6e3;border-radius:12px;padding:14px;margin-bottom:12px}.team-person h4{margin:0 0 12px}.team-period{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:12px 0;border-bottom:1px solid #e5eeeb}.team-period label{min-width:0}.team-period input{width:100%;min-width:0}.team-person>.actions{margin-top:10px}.team-hint{font-size:.85rem;color:#56716c}.team-times{min-width:0}@media(min-width:900px){.team-period{grid-template-columns:repeat(4,minmax(0,1fr))}}</style>`; }
+  function teamChoice(owner, selected = [], planning = false) {
+    if (!teamEnabled()) return '';
+    const options = teamEmployees().filter(person => !same(person.id, owner));
+    return `${teamStyles()}<details class="wide team-choice" ${selected.length ? 'open' : ''}><summary>Weitere Mitarbeiter auswählen</summary><p class="team-hint">${planning ? 'Der Auftrag erscheint bei allen ausgewählten Mitarbeitern.' : 'Die Arbeitszeit wird für jeden Beteiligten separat erfasst.'}</p><div class="team-choice-list">${options.map(person => `<label><input type="checkbox" name="team_employee" value="${escape(person.id)}" ${selected.some(id => same(id, person.id)) ? 'checked' : ''} ${planning ? 'data-plan-team-choice' : 'data-order-team-choice'}>${escape(personName(person))}</label>`).join('') || '<p>Keine weiteren Mitarbeiter dieser Firma vorhanden.</p>'}</div></details>`;
+  }
+  function teamPeriodFields(period, primary = false) {
+    const key = period.key || crypto.randomUUID(), names = primary ? { start: 'start', end: 'end', pause: 'pause', hours: 'hours' } : Object.fromEntries(['start','end','pause','hours'].map(name => [name, `team_${name}_${key}`]));
+    const hours = period.executed_hours ?? (period.start_time && period.end_time ? Math.max(0, (toMinutes(period.end_time)-toMinutes(period.start_time))/60-n(period.pause_hours)) : '');
+    return `<div class="team-period" data-team-period data-team-key="${escape(key)}" data-team-person="${escape(period.employee_id)}" ${primary ? 'data-team-primary' : ''}><label>Arbeitsbeginn<input type="time" step="900" name="${names.start}" data-team-time="start" required value="${escape(String(period.start_time || '').slice(0,5))}"></label><label>Arbeitsende<input type="time" step="900" name="${names.end}" data-team-time="end" required value="${escape(String(period.end_time || '').slice(0,5))}"></label><label>Pause in Stunden<input type="number" min="0" step="0.25" name="${names.pause}" data-team-time="pause" value="${n(period.pause_hours)}" required></label><label>Ausgeführte Stunden<input type="number" min="0.25" step="0.25" name="${names.hours}" data-team-time="hours" value="${escape(hours)}" required></label>${primary ? '' : '<button type="button" class="danger small" data-action="team-remove-period">Zeitabschnitt entfernen</button>'}</div>`;
+  }
+  function teamPersonFields(id, periods, primary = false) {
+    const name = periods[0]?.employee_name || personName(teamPerson(id));
+    return `<section class="team-person" data-team-employee="${escape(id)}"><h4>${escape(name || 'Mitarbeiter')}</h4><div data-person-periods>${periods.map((period,index) => teamPeriodFields(period, primary && index===0)).join('')}</div><div class="actions"><button type="button" class="secondary small" data-action="team-add-period" data-employee="${escape(id)}">+ Weiteren Zeitabschnitt hinzufügen</button></div></section>`;
+  }
+  function teamTimeFields(owner, initial) {
+    const periods = initial?.length ? initial : [{ employee_id: owner, start_time: '07:30', end_time: '', pause_hours: 0 }];
+    const people = [...new Set([owner,...periods.map(period => period.employee_id)])];
+    return `<section class="wide team-times" data-team-times data-team-owner="${escape(owner)}"><p class="team-hint">Jeder Zeitabschnitt zählt nur für den angegebenen Mitarbeiter. Die passende Stundenposition und ihr Preis werden automatisch ergänzt.</p>${people.map(id => teamPersonFields(id,periods.filter(period => same(period.employee_id,id)),same(id,owner))).join('')}</section>`;
+  }
+  function teamOrderTimeFields(owner, initial, legacyHtml) {
+    if (!teamEnabled()) return legacyHtml;
+    const otherIds = [...new Set((initial || []).map(period => period.employee_id).filter(id => !same(id,owner)))];
+    return teamChoice(owner,otherIds) + teamTimeFields(owner,initial);
+  }
+  function newOrderPeriods(prefill,id,start,end) {
+    const owner=prefill?.ownerId || id, people=[owner,...(prefill?.participants || []).filter(person => !same(person,owner))];
+    return people.map(employee_id => ({employee_id,start_time:start,end_time:end,pause_hours:0}));
+  }
+  function selectedPlanTeam(form) { return [...form.querySelectorAll('[name="team_employee"]:checked')].map(input => input.value).filter(id => !same(id,form.elements.employee.value)); }
+  function collectTeamPeriods(form) {
+    const blocks = [...form.querySelectorAll('[data-team-period]')], periods = [];
+    if (!blocks.length) throw new Error('Die Zeitabschnitte fehlen. Bitte den Arbeitsschein erneut öffnen.');
+    for (const block of blocks) {
+      const value = name => block.querySelector(`[data-team-time="${name}"]`)?.value;
+      const start = roundTime(value('start')), end = roundTime(value('end')), pause = Number(value('pause'));
+      const hours = start && end ? (toMinutes(end)-toMinutes(start))/60-pause : NaN;
+      if (!Number.isFinite(hours) || !Number.isFinite(pause) || pause<0 || pause*4%1!==0 || hours<0.25 || hours*4%1!==0 || toMinutes(end)<=toMinutes(start)) throw new Error('Bitte für jeden Mitarbeiter einen gültigen Zeitabschnitt mit Pause in Viertelstunden eingeben.');
+      const period = { key: block.dataset.teamKey, employee_id: block.dataset.teamPerson, start_time:start, end_time:end, pause_hours:pause, executed_hours:hours };
+      if (periods.some(previous => same(previous.employee_id,period.employee_id) && timesOverlap(previous.start_time,previous.end_time,start,end))) throw new Error('Die Zeitabschnitte eines Mitarbeiters dürfen sich nicht überschneiden.');
+      periods.push(period);
+    }
+    const owner = form.querySelector('[data-team-times]').dataset.teamOwner;
+    const selected = [owner,...form.querySelectorAll('[name="team_employee"]:checked')].map(value => typeof value==='string' ? value : value.value);
+    if (selected.some(id => !periods.some(period => same(period.employee_id,id)))) throw new Error('Für jeden ausgewählten Mitarbeiter muss mindestens ein Zeitabschnitt eingetragen werden.');
+    return periods;
+  }
+  async function saveTeamOrder(form, existing = null) {
+    if (!teamEnabled()) throw new Error('Die Mehrpersonen-Buchung ist noch nicht verbunden. Bestehende Daten bleiben erhalten.');
+    const planId = String(form.elements.planning_id?.value || ''), owner = existing?.employee_id || form.querySelector('[data-team-times]')?.dataset.teamOwner || workerId();
+    const date = existing ? form.elements.work_date.value || existing.work_date : state.date;
+    const periods = collectTeamPeriods(form), signature = signatureValues(form);
+    const customer = await ensureCustomer(form.elements.customer.value,owner,planningCustomers(owner));
+    if (!customer?.id) throw new Error('Der Kunde konnte nicht gespeichert werden.');
+    const inputs = [...form.querySelectorAll('[name="material"]')], quantities = [...form.querySelectorAll('[name="quantity"]')], items = [];
+    for (let index=0; index<inputs.length; index++) {
+      const material = await ensureMaterial(inputs[index].value,businessId());
+      if (material && !isHourlyMaterial(material)) items.push({ material_id:material.id, quantity:Math.max(0.25,n(quantities[index]?.value || 1)) });
+    }
+    const saved = await api('/rest/v1/rpc/save_team_work_order',{method:'POST',body:{p_order:{ ...(existing ? {id:existing.id} : {}),employee_id:owner,work_date:date,customer_id:customer.id,title:String(form.elements.title.value || '').trim(),documentation:String(form.elements.documentation.value || ''),...signature},p_periods:periods,p_items:items,p_plan_id:planId || null}});
+    const order = Array.isArray(saved) ? saved[0] : saved;
+    if (!order?.id) throw new Error('Der gemeinsame Arbeitsschein konnte nicht gespeichert werden.');
+    state.orderCustomer=''; state.planPrefill=null; state.orderId=order.id; state.view='order-detail';
+    // Core data is already committed atomically. A failed file upload never
+    // causes the next attempt to create another work order.
+    try { await saveDocuments(form,order,state.profile.id); }
+    catch { throw new Error('Der Arbeitsschein und alle Mitarbeiterzeiten sind gespeichert. Ein Dokument konnte nicht hochgeladen werden; bitte hier erneut hinzufügen.'); }
+  }
+  function teamExecutionHtml(order) { return orderPeriods(order).map(period => `<div class="pdf-execution-row"><b>${escape(period.employee_name || personName(teamPerson(period.employee_id)))}</b><br>${timeText(period.start_time)} bis ${timeText(period.end_time)} · Pause ${h(period.pause_hours)} · ${h(period.executed_hours)}</div>`).join(''); }
+  root.addEventListener('change',event => {
+    const input=event.target, form=input.closest('form');
+    if (input.matches('[data-order-team-choice]')) {
+      const target=form.querySelector('[data-team-times]'), present=[...target.querySelectorAll('[data-team-employee]')].find(section => same(section.dataset.teamEmployee,input.value));
+      if (!input.checked) { present?.remove(); return; }
+      if (!present) {
+        const start=form.elements.start.value || '07:30', end=form.elements.end.value || '', pause=n(form.elements.pause.value);
+        target.insertAdjacentHTML('beforeend',teamPersonFields(input.value,[{employee_id:input.value,start_time:start,end_time:end,pause_hours:pause}]));
+      }
+    }
+    if (input.matches('[data-plan-team-choice]')) updatePlanningWarnings(form);
+    if (input.name==='employee' && form?.dataset.form==='planning' && teamEnabled()) {
+      const selected=selectedPlanTeam(form), choice=form.querySelector('.team-choice');
+      if (choice) { const wrapper=document.createElement('div'); wrapper.innerHTML=teamChoice(input.value,selected,true); choice.replaceWith(wrapper.querySelector('.team-choice')); }
+      updatePlanningWarnings(form);
+    }
+    if (input.matches('[data-select="business"]')) loadTeamContext().then(() => { if (!state.busy) render(); });
+  });
+  root.addEventListener('input',event => {
+    const input=event.target, block=input.closest('[data-team-period]');
+    if (!block || block.hasAttribute('data-team-primary') || !input.dataset.teamTime) return;
+    const field=name => block.querySelector(`[data-team-time="${name}"]`), start=roundTime(field('start').value), pause=n(field('pause').value);
+    if (!start) return;
+    if (input.dataset.teamTime==='end') {
+      const end=roundTime(field('end').value); if (end) field('hours').value=Math.max(0,Math.round(((toMinutes(end)-toMinutes(start))/60-pause)*4)/4).toFixed(2);
+    } else if (field('hours').value) {
+      const minutes=toMinutes(start)+Math.round((n(field('hours').value)+pause)*60);
+      field('end').value=minutes<1440 ? `${String(Math.floor(minutes/60)).padStart(2,'0')}:${String(minutes%60).padStart(2,'0')}` : '';
+    }
+  });
+  root.addEventListener('click',event => {
+    const button=event.target.closest('[data-action]'); if (!button) return;
+    if (button.dataset.action==='team-add-period') {
+      const section=button.closest('[data-team-employee]'), periods=section.querySelector('[data-person-periods]'), last=periods.lastElementChild;
+      const start=last?.querySelector('[data-team-time="end"]')?.value || '07:30';
+      periods.insertAdjacentHTML('beforeend',teamPeriodFields({employee_id:section.dataset.teamEmployee,start_time:start,end_time:'',pause_hours:0}));
+      periods.lastElementChild.querySelector('input')?.focus();
+    }
+    if (button.dataset.action==='team-remove-period') {
+      const block=button.closest('[data-team-period]'), section=block.closest('[data-team-employee]');
+      if (section.querySelectorAll('[data-team-period]').length<2) {
+        const choice=[...section.closest('form').querySelectorAll('[data-order-team-choice]')].find(input => same(input.value,section.dataset.teamEmployee));
+        if (choice) { choice.checked=false; section.remove(); }
+        return;
+      }
+      block.remove();
+    }
+    if (button.dataset.action==='delete-time') {
+      const entry=state.rows.entries.find(row => same(row.id,button.dataset.id));
+      if (entry?.team_work_order_id) {
+        event.stopImmediatePropagation(); state.orderId=entry.team_work_order_id; state.orderOrigin='time'; state.view='order-detail';
+        notice('Diesen Zeitabschnitt bitte im gemeinsamen Arbeitsschein entfernen. So bleiben Auftrag, Abrechnung und Mitarbeiterzeiten synchron.');
+        render();
+        root.querySelector('.panel')?.scrollIntoView({block:'start'});
+      }
+    }
+  },true);
 
 })();

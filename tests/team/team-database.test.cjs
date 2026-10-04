@@ -7,6 +7,24 @@ async function main(){
   await test('Migration compiles in PostgreSQL and is additive',async()=>{
     const {rows}=await db.query("select column_name from information_schema.columns where table_name='time_entries' and column_name like 'team_%'");assert.equal(rows.length,2);
   });
+  await test('Migration preserves historical orders, manual times and existing synchronized times',async()=>{
+    const legacy=await fixture({legacyRecords:true});
+    try {
+      const afterOrders=(await legacy.db.query('select to_jsonb(w)-\'team_periods\' record from work_orders w order by id')).rows.map(r=>r.record);
+      const afterTimes=(await legacy.db.query('select to_jsonb(t)-\'team_work_order_id\'-\'team_period_key\' record from time_entries t order by id')).rows.map(r=>r.record);
+      assert.deepEqual(afterOrders,legacy.legacyBefore.orders);assert.deepEqual(afterTimes,legacy.legacyBefore.times);
+      assert.equal(afterTimes.length,2);
+    } finally { await legacy.db.close(); }
+  });
+  await test('Client company checks work with the actual schema without a customer business_id column',async()=>{
+    assert.equal((await db.query("select count(*) n from information_schema.columns where table_schema='public' and table_name='customers' and column_name='business_id'")).rows[0].n,0);
+  });
+  await test('Anonymous callers cannot execute team saving or read the employee roster',async()=>{
+    await db.exec('set role anon');
+    await assert.rejects(db.query('select work_order_team_context($1)',[ids.business]),/permission denied/);
+    await assert.rejects(save(),/permission denied/);
+    await admin();
+  });
   await actor('anna');
   await test('Narrow employee roster contains only the assigned company',async()=>{
     const context=(await db.query('select work_order_team_context($1) c',[ids.otherBusiness])).rows[0].c;
@@ -27,10 +45,34 @@ async function main(){
     assert.equal(Number((await db.query('select sum(executed_hours) n from time_entries')).rows[0].n),3);
     assert.equal((await db.query('select * from work_order_items')).rows.length,3);
   });
+  const filePath=ids.max+'/'+saved.id+'/test.pdf';
+  await test('Participant attachments are shared with assigned employees, not another company',async()=>{
+    await db.query('insert into work_order_documents(work_order_id,employee_id,file_path,file_name,mime_type) values($1,$2,$3,$4,$5)',[saved.id,ids.max,filePath,'test.pdf','application/pdf']);
+    await admin();await db.query('insert into storage.objects(bucket_id,name) values($1,$2)',['work-order-documents',filePath]);
+    await actor('anna');assert.equal((await db.query('select * from work_order_documents')).rows.length,1);assert.equal((await db.query('select * from storage.objects')).rows.length,1);
+    await actor('felix');assert.equal((await db.query('select * from work_order_documents')).rows.length,0);assert.equal((await db.query('select * from storage.objects')).rows.length,0);
+    await assert.rejects(db.query('insert into work_order_documents(work_order_id,employee_id,file_path,file_name) values($1,$2,$3,$4)',[saved.id,ids.felix,'forbidden.pdf','forbidden.pdf']),/row-level security/);
+    await actor('max');
+  });
   await test('Participant edits replace all periods atomically without duplicating hours',async()=>{
     saved=await save({...order,id:saved.id},periods.map((p,i)=>i===2?{...p,end_time:'12:30'}:p));
     assert.equal(Number((await db.query('select sum(executed_hours) n from time_entries')).rows[0].n),3.5);
     await admin();assert.equal((await db.query('select count(*) n from time_entries')).rows[0].n,3);
+  });
+  await test('Legacy document folders are company-scoped for business accounts',async()=>{
+    await actor('otherBusiness');assert.equal((await db.query('select * from storage.objects')).rows.length,0);
+    assert.equal((await db.query('delete from storage.objects where name=$1 returning id',[filePath])).rows.length,0);
+    await assert.rejects(db.query('insert into storage.objects(bucket_id,name) values($1,$2)',['work-order-documents',ids.max+'/forbidden.pdf']),/row-level security/);
+    await actor('business');assert.equal((await db.query('select * from storage.objects')).rows.length,1);
+    await actor('admin');assert.equal((await db.query('select * from storage.objects')).rows.length,1);
+    await admin();
+  });
+  await test('Invoiced team orders cannot be modified or deleted and retain their prices',async()=>{
+    await db.query('update work_orders set invoiced=true where id=$1',[saved.id]);await actor('max');
+    await assert.rejects(save({...order,id:saved.id}),/abgerechneter Arbeitsschein/);
+    await assert.rejects(db.query('select delete_team_work_order($1)',[saved.id]),/Abgerechnete Arbeitsscheine/);
+    assert.equal(Number((await db.query("select unit_price from work_order_items where position_name='Meisterstunde'")).rows[0].unit_price),75);
+    await admin();await db.query('update work_orders set invoiced=false where id=$1',[saved.id]);
   });
   await actor('felix');
   await test('Another company cannot read, update or delete the order',async()=>{
@@ -106,4 +148,3 @@ async function main(){
   console.log(JSON.stringify({passed,productionWrites:0}));await db.close();
 }
 main().catch(e=>{console.error(e.message,e.detail||'');process.exit(1)});
-

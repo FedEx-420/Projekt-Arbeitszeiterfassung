@@ -1,0 +1,23 @@
+/* Published assignments stay ahead of new entries, without rebuilding forms. */
+[data-day-plans]:empty,.assignment-hint:empty{display:none}
+.day-plans{border-color:#a5cfc5;background:linear-gradient(135deg,#edf7f4,#fff)}
+.day-plans header{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.day-plans h3{margin:3px 0 0}
+.day-plans>p{font-size:.88rem;color:#48635d;margin:10px 0 15px;max-width:850px}
+.day-plans-count{display:grid;place-items:center;min-width:34px;height:34px;padding:0 10px;border-radius:18px;background:#075d59;color:#fff;font-weight:800}
+.day-plan-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,290px),1fr));gap:10px}
+.day-plan-card{min-width:0;border:1px solid #c5dbd5;border-radius:13px;background:#fff;overflow:hidden}
+.day-plan-card.selected{border-color:#08766f;box-shadow:inset 0 0 0 1px #08766f}
+.day-plan-main{display:grid;gap:5px;width:100%;min-width:0;padding:15px;text-align:left;background:transparent;white-space:normal;overflow-wrap:anywhere;color:var(--ink);font-weight:400;border-radius:12px}
+button.day-plan-main:hover{background:#f1faf7}
+button.day-plan-main:focus-visible{outline:3px solid #08766f;outline-offset:-3px}
+.day-plan-main>b{font-size:1.06rem}
+.day-plan-main>span:not(.day-plan-status),.day-plan-main>small{font-size:.84rem;color:#526c66}
+.day-plan-status{justify-self:start;font-size:.72rem;font-weight:800;border-radius:7px;background:#fff3d7;color:#7e570c;padding:4px 8px;margin-bottom:3px}
+.day-plan-status.confirmed{background:#e5f1fb;color:#225c85}
+.day-plan-status.recorded{background:#e3f4e7;color:#24613b}
+.day-plan-link{font-size:.82rem;color:#075d59;margin-top:5px}
+.assignment-hint{padding:12px;background:#fff8e7;border:1px solid #ead398;border-radius:12px;min-width:0}
+.assignment-hint>p{font-size:.85rem;line-height:1.5;margin:0 0 10px;color:#665323}
+.assignment-hint .day-plan-card+.day-plan-card{margin-top:8px}
+@media(max-width:520px){.day-plans{padding:16px}.day-plan-main{padding:13px}.day-plans h3{font-size:1.12rem}}

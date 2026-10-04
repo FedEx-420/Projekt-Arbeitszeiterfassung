@@ -235,7 +235,7 @@
     const detail = selected ? `<section class="panel"><section class="page-head"><div><span class="eyebrow">Ausgewählte Zeiterfassung</span><h3>${escape(selected.customer_name)}</h3></div><div class="actions"><button type="button" class="danger small" data-action="delete-time" data-id="${selected.id}">Zeiterfassung löschen</button><button type="button" class="secondary small" data-action="close-time">Schließen</button></div></section><p>${timeText(selected.start_time)} – ${timeText(selected.end_time)} · Pause ${h(selected.pause_hours)} · ${h(selected.executed_hours)}</p>${selected.custom_fields?.notes ? `<p><b>Notiz:</b><br>${escape(selected.custom_fields.notes).replace(/\n/g, '<br>')}</p>` : ''}</section>` : '';
     const form = locked(id) ? `<div class="locked">${escape(lockedText(id))}</div>` : `<section class="panel"><h3>Arbeitszeit hinzufügen</h3><form data-form="time" class="entry-form"><label class="wide">Kunde<input name="customer" required list="customers"></label><label>Arbeitsbeginn${timeInput('start', previous)}</label><label>Arbeitsende${timeInput('end', '')}</label><label>Pause in Stunden<input name="pause" type="number" min="0" step="0.25" value="0"></label><label>Ausgeführte Stunden<input name="hours" type="number" min="0.25" step="0.25" required></label>${noteTemplates()}<label class="wide">Notiz<textarea name="notes" rows="4" placeholder="Zusätzliche Informationen zur Arbeitszeit"></textarea></label><button class="primary wide">Speichern</button></form>${customerList()}</section>`;
     const cards = list.map(row => `<article class="row-card"><button type="button" class="row-main" data-action="open-time" data-id="${row.id}"><b>${escape(row.customer_name)}</b><span>${timeText(row.start_time)} – ${timeText(row.end_time)} · ${h(row.executed_hours)} · Öffnen</span>${row.custom_fields?.notes ? `<small>${escape(row.custom_fields.notes)}</small>` : ''}</button><button type="button" class="danger small" data-action="delete-time" data-id="${row.id}">Löschen</button></article>`).join('') || '<p class="empty">Keine Einträge vorhanden.</p>';
-    return `<section class="page-head"><div><span class="eyebrow">Zeiterfassung von ${escape(worker()?.username || '')}</span><h2>${dateText(state.date)}</h2></div>${dayPicker()}</section>${detail}${form}<section class="list-section"><h3>Einträge des Tages</h3>${cards}</section>`;
+    return `<section class="page-head"><div><span class="eyebrow">Zeiterfassung von ${escape(worker()?.username || '')}</span><h2>${dateText(state.date)}</h2></div>${dayPicker()}</section><div data-day-plans>${plannedAssignmentsPanel(id, state.date)}</div>${detail}${form}<section class="list-section"><h3>Einträge des Tages</h3>${cards}</section>`;
   }
 
   function materialRow(item = {}) { return `<div class="material-row"><label>Material<input name="material" list="materials" value="${escape(item.position_name || item.name || '')}"></label><label>Stückzahl<input name="quantity" type="number" min="0.25" step="0.25" value="${escape(item.quantity || 1)}"></label></div>`; }
@@ -938,7 +938,7 @@
     const windowRef = window.open('', '_blank'); if (!windowRef) throw new Error('Bitte Pop-ups erlauben, um die PDF zu erstellen.');
     windowRef.document.write(`<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Zeiterfassungsnachweis</title><style>${pdfStyles()}</style></head><body><main class="pdf-page">${pdfBrandHeader('Zeiterfassungsnachweis', state.date.slice(0, 4))}<section class="pdf-grid"><article class="pdf-card"><span class="pdf-card-label">Mitarbeiter</span><b>${escape(person?.display_name || person?.username || '')}</b></article><article class="pdf-card"><span class="pdf-card-label">Jahresübersicht</span>${h(totalHours)} Arbeitsstunden<br>${h(overtime(id))} Überstunden<br>${vacationLeft(id)} Urlaubstage übrig · ${annualSick(id)} Krankheitstage</article></section><section class="pdf-section"><h2>Erfasste Zeiten</h2><table class="pdf-table"><thead><tr><th>Datum</th><th>Kunde</th><th>Von</th><th>Bis</th><th class="number">Pause</th><th class="number">Stunden</th></tr></thead><tbody>${lines || '<tr><td colspan="6" class="pdf-empty">Keine Zeiterfassungen vorhanden.</td></tr>'}</tbody></table></section><p class="pdf-note">Automatisch aus der Arbeitszeiterfassung erstellt.</p></main><script>window.onload=()=>window.print()<\/script></body></html>`); windowRef.document.close(); addPdfReturnBar(windowRef);
   }
-  function render() { if (!root) return; if (!base || !key) { root.innerHTML = '<main class="login-page"><section class="login-card"><h1>Zeiterfassung</h1><p>Die App-Konfiguration fehlt.</p></section></main>'; return; } root.innerHTML = state.session && state.profile ? appView() : loginView(); setupCustomerSearch(); setupSignaturePads(); setupPlanningCustomerLookup(); updatePlanningWarnings(root.querySelector('form[data-form="planning"]')); }
+  function render() { if (!root) return; if (!base || !key) { root.innerHTML = '<main class="login-page"><section class="login-card"><h1>Zeiterfassung</h1><p>Die App-Konfiguration fehlt.</p></section></main>'; return; } root.innerHTML = state.session && state.profile ? appView() : loginView(); setupCustomerSearch(); setupSignaturePads(); setupPlanningCustomerLookup(); updatePlanningWarnings(root.querySelector('form[data-form="planning"]')); updateAssignmentHint(root.querySelector('form[data-form="time"], form[data-form="order"]')); }
   window.addEventListener('unhandledrejection', event => { event.preventDefault(); notice('Die Aktion konnte nicht ausgeführt werden. Bitte erneut versuchen.', true); render(); });
   state.session = parse(localStorage.getItem(storage) || localStorage.getItem('zeiterfassung-session-v700'));
   if (state.session?.access_token) loadApp(); else render();
@@ -1216,6 +1216,70 @@
   function planningOrderDrafts(employeeId = workerId(), workDate = state.date) {
     return planningRows().filter(appointment => planEmployeeIds(appointment).includes(String(employeeId)) && appointment.event_date === workDate && planningMeta(appointment).status === 'confirmed' && !matchingPlanOrder(appointment));
   }
+  function dayPlanningAssignments(employeeId = workerId(), workDate = state.date) {
+    // Only published, assigned appointments belong here. Pending employee
+    // proposals are kept separate and never become a work-order draft.
+    return planningRows().filter(appointment => {
+      const status = planningMeta(appointment).status;
+      return !appointment._planningRequest && appointment.event_date === workDate &&
+        planEmployeeIds(appointment).includes(String(employeeId)) &&
+        (['planned', 'confirmed'].includes(status) || status === 'completed' && matchingPlanOrder(appointment));
+    }).sort((a, b) => String(planningMeta(a).start || '').localeCompare(String(planningMeta(b).start || '')) || String(a.customer_name || '').localeCompare(String(b.customer_name || ''), 'de') || String(a.id).localeCompare(String(b.id)));
+  }
+  function dayPlanCard(appointment, employeeId = workerId()) {
+    const meta = planningMeta(appointment), order = matchingPlanOrder(appointment);
+    const active = same(state.planPrefill?.id, appointment.id) && state.view === 'orders';
+    const blocked = !order && (locked(employeeId, appointment.event_date) || locked(appointment.employee_id, appointment.event_date));
+    const enabled = canUse('orders') && !blocked && !active;
+    const status = order ? 'Bereits erfasst' : meta.status === 'confirmed' ? 'Bestätigt' : 'Geplant';
+    const team = planEmployeeIds(appointment).map(id => personName(teamPerson(id))).join(', ');
+    const body = `<span class="day-plan-status ${order ? 'recorded' : meta.status === 'confirmed' ? 'confirmed' : ''}">${escape(status)}</span><b>${escape(order?.customer_name || appointment.customer_name || 'Ohne Kunde')}</b><span>${escape(appointment.title || 'Geplanter Auftrag')}</span><small>${escape(meta.start || '—')} – ${escape(meta.end || '—')} Uhr${team ? ' · '+escape(team) : ''}</small><strong class="day-plan-link">${active ? 'Unten zur Bearbeitung geöffnet' : blocked ? 'An diesem Tag ist keine neue Arbeitsbuchung möglich' : !canUse('orders') ? 'Arbeitsschein-Menü nicht freigegeben' : order ? 'Vorhandenen Arbeitsschein öffnen →' : 'Geplanten Arbeitsschein öffnen →'}</strong>`;
+    return `<article class="day-plan-card${active ? ' selected' : ''}" data-assignment-id="${escape(appointment.id)}">${enabled ? `<button type="button" class="day-plan-main" data-action="${order ? 'open-order' : 'plan-start'}" data-id="${escape(order?.id || appointment.id)}">${body}</button>` : `<div class="day-plan-main">${body}</div>`}</article>`;
+  }
+  function plannedAssignmentsPanel(employeeId = workerId(), workDate = state.date) {
+    const appointments = dayPlanningAssignments(employeeId, workDate);
+    if (!appointments.length) return '';
+    return `<section class="panel day-plans" aria-label="Geplante Aufträge des ausgewählten Tages"><header><div><span class="eyebrow">Für diesen Tag bereits eingeplant</span><h3>Ihre geplanten Aufträge</h3></div><span class="day-plans-count">${appointments.length}</span></header><p>Bitte den geplanten Auftrag öffnen, statt für denselben Auftrag einen neuen Arbeitsschein oder Zeiteintrag anzulegen. Arbeitsstunden werden erst beim Speichern des Arbeitsscheins gebucht.</p><div class="day-plan-list">${appointments.map(appointment => dayPlanCard(appointment, employeeId)).join('')}</div></section>`;
+  }
+  function matchingDayAssignments(form) {
+    if (!form || !['time', 'order'].includes(form.dataset.form) || form.elements.planning_id?.value) return [];
+    const query = normalized(form.elements.customer?.value);
+    if (!query) return [];
+    return dayPlanningAssignments().filter(appointment => {
+      const customer = state.rows.customers.find(row => same(row.id, appointment.customer_id));
+      return [appointment.customer_name, customer?.name].filter(Boolean).some(name => normalized(name) === query || query.length >= 3 && similarityScore(query, name) >= 0.8);
+    });
+  }
+  function updateAssignmentHint(form) {
+    if (!form || !['time', 'order'].includes(form.dataset.form)) return;
+    let target = form.querySelector('[data-assignment-hint]');
+    if (!target) {
+      target = document.createElement('div'); target.className = 'wide assignment-hint'; target.dataset.assignmentHint = '';
+      form.elements.customer?.closest('label')?.after(target);
+    }
+    const matches = matchingDayAssignments(form);
+    const html = matches.length ? `<p><b>Für diesen Kunden ist heute bereits ein Auftrag eingeplant oder erfasst.</b> Öffnen Sie ihn hier, um die Planung und die Mitarbeiterzeiten zusammenzuführen.</p>${matches.map(appointment => dayPlanCard(appointment)).join('')}` : '';
+    if (target.innerHTML !== html) target.innerHTML = html;
+  }
+  function updateDayPlanningPanels() {
+    const target = root.querySelector('[data-day-plans]');
+    const html = plannedAssignmentsPanel();
+    if (target && target.innerHTML !== html) target.innerHTML = html;
+    updateAssignmentHint(root.querySelector('form[data-form="time"], form[data-form="order"]'));
+  }
+  // Check before perform() re-renders: declining the extra-entry warning must
+  // retain every typed field, signature and selected attachment.
+  root.addEventListener('submit', event => {
+    const form = event.target;
+    if (!(form instanceof HTMLFormElement) || state.busy) return;
+    const matches = matchingDayAssignments(form);
+    if (!matches.length) return;
+    const names = [...new Set(matches.map(appointment => appointment.customer_name))].join(', ');
+    if (!confirm(`Für ${names} ist am ausgewählten Tag bereits ein Auftrag eingeplant oder erfasst.\n\nBitte öffnen Sie den geplanten Arbeitsschein oben, wenn es derselbe Auftrag ist.\n\nTrotzdem einen separaten zusätzlichen ${form.dataset.form === 'time' ? 'Zeiteintrag' : 'Arbeitsschein'} speichern?`)) {
+      event.preventDefault(); event.stopImmediatePropagation(); updateAssignmentHint(form);
+      form.querySelector('[data-assignment-hint]')?.scrollIntoView({block: 'center', behavior: 'smooth'});
+    }
+  }, true);
   function openPlanningOrder(appointment) {
     const meta = planningMeta(appointment), customerDetails = planningCustomerInformation(appointment);
     state.date = appointment.event_date; state.month = state.date.slice(0, 7); state.employeeId = isManager() ? appointment.employee_id : state.profile.id;
@@ -1362,11 +1426,11 @@
     state.orderCustomer = ''; state.planPrefill = null;
   }
   function ordersView() {
-    const id = workerId(), list = state.rows.orders.filter(row => orderForEmployee(row,id) && row.work_date === state.date), selected = list.find(row => same(row.id, state.orderId)), drafts = planningOrderDrafts(id, state.date), prefill = same(state.planPrefill?.employeeId, id) && state.planPrefill?.date === state.date ? state.planPrefill : null;
+    const id = workerId(), list = state.rows.orders.filter(row => orderForEmployee(row,id) && row.work_date === state.date), selected = list.find(row => same(row.id, state.orderId)), prefill = same(state.planPrefill?.employeeId, id) && state.planPrefill?.date === state.date ? state.planPrefill : null;
     const previous = prefill?.start || dayEntries(id).at(-1)?.end_time?.slice(0, 5) || '07:30';
     const prefillEnd = prefill?.end || '';
     const newOrder = locked(id) ? `<div class="locked">${escape(lockedText(id))}</div>` : `<section class="panel"><h3>Neuer Arbeitsschein</h3>${prefill ? `<p class="plan-alert">Übernahme aus der Planung: ${escape(prefill.title)} · ${escape(prefill.start)} – ${escape(prefill.end)} Uhr</p>` : ''}<form data-form="order" class="entry-form"><input type="hidden" name="planning_id" value="${escape(prefill?.id || '')}"><label class="wide">Kunde<input name="customer" required list="customers" value="${escape(prefill?.customerName || state.orderCustomer || '')}"></label>${prefill?.customerDetails ? planningCustomerPanel(prefill.customerDetails) : ''}<label class="wide">Beschreibung<input name="title" placeholder="Ausgeführte Arbeiten" value="${escape(prefill?.title || '')}"></label><div class="wide" id="material-lines">${materialRow()}</div><button type="button" class="secondary wide" data-action="more-material">Weiteres Material</button>${teamEnabled() ? '' : `<p class="wide">Arbeitsstunden werden beim Speichern automatisch als <b>${escape(hourlyNameForEmployee(id))}</b> mit dem Preis aus der Materialliste ergänzt.</p>`}${teamOrderTimeFields(prefill?.ownerId || id,newOrderPeriods(prefill,id,previous,prefillEnd),`<label>Arbeitsbeginn${timeInput('start', previous)}</label><label>Arbeitsende${timeInput('end', prefillEnd)}</label><label>Pause in Stunden<input name="pause" type="number" min="0" step="0.25" value="0"></label><label>Ausgeführte Stunden<input name="hours" type="number" min="0.25" step="0.25" required value="${escape(prefill ? String(prefillEnd ? Math.max(0.25, Math.round(((toMinutes(prefillEnd) - toMinutes(previous)) / 60) * 4) / 4) : '') : '')}"></label>`)}${noteTemplates()}<label class="wide">Notiz / Dokumentation<textarea name="documentation" rows="4">${escape(prefill?.details || '')}</textarea></label><label class="wide">Dokumente hochladen<input name="documents" type="file" multiple accept="image/*,.pdf,.doc,.docx"></label>${signatureFields()}<button class="primary wide" data-signature-submit>${prefill?.confirmed ? 'Arbeitsschein abschließen' : 'Arbeitsschein speichern'}</button></form>${customerList()}${materialList()}</section>`;
-    return `${prefill ? planningStyles() : ''}<section class="page-head"><div><span class="eyebrow">Arbeitsscheine von ${escape(worker()?.username || '')}</span><h2>${dateText(state.date)}</h2></div>${dayPicker()}</section>${selected ? orderEditor(selected) : newOrder}${drafts.length ? `<section class="list-section"><h3>Bestätigte Termine · Arbeitsschein-Entwürfe</h3><p class="empty">Die Daten sind bereits vorausgefüllt. Stunden werden erst beim Abschluss gebucht.</p>${drafts.map(appointment => `<article class="row-card"><button type="button" class="row-main" data-action="plan-start" data-id="${escape(appointment.id)}"><b>${escape(appointment.customer_name)}</b><span>${escape(appointment.title)} · ${escape(planningMeta(appointment).start || '—')} – ${escape(planningMeta(appointment).end || '—')} Uhr · Entwurf öffnen</span></button></article>`).join('')}</section>` : ''}<section class="list-section"><h3>Arbeitsscheine des ausgewählten Tages</h3>${list.map(row => `<article class="row-card"><button type="button" class="row-main" data-action="open-order" data-id="${row.id}"><b>${escape(row.customer_name || 'Ohne Kunde')}</b><span>${dateText(row.work_date)} · ${escape(row.title || '')} · ${orderEmployeeTimeText(row,id)} · ${h(orderHours(row,id))} · Öffnen</span></button><button type="button" class="danger small" data-action="delete-order" data-id="${row.id}">Löschen</button></article>`).join('') || '<p class="empty">Keine Arbeitsscheine für diesen Tag vorhanden.</p>'}</section>`;
+    return `${prefill ? planningStyles() : ''}<section class="page-head"><div><span class="eyebrow">Arbeitsscheine von ${escape(worker()?.username || '')}</span><h2>${dateText(state.date)}</h2></div>${dayPicker()}</section><div data-day-plans>${plannedAssignmentsPanel(id, state.date)}</div>${selected ? orderEditor(selected) : newOrder}<section class="list-section"><h3>Arbeitsscheine des ausgewählten Tages</h3>${list.map(row => `<article class="row-card"><button type="button" class="row-main" data-action="open-order" data-id="${row.id}"><b>${escape(row.customer_name || 'Ohne Kunde')}</b><span>${dateText(row.work_date)} · ${escape(row.title || '')} · ${orderEmployeeTimeText(row,id)} · ${h(orderHours(row,id))} · Öffnen</span></button><button type="button" class="danger small" data-action="delete-order" data-id="${row.id}">Löschen</button></article>`).join('') || '<p class="empty">Keine Arbeitsscheine für diesen Tag vorhanden.</p>'}</section>`;
   }
   root.addEventListener('click', event => {
     const button = event.target.closest('[data-action]'); if (!button) return;
@@ -1381,6 +1445,7 @@
       if (!state.busy) perform('', refreshPlanningData);
       return;
     }
+    if (action === 'nav' && ['time', 'orders'].includes(button.dataset.view)) { syncPlanningIfVisible(); return; }
     if (action === 'plan-refresh') { if (!state.busy) perform('Planung aktualisiert.', refreshPlanningData); return; }
     if (action === 'plan-week') { state.planWeek = addDate(planningWeekStart(), n(button.dataset.days)); state.planId = ''; state.planForm = false; render(); return; }
     if (action === 'plan-today') { state.planWeek = planningWeekStart(today()); state.planId = ''; state.planForm = false; render(); return; }
@@ -1423,15 +1488,24 @@
     }
     if (action === 'plan-start') {
       if (state.busy || !canUse('orders')) return;
+      const origin = ['time', 'orders'].includes(state.view) ? state.view : 'planning';
       return perform('', async () => {
         await refreshPlanningData();
         const appointment = planningRows().find(row => same(row.id, button.dataset.id)); if (!appointment) throw new Error('Der geplante Auftrag wurde entfernt.');
         const meta = planningMeta(appointment), existing = matchingPlanOrder(appointment);
         if (!existing && (locked(appointment.employee_id, appointment.event_date) || meta.status === 'cancelled' || meta.status === 'completed')) throw new Error('Dieser Auftrag kann derzeit nicht als Arbeitsschein begonnen werden.');
         state.date = appointment.event_date; state.month = state.date.slice(0, 7); state.employeeId = isManager() ? appointment.employee_id : state.profile.id;
-        state.orderOrigin = 'planning'; state.menu = false;
+        state.orderOrigin = origin; state.menu = false;
         if (existing) { state.orderId = existing.id; state.view = 'order-detail'; state.planPrefill = null; return; }
         openPlanningOrder(appointment);
+        state.orderOrigin = origin;
+      }).then(() => {
+        if (!same(state.planPrefill?.id, button.dataset.id) && state.view !== 'order-detail') return;
+        const panel = root.querySelector('form[data-form="order"], form[data-form="order-edit"]')?.closest('.panel');
+        if (!panel) return;
+        const topbar = root.querySelector('.topbar');
+        const offset = topbar && getComputedStyle(topbar).position === 'sticky' ? topbar.getBoundingClientRect().bottom + 12 : 16;
+        window.scrollTo({top: Math.max(0, window.scrollY + panel.getBoundingClientRect().top - offset), behavior: 'smooth'});
       });
     }
   });
@@ -1447,12 +1521,13 @@
   root.addEventListener('input', event => {
     const form = event.target.closest('form[data-form="planning"]');
     if (form) { if (event.target.name === 'customer') updatePlanningCustomer(form); updatePlanningWarnings(form); }
-    else if (event.target.name === 'customer') updatePlanningOrderCustomer(event.target.closest('form[data-form="order"]'));
+    else if (event.target.name === 'customer') { updatePlanningOrderCustomer(event.target.closest('form[data-form="order"]')); updateAssignmentHint(event.target.closest('form[data-form="time"], form[data-form="order"]')); }
   });
   root.addEventListener('change', event => {
     const input = event.target;
     if (input.matches('[data-plan-week]')) { state.planWeek = planningWeekStart(input.value || today()); state.planId = ''; state.planForm = false; render(); }
     const form = input.closest('form[data-form="planning"]'); if (form) { if (['customer', 'employee'].includes(input.name)) updatePlanningCustomer(form); updatePlanningWarnings(form); }
+    if (input.matches('[data-date], [data-select="employee"], [data-select="business"]')) syncPlanningIfVisible();
   });
   // Clear a conversion when the person, day, or menu changes. Do this before
   // the existing app handlers render, so another employee never gets its data.
@@ -1467,13 +1542,16 @@
   }, true);
   let planningSyncBusy = false;
   async function syncPlanningIfVisible() {
-    if (!state.session || state.view !== 'planning' || state.busy || planningSyncBusy || document.visibilityState === 'hidden') return;
+    if (!state.session || !['planning', 'time', 'orders'].includes(state.view) || state.busy || planningSyncBusy || document.visibilityState === 'hidden') return;
     planningSyncBusy = true;
     try {
       await refreshPlanningData();
       // Preserve focus and typed values while a manager edits a planning form.
-      const form = root.querySelector('form[data-form="planning"]');
-      if (form) { updatePlanningWarnings(form); updatePlanningCustomer(form); } else if (!state.menu) render();
+      if (['time', 'orders'].includes(state.view)) updateDayPlanningPanels();
+      else if (state.view === 'planning') {
+        const form = root.querySelector('form[data-form="planning"]');
+        if (form) { updatePlanningWarnings(form); updatePlanningCustomer(form); } else if (!state.menu) render();
+      }
     } catch { /* Keep the last verified plan during temporary network outages. */ }
     finally { planningSyncBusy = false; }
   }

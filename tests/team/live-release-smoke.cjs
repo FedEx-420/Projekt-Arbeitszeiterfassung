@@ -4,7 +4,7 @@ const fs = require('node:fs'), path = require('node:path'), vm = require('node:v
 const { chromium } = require('playwright');
 const directory = path.resolve(__dirname, '../..');
 const base = 'https://fedex-420.github.io/Projekt-Arbeitszeiterfassung/';
-const version = '854';
+const version = '855';
 async function get(url) {
   const response = await fetch(url, { headers: { 'Cache-Control': 'no-cache' }, signal: AbortSignal.timeout(30000) });
   assert.equal(response.status, 200, 'Public resource failed: ' + new URL(url).pathname);
@@ -27,14 +27,14 @@ async function main() {
   }
   if(process.argv.includes('--backend-only')) return;
   const index=await get(base+'?version='+version+'&verify='+Date.now());
-  assert.match(index,/app-v800\.js\?v=854/);
+  assert.match(index,/app-v800\.js\?v=855/);
   assert.match(index,/planning-pdf\.js\?v=854/);
   const worker=await get(base+'service-worker.js?verify='+version+'-'+Date.now());
-  assert.match(worker,/arbeitszeit-neu-v854/);
+  assert.match(worker,/arbeitszeit-neu-v855/);
   const bundle=await get(base+'app-v800.js?v='+version);
   assert.equal(bundle.replace(/\r\n/g,'\n'),fs.readFileSync(path.join(directory,'app-v800.js'),'utf8').replace(/\r\n/g,'\n'),'Published application matches the tested source');
-  for (const file of ['planning-pdf.js?v=854','vendor/pdf-lib-1.17.1.min.js']) assert.equal((await get(base+file)).replace(/\r\n/g,'\n'),fs.readFileSync(path.join(directory,file.split('?')[0]),'utf8').replace(/\r\n/g,'\n'));
-  console.log('PASS Published v854 index, cache, application and PDF modules match the tested release');
+  for (const file of ['planning-pdf.js?v=854','vendor/pdf-lib-1.17.1.min.js','planned-orders-v855.css']) assert.equal((await get(base+file)).replace(/\r\n/g,'\n'),fs.readFileSync(path.join(directory,file.split('?')[0]),'utf8').replace(/\r\n/g,'\n'));
+  console.log('PASS Published v855 index, cache, application, planning styles and PDF modules match the tested release');
   const browser=await chromium.launch({channel:process.platform==='win32'?'msedge':undefined,headless:true});
   try {
     const context=await browser.newContext({serviceWorkers:'block'}), page=await context.newPage(), errors=[], failed=[];

@@ -9,6 +9,7 @@ Installierbare Web-App für Android und iPhone mit gemeinsamer, geschützter Arb
 - NRW-Feiertage, Urlaubs- und Krankheitstage sowie automatische Stundenberechnung
 - veröffentlichte Tagesplanungen stehen vor den Eingabeformularen in Zeiterfassung und Arbeitsscheinen; ein Klick öffnet den gemeinsamen vorausgefüllten Auftrag
 - passende Kundennamen lösen einen Hinweis aus, bevor ein separater zusätzlicher Eintrag gespeichert wird; abgebrochene Eingaben bleiben erhalten
+- die PDF aus den Einstellungen enthält Arbeitszeiten, NRW-Feiertage, Urlaub (genehmigt/beantragt) und Krankheitstage; chronologisch nach Jahr und Monat, auch ohne Zeiteintrag am jeweiligen Tag
 
 Die App benötigt eine Internetverbindung, damit alle Mitarbeiter mit dem aktuellen gemeinsamen Datenstand arbeiten.
 

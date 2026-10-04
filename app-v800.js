@@ -998,12 +998,85 @@
   function planningView() { return '<section class="page-head"><div><span class="eyebrow">Konzeptvorschau</span><h2>Planungsübersicht</h2></div></section><section class="panel"><h3>Planung wird erst nach Freigabe aktiviert</h3><p>Diese Ansicht ändert keine Aufträge und legt keine Termine an. Die vorgeschlagene Umsetzung steht unten als Konzept bereit.</p></section>'; }
   function menuItems() { return [['home','Übersicht',true],['time','Zeiterfassung',canUse('time')],['orders','Arbeitsscheine',canUse('orders')],['calendar','Kalender',canUse('calendar')],['customers','Kunden',canUse('customers')],['receipts','Belege',true],['planning','Planungsübersicht',true],['mailbox','Postfach',true],['materials','Materialliste',isManager()],['invoices','Abrechnungen Kunden',isManager()],['invoices-paid','Abgerechnete Arbeitsscheine',isManager()],['settings','Einstellungen',true]].filter(([, , yes]) => yes); }
   function viewHtml() { return ({ home: homeView, time: timeView, orders: ordersView, 'order-detail': orderDetailView, calendar: calendarView, customers: customersView, receipts: receiptsView, planning: planningView, mailbox: mailboxView, materials: materialsView, invoices: invoicesView, 'invoices-paid': paidInvoicesView, 'billing-detail': billingDetailView, settings: settingsView }[state.view] || homeView)(); }
+  function reportDateValid(value) {
+    return /^\d{4}-\d{2}-\d{2}$/.test(String(value || '')) && Number.isFinite(Date.parse(value+'T12:00:00Z')) && new Date(value+'T12:00:00Z').toISOString().slice(0,10) === value;
+  }
+  function timeAccountReport(id = workerId()) {
+    const entries = recordedPeriods(id).filter(row => reportDateValid(row.work_date)).sort((a,b) => a.work_date.localeCompare(b.work_date) || String(a.start_time || '').localeCompare(String(b.start_time || '')));
+    const days = state.rows.days.filter(row => same(row.employee_id,id) && reportDateValid(row.work_date));
+    const vacations = state.rows.vacations.filter(row => same(row.employee_id,id) && ['approved','requested'].includes(row.status) && reportDateValid(row.start_date) && reportDateValid(row.end_date) && row.end_date >= row.start_date);
+    const yearSet = new Set([String(state.date || today()).slice(0,4)]);
+    entries.forEach(row => yearSet.add(row.work_date.slice(0,4)));
+    days.filter(row => n(row.sick)>0 || n(row.vacation)>0).forEach(row => yearSet.add(row.work_date.slice(0,4)));
+    vacations.forEach(row => { for (let year=Number(row.start_date.slice(0,4)); year<=Number(row.end_date.slice(0,4)); year++) yearSet.add(String(year).padStart(4,'0')); });
+    const byDate = new Map();
+    entries.forEach(row => { const list=byDate.get(row.work_date) || []; list.push(row); byDate.set(row.work_date,list); });
+    const years = [...yearSet].sort().map(year => {
+      const months = new Map(), records = [];
+      // Calendar-only records are deliberately not passed to reportOvertime:
+      // a holiday or absence with no time entry must never create minus hours.
+      for (const cursor=new Date(year+'-01-01T12:00:00Z'); cursor.getUTCFullYear()===Number(year); cursor.setUTCDate(cursor.getUTCDate()+1)) {
+        const date=cursor.toISOString().slice(0,10), rows=byDate.get(date) || [], day=days.find(row => row.work_date===date);
+        const holiday=nrwHoliday(date), sickDays=Math.max(0,n(day?.sick));
+        const approved=!sickDays && (n(day?.vacation)>0 || vacations.some(row => row.status==='approved' && row.start_date<=date && row.end_date>=date));
+        const requested=!sickDays && !approved && vacations.some(row => row.status==='requested' && row.start_date<=date && row.end_date>=date);
+        if (!rows.length && !holiday && !sickDays && !approved && !requested) continue;
+        const labels=[...(holiday ? [{kind:'holiday',text:'Feiertag NRW: '+holiday}] : []),...(sickDays ? [{kind:'sick',text:'Krankheit'}] : []),...(approved ? [{kind:'approved',text:'Urlaub (genehmigt)'}] : []),...(requested ? [{kind:'requested',text:'Urlaub (beantragt)'}] : [])];
+        const record={date,entries:rows,labels,sickDays,holiday,approvedDays:approved && dueHours(date)>0 ? n(day?.vacation)>0 ? n(day.vacation) : 1 : 0,requestedDays:requested && dueHours(date)>0 ? 1 : 0};
+        records.push(record); const month=date.slice(0,7), list=months.get(month) || []; list.push(record); months.set(month,list);
+      }
+      const yearEntries=entries.filter(row => row.work_date.startsWith(year+'-'));
+      const sums=list=>({sickDays:list.reduce((sum,row)=>sum+row.sickDays,0),approvedDays:list.reduce((sum,row)=>sum+row.approvedDays,0),requestedDays:list.reduce((sum,row)=>sum+row.requestedDays,0),holidays:list.filter(row=>row.holiday).length});
+      return {year,entries:yearEntries,hours:yearEntries.reduce((sum,row)=>sum+n(row.executed_hours),0),overtime:reportOvertime(yearEntries),...sums(records),months:[...months].map(([month,list])=>({month,days:list,hours:list.flatMap(row=>row.entries).reduce((sum,row)=>sum+n(row.executed_hours),0),...sums(list)}))};
+    });
+    return {years,totalHours:entries.reduce((sum,row)=>sum+n(row.executed_hours),0)};
+  }
+  function timeAccountPdfStyles() {
+    return `
+      .time-account-report .pdf-banner{gap:16px}
+      .time-account-report .pdf-title h1{font-size:26px;overflow-wrap:anywhere}
+      .time-account-report .pdf-logo{width:190px;min-width:130px}
+      .report-year-title{font-size:25px;color:#075d59;margin:28px 0 12px}
+      .report-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:15px 0 20px}
+      .report-stats .pdf-card{padding:12px;font-size:12px}.report-stats b{font-size:17px}
+      .report-legend{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0}
+      .report-status{display:inline-block;font-size:10px;font-weight:700;padding:4px 7px;border-radius:5px;line-height:1.4;white-space:normal}
+      .report-status.holiday{background:#e8edf1;color:#364c5c}.report-status.sick{background:#fce9eb;color:#972f41}
+      .report-status.approved{background:#e4f2e8;color:#24603c}.report-status.requested{background:#fff2cd;color:#72510a}
+      .report-status-list{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+      .report-calendar-row td{background:#f8faf9}
+      .report-month-summary{font-size:11px;line-height:1.7;margin:10px 0 0;color:#46615b}
+      .report-table{table-layout:fixed;font-size:11px}.report-table .report-date{width:17%}
+      .report-table .report-customer{width:35%}.report-table .report-time{width:12%}
+      .report-table th,.report-table td{padding:9px 6px;overflow-wrap:anywhere;hyphens:auto}
+      .report-table .number{white-space:normal}.report-month h2{break-after:avoid}
+      .report-table tr{break-inside:avoid}.report-table thead{display:table-header-group}
+      @media(max-width:650px){.report-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.report-table{font-size:10px}.report-table th{font-size:9px;padding:8px 4px}}
+      @media print{
+        @page{size:A4;margin:14mm 12mm 17mm}.time-account-report{font-size:12px}
+        .time-account-report .pdf-logo{width:165px;min-width:110px;height:92px}
+        .time-account-report .pdf-banner{padding:15px;min-height:120px}
+        .time-account-report .pdf-company{font-size:15px}.time-account-report .pdf-title h1{font-size:24px}
+        .report-month{margin:18px 0}.report-month h2{font-size:16px;margin-bottom:8px}
+        .report-month-compact{break-inside:avoid}.report-table{margin-top:8px;break-after:avoid}
+        .report-table th,.report-table td{padding:7px 6px}
+        .report-month-summary{font-size:10px;line-height:1.5;margin-top:8px;break-before:avoid}
+        .report-stats,.report-month-summary,.report-legend{break-inside:avoid}
+        .report-year+.report-year{break-before:page}.report-year-title{break-after:avoid}
+        .report-status{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+      }`;
+  }
   function printPdf() {
-    const person = worker(), id = workerId(), entries = recordedPeriods(id).sort((a,b) => String(a.work_date).localeCompare(String(b.work_date)) || String(a.start_time || '').localeCompare(String(b.start_time || ''))), years = new Map();
-    entries.forEach(row => { const key = String(row.work_date || '').slice(0,4) || 'Ohne Jahr', list = years.get(key) || []; list.push(row); years.set(key,list); });
-    const sections = [...years.entries()].sort(([a],[b]) => a.localeCompare(b)).map(([year, yearEntries]) => { const months = new Map(); yearEntries.forEach(row => { const key = String(row.work_date || '').slice(0,7), list = months.get(key) || []; list.push(row); months.set(key,list); }); const tables = [...months.entries()].sort(([a],[b]) => a.localeCompare(b)).map(([month, rows]) => { const lines = rows.map(row => `<tr><td>${dateText(row.work_date)}</td><td>${escape(row.customer_name || 'Ohne Kunde')}</td><td>${timeText(row.start_time)}</td><td>${timeText(row.end_time)}</td><td class="number">${h(row.pause_hours)}</td><td class="number">${h(row.executed_hours)}</td></tr>`).join(''); const total = rows.reduce((sum,row) => sum + n(row.executed_hours),0); return `<section class="pdf-section"><h2>${monthText(month)}</h2><table class="pdf-table"><thead><tr><th>Datum</th><th>Kunde</th><th>Von</th><th>Bis</th><th class="number">Pause</th><th class="number">Stunden</th></tr></thead><tbody>${lines}</tbody></table><p class="pdf-note">Monatssumme: <b>${h(total)}</b></p></section>`; }).join(''); const hours = yearEntries.reduce((sum,row) => sum + n(row.executed_hours),0); return `<section class="pdf-section"><h1>Jahr ${escape(year)}</h1><section class="pdf-grid"><article class="pdf-card"><span class="pdf-card-label">Arbeitszeit</span><b>${h(hours)}</b></article><article class="pdf-card"><span class="pdf-card-label">Überstunden</span><b>${h(reportOvertime(yearEntries))}</b></article></section>${tables}</section>`; }).join('') || '<section class="pdf-section"><p class="pdf-empty">Keine Zeiterfassungen vorhanden.</p></section>';
-    const total = entries.reduce((sum,row) => sum + n(row.executed_hours),0), windowRef = window.open('', '_blank'); if (!windowRef) throw new Error('Bitte Pop-ups erlauben, um die PDF zu erstellen.');
-    windowRef.document.write(`<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Zeiterfassungsnachweis</title><style>${pdfStyles()}</style></head><body><main class="pdf-page">${pdfBrandHeader('Zeiterfassungsnachweis', 'Gesamte Arbeitsstundenübersicht')}<section class="pdf-grid"><article class="pdf-card"><span class="pdf-card-label">Mitarbeiter</span><b>${escape(person?.display_name || person?.username || '')}</b></article><article class="pdf-card"><span class="pdf-card-label">Gesamt</span><b>${h(total)}</b> Arbeitszeit</article></section>${sections}<p class="pdf-note">Alle erfassten Zeiten sind chronologisch nach Jahr und Monat gegliedert.</p></main><script>window.onload=()=>window.print()<\/script></body></html>`); windowRef.document.close(); addPdfReturnBar(windowRef);
+    const person=worker(), report=timeAccountReport();
+    const daysText=value=>n(value).toLocaleString('de-DE',{maximumFractionDigits:2})+' Tage';
+    const statusHtml=labels=>labels.length ? `<div class="report-status-list">${labels.map(label=>`<span class="report-status ${label.kind}">${escape(label.text)}</span>`).join('')}</div>` : '';
+    const sections=report.years.map(year=>`<section class="report-year"><h1 class="report-year-title">Jahr ${escape(year.year)}</h1><section class="report-stats"><article class="pdf-card"><span class="pdf-card-label">Arbeitszeit</span><b>${h(year.hours)}</b></article><article class="pdf-card"><span class="pdf-card-label">Überstunden</span><b>${h(year.overtime)}</b></article><article class="pdf-card"><span class="pdf-card-label">Krankheit</span><b>${daysText(year.sickDays)}</b></article><article class="pdf-card"><span class="pdf-card-label">Urlaub genehmigt*</span><b>${daysText(year.approvedDays)}</b></article><article class="pdf-card"><span class="pdf-card-label">Urlaub beantragt*</span><b>${daysText(year.requestedDays)}</b></article><article class="pdf-card"><span class="pdf-card-label">Feiertage NRW</span><b>${daysText(year.holidays)}</b></article></section>${year.months.map(month=>{
+      const lines=month.days.map(day=>(day.entries.length ? day.entries : [null]).map((entry,index)=>`<tr data-report-date="${escape(day.date)}" class="${entry ? '' : 'report-calendar-row'}"><td>${dateText(day.date)}</td><td>${entry ? escape(entry.customer_name || 'Ohne Kunde') : ''}${index===0 ? statusHtml(day.labels) : ''}</td><td>${entry ? timeText(entry.start_time) : '-'}</td><td>${entry ? timeText(entry.end_time) : '-'}</td><td class="number">${entry ? h(entry.pause_hours) : '-'}</td><td class="number">${entry ? h(entry.executed_hours) : '-'}</td></tr>`).join('')).join('');
+      const compact=month.days.reduce((sum,day)=>sum+Math.max(1,day.entries.length),0)<=6;
+      return `<section class="pdf-section report-month${compact ? ' report-month-compact' : ''}"><h2>${monthText(month.month)}</h2><table class="pdf-table report-table"><thead><tr><th class="report-date">Datum</th><th class="report-customer">Kunde / Status</th><th class="report-time">Von</th><th class="report-time">Bis</th><th class="number report-time">Pause</th><th class="number report-time">Stunden</th></tr></thead><tbody>${lines}</tbody></table><p class="report-month-summary">Monatssumme: <b>${h(month.hours)}</b> Arbeitszeit · Krankheit: ${daysText(month.sickDays)} · Urlaub genehmigt*: ${daysText(month.approvedDays)} · Urlaub beantragt*: ${daysText(month.requestedDays)} · Feiertage: ${month.holidays}</p></section>`;
+    }).join('')}</section>`).join('');
+    const windowRef=window.open('', '_blank'); if (!windowRef) throw new Error('Bitte Pop-ups erlauben, um die PDF zu erstellen.');
+    windowRef.document.write(`<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Zeiterfassungsnachweis</title><style>${pdfStyles()}${timeAccountPdfStyles()}</style></head><body><main class="pdf-page time-account-report">${pdfBrandHeader('Zeiterfassungsnachweis', 'Arbeitszeiten und Abwesenheiten')}<section class="pdf-grid"><article class="pdf-card"><span class="pdf-card-label">Mitarbeiter</span><b>${escape(person?.display_name || person?.username || '')}</b></article><article class="pdf-card"><span class="pdf-card-label">Gesamt</span><b>${h(report.totalHours)}</b> Arbeitszeit</article></section><div class="report-legend"><span class="report-status holiday">Feiertag NRW</span><span class="report-status approved">Urlaub genehmigt</span><span class="report-status requested">Urlaub beantragt</span><span class="report-status sick">Krankheit</span></div>${sections}<p class="pdf-note">Alle erfassten Zeiten, Urlaubs- und Krankheitstage sowie NRW-Feiertage sind chronologisch nach Jahr und Monat gegliedert. Das ausgewählte Jahr wird auch ohne Zeiteinträge aufgeführt.<br>* Urlaubstage in den Summen sind Arbeitstage ohne NRW-Feiertage und Krankheit. Bei Krankheit hat die Krankmeldung Vorrang. Beantragter Urlaub ist noch nicht genehmigt. Tage ohne Arbeitsbuchung erzeugen keine Minusstunden.</p></main><script>window.onload=()=>window.print()<\/script></body></html>`); windowRef.document.close(); addPdfReturnBar(windowRef);
   }
   root.addEventListener('click', event => { const button = event.target.closest('[data-action="receipt-section"]'); if (!button) return; state.receiptSection = button.dataset.section || 'fuel'; render(); });
   // Planungsübersicht: Die bestehende Tabelle appointments enthält bewusst nur

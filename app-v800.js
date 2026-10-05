@@ -1213,8 +1213,8 @@
     });
     return {company:managerBusiness()?.company_name || 'Zeiterfassung',rangeLabel:dateText(from)+' - '+dateText(to),generatedLabel:new Intl.DateTimeFormat('de-DE',{dateStyle:'short',timeStyle:'short'}).format(new Date()),summary:`${list.length} ${list.length===1?'veröffentlichter Auftrag':'veröffentlichte Aufträge'} · ${span} Kalendertage`,peopleLabel:(isManager()?'Mitarbeiter: ':'Persönliche Planung: ')+people.map(personName).join(', '),days};
   }
-  async function planningLogoBytes() {
-    const url=companyLogoUrl();if (!url) return null;
+  async function planningLogoBytes(company=managerBusiness()) {
+    const url=companyLogoUrl(company);if (!url) return null;
     try {
       const response=await fetch(url,{signal:AbortSignal.timeout(8000)});if (!response.ok) return null;
       const blob=await response.blob(),objectUrl=URL.createObjectURL(blob);
@@ -1781,4 +1781,36 @@
     }
   },true);
 
+  // v857 extends existing screens without changing bookings or invoices.
+  function annualDownloadPanel() {
+    const report=timeAccountReport(),selected=String(state.date||today()).slice(0,4);
+    return `<section class="panel pdf-download-panel"><h3>Jahresübersicht herunterladen</h3><p>${escape(personName(worker()))} · Mit Arbeitszeiten, Urlaub, Krankheit und NRW-Feiertagen. Nach Monaten sortiert.</p><form data-form="time-account-download" class="entry-form"><label>Jahr<select name="year">${report.years.map(row=>`<option value="${row.year}" ${row.year===selected?'selected':''}>${row.year}</option>`).join('')}</select></label><button class="primary">PDF auf Gerät herunterladen</button><p class="wide" role="status" data-download-status></p></form></section>`;
+  }
+  async function downloadAnnualPdf(form) {
+    const button=form.querySelector('button'),message=form.querySelector('[data-download-status]');
+    if(button.disabled)return;
+    button.disabled=true;message.textContent='PDF wird erstellt …';
+    try {
+      const year=timeAccountReport().years.find(row=>row.year===form.elements.year.value);
+      if(!year)throw new Error('Bitte ein verfügbares Jahr auswählen.');
+      const company=managerBusiness(),person=personName(worker()),data={year:structuredClone(year),person,company:company?.company_name||'Zeiterfassung'};
+      data.logoBytes=await planningLogoBytes(company);
+      const bytes=await window.DevicePdf.createTimeAccount(data);
+      window.DevicePdf.download(bytes,`Jahresübersicht_${person}_${year.year}.pdf`);
+      message.textContent='PDF wurde zum Herunterladen an das Gerät übergeben.';
+    } catch(error) { message.textContent=error.message||'PDF konnte nicht erstellt werden. Bitte erneut versuchen.'; }
+    finally { button.disabled=false; }
+  }
+  const settingsBeforeV857=settingsView;
+  settingsView=()=>{const html=settingsBeforeV857(),end=html.indexOf('</section>')+10;return html.slice(0,end)+annualDownloadPanel()+html.slice(end);};
+  const offersFeature=window.OffersFeature?.create({state,root,escape,n,same,lower,isManager,businessId,managerBusiness,api,allRows,render:()=>render(),chooseSimilar,customers:()=>planningCustomers(businessId()),today,dateText,logoBytes:planningLogoBytes});
+  if(offersFeature){
+    const menusBeforeV857=menuItems,viewBeforeV857=viewHtml,reloadBeforeV857=reload,renderBeforeV857=render;
+    menuItems=()=>{const items=menusBeforeV857();if(isManager())items.splice(items.findIndex(row=>row[0]==='materials'),0,['offers','Angebote',true]);return items;};
+    viewHtml=()=>state.view==='offers'?offersFeature.view():viewBeforeV857();
+    reload=async()=>{await reloadBeforeV857();await offersFeature.load();};
+    render=()=>{renderBeforeV857();offersFeature.setup();};
+    offersFeature.bind();
+  }
+  root.addEventListener('submit',event=>{if(event.target.dataset.form!=='time-account-download')return;event.preventDefault();event.stopImmediatePropagation();downloadAnnualPdf(event.target);},true);
 })();

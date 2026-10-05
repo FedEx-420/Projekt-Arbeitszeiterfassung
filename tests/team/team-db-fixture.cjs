@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { PGlite } = require(process.env.PGLITE_TEST_MODULE || '@electric-sql/pglite');
 const ids = Object.fromEntries(['admin','business','otherBusiness','anna','max','felix','customer','otherCustomer','monteur','meister','aushilfe','material','plan','order'].map((name,index) => [name,`00000000-0000-4000-8000-${String(index+1).padStart(12,'0')}`]));
-async function fixture({legacyRecords=false}={}) {
+async function fixture({legacyRecords=false,offers=false}={}) {
   const db = new PGlite();
   await db.exec(`
     create role authenticated; create role anon;
@@ -72,6 +72,7 @@ async function fixture({legacyRecords=false}={}) {
   } : null;
   await db.exec(fs.readFileSync(path.resolve(__dirname,'../../supabase/release853_team_work_orders.sql'),'utf8'));
   await db.exec(fs.readFileSync(path.resolve(__dirname,'../../supabase/migrations/20261004173800_planning_approval_v854.sql'),'utf8'));
+  if(offers)await db.exec(fs.readFileSync(path.resolve(__dirname,'../../supabase/migrations/20261005073938_offers_v857.sql'),'utf8'));
   const actor = async name => { await db.exec('reset role'); await db.query("select set_config('request.jwt.claim.sub',$1,false)",[ids[name]]); await db.exec('set role authenticated'); };
   const admin = async () => db.exec('reset role');
   const order = {employee_id:ids.anna,work_date:'2026-10-05',customer_id:ids.customer,title:'Gemeinsame Montage',documentation:'Testnotiz',signed_by:'Testkunde',signature_data:'data:image/png;base64,'+'A'.repeat(220)};

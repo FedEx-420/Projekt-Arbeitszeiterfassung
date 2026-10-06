@@ -22,3 +22,7 @@ Angebote sind firmengebunden und serverseitig durch RLS abgesichert. Sie buchen 
 
 Die Angebots-PDF nummeriert jede Material-/Arbeitsposition fortlaufend über alle Seiten. Einzelpreise und Positionssummen sind rechtsbündig. Der hervorgehobene Abschlussblock zeigt Netto, Mehrwertsteuer und Gesamtbetrag inkl. MwSt. mit derselben rechten Kante wie die Positionssummen; die letzte Position und der vollständige Summenblock bleiben zusammen.
 
+Anmeldungen werden vor geschützten Anfragen automatisch erneuert, auch nach längeren Artikel-Rückfragen. Gleichzeitige Erneuerungen werden zusammengefasst und zwischen Browser-Tabs koordiniert. Nur eine ausdrücklich wegen JWT-Ablaufs zurückgewiesene Anfrage wird einmal erneut gesendet; Verbindungsfehler und Serverfehler lösen keine automatische Wiederholung einer möglicherweise bereits gespeicherten Änderung aus.
+
+Ungespeicherte Angebotseingaben und bestätigte Artikel-Auswahlen werden im jeweiligen Browser-Tab pro Benutzer und Firma zwischengesichert. Nach Neuladen oder erneuter Anmeldung können sie unter Angebote fortgesetzt werden. Die Zwischensicherung ist kein serverseitig gespeichertes Angebot und endet mit dem Schließen des Tabs; erfolgreiches Speichern, bewusstes Schließen des Editors oder ein neues Angebot entfernt/ersetzt sie. Bei fehlendem Browser-Speicher bleiben Eingaben im offenen Formular erhalten.
+

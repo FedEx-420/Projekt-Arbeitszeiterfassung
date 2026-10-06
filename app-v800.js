@@ -13,6 +13,84 @@
     businessId: '', businessBrand: null, employeeId: '', customerId: '', customerSearch: '', materialId: '', orderId: '', timeEntryId: '', orderCustomer: '', orderOrigin: 'orders', billingKey: '', billingMode: 'open', menu: false, vacationForm: false, appointmentForm: false, composeMessage: false, mailboxFolder: 'received', notice: null, busy: false,
     rows: { entries: [], orders: [], items: [], customers: [], days: [], vacations: [], messages: [], attachments: [], recipients: [], materials: [], appointments: [], planningRequests: [], payslips: [], documents: [] }
   };
+  /* BEGIN SESSION AUTH V859
+   * Keep auth in the app bundle so previously cached index pages also work.
+   * Only a definite JWT-expiry rejection may replay a write, once. */
+  function createSessionAuth({base,key,storage,getSession,setSession}){
+    let refreshing=null;
+    const failure=(message,code='SESSION_EXPIRED')=>Object.assign(new Error(message),{code});
+    const changed=()=>failure('Die Anmeldung wurde geändert. Bitte erneut anmelden.','SESSION_CHANGED');
+    const expired=()=>failure('Deine Anmeldung ist abgelaufen. Bitte erneut anmelden und danach nochmals speichern.');
+    const read=()=>{try{return JSON.parse(localStorage.getItem(storage)||'null');}catch{return null;}};
+    const sameUser=(a,b)=>!!a?.user?.id&&a.user.id===b?.user?.id;
+    function expiresAt(session){
+      if(Number(session?.expires_at)>0)return Number(session.expires_at);
+      try{const payload=session.access_token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/');return Number(JSON.parse(atob(payload)).exp)||0;}catch{return 0;}
+    }
+    const due=session=>{const expires=expiresAt(session);return !!expires&&expires<=Date.now()/1000+90;};
+    function install(session){
+      const result={...session};
+      if(!expiresAt(result)&&Number(result.expires_in)>0)result.expires_at=Math.floor(Date.now()/1000)+Number(result.expires_in);
+      setSession(result);localStorage.setItem(storage,JSON.stringify(result));return result;
+    }
+    function clear(){setSession(null);localStorage.removeItem(storage);localStorage.removeItem('zeiterfassung-session-v700');}
+    async function refresh(rejectedToken=null){
+      const original=getSession();if(!original?.access_token)throw expired();
+      if(refreshing){await refreshing;const current=getSession();if(!sameUser(original,current))throw changed();return current;}
+      const run=async()=>{
+        if(getSession()!==original)throw changed();
+        // Another tab may already have rotated the single-use refresh token.
+        const stored=read();
+        if(stored&&!sameUser(stored,original))throw changed();
+        if(!stored&&original.refresh_token&&!localStorage.getItem('zeiterfassung-session-v700'))throw changed();
+        let current=original;
+        if(stored?.access_token&&stored.access_token!==original.access_token){setSession(stored);current=stored;}
+        if((!rejectedToken||current.access_token!==rejectedToken)&&!due(current))return current;
+        if(!current.refresh_token)throw expired();
+        const storedBefore=localStorage.getItem(storage);
+        let response;
+        try{response=await fetch(base+'/auth/v1/token?grant_type=refresh_token',{method:'POST',headers:{apikey:key,'Content-Type':'application/json'},body:JSON.stringify({refresh_token:current.refresh_token})});}
+        catch{throw failure('Die Anmeldung konnte gerade nicht erneuert werden. Bitte die Verbindung prüfen und nochmals speichern.','SESSION_REFRESH_UNAVAILABLE');}
+        let data;try{data=await response.json();}catch{data=null;}
+        if(!response.ok){if(response.status===400||response.status===401||response.status===403)throw expired();throw failure('Die Anmeldung konnte gerade nicht erneuert werden. Bitte später nochmals speichern.','SESSION_REFRESH_UNAVAILABLE');}
+        if(!data?.access_token||!data.refresh_token||!sameUser(data,current))throw failure('Die Anmeldung konnte nicht sicher erneuert werden. Bitte erneut anmelden.');
+        // A late response must never undo logout or replace a newer login.
+        if(getSession()!==current||localStorage.getItem(storage)!==storedBefore)throw changed();
+        return install(data);
+      };
+      const pending=(navigator.locks?.request?navigator.locks.request(storage+'-refresh',run):run());
+      refreshing=pending;
+      try{return await pending;}finally{if(refreshing===pending)refreshing=null;}
+    }
+    async function ensure(){const session=getSession();if(!session?.access_token)return session;if(due(session))return refresh();return session;}
+    function jwtExpired(response,body){
+      return response.status===401&&(body?.code==='jwt_expired'||/\bjwt\b[^\n]*\bexpir|\bexpir[^\n]*\bjwt\b|\btoken\b[^\n]*\bexpired/i.test(String(body?.message||body?.error_description||body?.error||'')));
+    }
+    async function request(path,options={}){
+      const anonymous=path.startsWith('/auth/v1/token'),owner=getSession();
+      const send=async()=>{
+        const session=anonymous?null:await ensure();
+        if(!anonymous&&owner?.access_token&&!sameUser(owner,session))throw changed();
+        const headers=new Headers(options.headers);headers.set('apikey',key);
+        if(session?.access_token)headers.set('Authorization','Bearer '+session.access_token);
+        else headers.delete('Authorization');
+        return {response:await fetch(base+path,{...options,headers}),token:session?.access_token};
+      };
+      let {response,token}=await send();
+      if(token&&response.status===401){
+        let body;try{body=await response.clone().json();}catch{body=null;}
+        if(jwtExpired(response,body)){
+          await refresh(token);
+          ({response}=await send());
+          if(response.status===401){let retryBody;try{retryBody=await response.clone().json();}catch{retryBody=null;}if(jwtExpired(response,retryBody))throw expired();}
+        }
+      }
+      return response;
+    }
+    return {request,ensure,install,clear};
+  }
+  /* END SESSION AUTH V859 */
+  const auth = createSessionAuth({base,key,storage,getSession:()=>state.session,setSession:session=>{state.session=session;}});
 
   const escape = value => String(value ?? '').replace(/[&<>'"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[ch]);
   const n = value => Number(value || 0);
@@ -33,11 +111,10 @@
 
   async function api(path, options = {}) {
     const headers = { apikey: key, ...(options.headers || {}) };
-    if (state.session?.access_token) headers.Authorization = `Bearer ${state.session.access_token}`;
     if (options.body !== undefined) headers['Content-Type'] = 'application/json';
-    const response = await fetch(`${base}${path}`, { method: options.method || 'GET', headers, body: options.body === undefined ? undefined : JSON.stringify(options.body) });
+    const response = await auth.request(path, { method: options.method || 'GET', headers, body: options.body === undefined ? undefined : JSON.stringify(options.body) });
     const text = await response.text(); const body = parse(text);
-    if (!response.ok) throw new Error(body?.error || body?.message || body?.error_description || 'Die Anfrage konnte nicht verarbeitet werden.');
+    if (!response.ok) throw Object.assign(new Error(body?.error || body?.message || body?.error_description || 'Die Anfrage konnte nicht verarbeitet werden.'),{status:response.status,code:body?.code});
     return body;
   }
   const rows = (table, query = 'select=*') => api(`/rest/v1/${table}?${query}`);
@@ -46,17 +123,17 @@
   const account = (action, payload = {}) => api('/functions/v1/account-management', { method: 'POST', body: { action, ...payload } });
   const flow = (action, payload = {}) => api('/functions/v1/vacation-workflow', { method: 'POST', body: { action, ...payload } });
   async function upload(bucket, path, file) {
-    const response = await fetch(`${base}/storage/v1/object/${bucket}/${path.split('/').map(encodeURIComponent).join('/')}`, { method: 'POST', headers: { apikey: key, Authorization: `Bearer ${state.session.access_token}`, 'Content-Type': file.type || 'application/octet-stream', 'x-upsert': 'false' }, body: file });
+    const response = await auth.request(`/storage/v1/object/${bucket}/${path.split('/').map(encodeURIComponent).join('/')}`, { method: 'POST', headers: { 'Content-Type': file.type || 'application/octet-stream', 'x-upsert': 'false' }, body: file });
     if (!response.ok) throw new Error('Die Datei konnte nicht hochgeladen werden.');
   }
   const publicObjectUrl = (bucket, path) => path ? `${base}/storage/v1/object/public/${bucket}/${String(path).split('/').map(encodeURIComponent).join('/')}` : '';
   async function download(bucket, path, name) {
-    const response = await fetch(`${base}/storage/v1/object/${bucket}/${path.split('/').map(encodeURIComponent).join('/')}`, { headers: { apikey: key, Authorization: `Bearer ${state.session.access_token}` } });
+    const response = await auth.request(`/storage/v1/object/${bucket}/${path.split('/').map(encodeURIComponent).join('/')}`);
     if (!response.ok) throw new Error('Die Datei konnte nicht heruntergeladen werden.');
     const url = URL.createObjectURL(await response.blob()), link = document.createElement('a'); link.href = url; link.download = name || 'Datei'; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
   async function removeStoredFile(bucket, path) {
-    const response = await fetch(`${base}/storage/v1/object/${bucket}/${path.split('/').map(encodeURIComponent).join('/')}`, { method: 'DELETE', headers: { apikey: key, Authorization: `Bearer ${state.session.access_token}` } });
+    const response = await auth.request(`/storage/v1/object/${bucket}/${path.split('/').map(encodeURIComponent).join('/')}`, { method: 'DELETE' });
     // A missing file is already fully removed, so only actual API failures stop
     // the database deletion.
     if (!response.ok && response.status !== 404) throw new Error('Ein zugehöriges Dokument konnte nicht gelöscht werden.');
@@ -79,17 +156,17 @@
       catch (error) { lastError = error; }
     }
     if (!data) throw lastError || new Error('Firma, Benutzername oder Passwort sind nicht korrekt.');
-    state.session = data;
+    auth.install(data);
     const own = await rows('profiles', `select=role&id=eq.${encodeURIComponent(data.user.id)}`), role = own?.[0]?.role;
     if ((administratorLogin && role !== 'administrator') || (!administratorLogin && role === 'administrator')) {
       try { await api('/auth/v1/logout', { method: 'POST' }); } catch { /* Session wird anschließend lokal verworfen. */ }
-      state.session = null;
+      auth.clear();
       throw new Error(administratorLogin ? 'Dieses Konto ist kein Administratorkonto.' : 'Das Administratorkonto meldet sich ohne Firma an.');
     }
     state.view = 'home'; state.menu = false; state.customerId = ''; state.customerSearch = ''; state.orderId = ''; state.timeEntryId = ''; state.billingKey = ''; state.vacationForm = false; state.composeMessage = false;
-    localStorage.setItem(storage, JSON.stringify(data)); await loadApp();
+    await loadApp();
   }
-  function logout() { state.session = null; state.profile = null; state.businessBrand = null; localStorage.removeItem(storage); render(); }
+  function logout() { auth.clear(); state.profile = null; state.businessBrand = null; render(); }
 
   async function loadApp() {
     if (!state.session?.user?.id) return render();
@@ -101,7 +178,7 @@
       if (!state.profile) throw new Error('Dieses Konto ist nicht eingerichtet.');
       await reload();
     } catch (error) {
-      state.session = null; state.profile = null; localStorage.removeItem(storage); notice(error.message || 'Die Anmeldung ist fehlgeschlagen.', true);
+      auth.clear(); state.profile = null; notice(error.message || 'Die Anmeldung ist fehlgeschlagen.', true);
     } finally { state.busy = false; render(); }
   }
   async function reload() {

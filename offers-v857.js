@@ -3,7 +3,16 @@
   'use strict';
   function create(app){
     const {state,root,escape,n,same,lower,isManager,businessId,managerBusiness,api,allRows,render,chooseSimilar}=app;
-    const ui={draft:null,saving:false,loading:false,error:'',generation:0};
+    const ui={draft:null,saving:false,loading:false,error:'',generation:0,context:'',recovered:false,backup:false};
+    // Tab-local, account/company-isolated recovery. Never stores credentials.
+    const draftKey=()=>state.profile?.id&&businessId()?'zeiterfassung-offer-draft-v859:'+state.profile.id+':'+businessId():'';
+    function activateDraft(){
+      const context=draftKey();if(context===ui.context)return;
+      ui.context=context;ui.draft=null;ui.recovered=false;ui.backup=false;
+      try{const data=JSON.parse(sessionStorage.getItem(context)||'null');if(context&&data&&same(data.business_id,businessId())&&Array.isArray(data.items)&&data.items.length<=100){ui.draft=data;ui.recovered=true;ui.backup=true;state.offerId=data.id||'new';}}catch{/* The form still works if tab storage is unavailable. */}
+    }
+    function remember(data){ui.backup=false;const context=draftKey();if(!context)return;try{sessionStorage.setItem(context,JSON.stringify(data));ui.backup=true;}catch{/* Keep the in-memory form on storage failure. */}}
+    function forget(context=draftKey()){if(context)try{sessionStorage.removeItem(context);}catch{}if(context===draftKey()){ui.recovered=false;ui.backup=false;}}
     const fields=[['first_name','Vorname'],['street','Straße'],['house_no','Hausnummer'],['postal_code','Postleitzahl'],['city','Ort'],['email','E-Mail-Adresse']];
     const money=value=>n(value).toLocaleString('de-DE',{style:'currency',currency:'EUR'});
     const customers=()=>app.customers();
@@ -14,6 +23,7 @@
     function blank(){return {id:'',business_id:businessId(),customer_id:null,customer_name:'',customer_snapshot:{},offer_date:app.today(),valid_until:'',title:'',notes:'',status:'draft',vat_rate:0,items:[{kind:'material',name:'',material_id:null,quantity:1,unit_price:0}]};}
     async function load(){
       if(!isManager()){state.rows.offers=[];state.offersReady=false;ui.draft=null;return;}
+      activateDraft();
       const company=businessId(),generation=++ui.generation;if(!company)return;
       ui.loading=true;
       try{const rows=await allRows('offers','select=*&business_id=eq.'+encodeURIComponent(company)+'&order=offer_date.desc,created_at.desc,id');if(generation!==ui.generation||!same(company,businessId())||!isManager())return;state.rows.offers=rows;state.offersReady=true;ui.error='';}
@@ -34,18 +44,20 @@
     function view(){
       if(!isManager())return '<section class="panel"><h2>Angebote</h2><p>Dieser Bereich ist nur für Geschäfts- und Administratorkonten verfügbar.</p></section>';
       if(!businessId())return '<section class="panel"><h2>Angebote</h2><p>Bitte zuerst ein Geschäftskonto auswählen.</p></section>';
+      activateDraft();
       const selected=list().find(row=>same(row.id,state.offerId)),draft=ui.draft&&same(ui.draft.business_id,businessId())&&same(ui.draft.id||'new',state.offerId)?ui.draft:null,model=draft||selected||(state.offerId==='new'?blank():null);
-      return `<section class="page-head"><div><span class="eyebrow">${escape(managerBusiness()?.company_name||'Geschäftskonto')}</span><h2>Angebote</h2><p>Kundenangebote mit Materialien und Arbeitsstunden</p></div><div class="actions"><button type="button" class="primary" data-action="offer-new">+ Angebot erstellen</button><button type="button" class="secondary" data-action="offer-refresh">Aktualisieren</button></div></section>${ui.error?`<p class="notice error">${escape(ui.error)}</p>`:''}${model?form(model):''}<section class="list-section"><h3>Gespeicherte Angebote</h3><div id="offer-list">${listHtml()}</div></section>`;
+      return `<section class="page-head"><div><span class="eyebrow">${escape(managerBusiness()?.company_name||'Geschäftskonto')}</span><h2>Angebote</h2><p>Kundenangebote mit Materialien und Arbeitsstunden</p></div><div class="actions"><button type="button" class="primary" data-action="offer-new">+ Angebot erstellen</button><button type="button" class="secondary" data-action="offer-refresh">Aktualisieren</button></div></section>${ui.error?`<p class="notice error">${escape(ui.error)}</p>`:''}${ui.recovered&&model?'<p class="notice">Ungespeicherte Angebotseingaben aus diesem Browser-Tab wurden wiederhergestellt. Bitte prüfen und speichern.</p>':''}${model?form(model):''}<section class="list-section"><h3>Gespeicherte Angebote</h3><div id="offer-list">${listHtml()}</div></section>`;
     }
     function snapshot(form){
-      return {id:form.elements.id.value,offer_number:list().find(row=>same(row.id,form.elements.id.value))?.offer_number||'',business_id:form.dataset.company,revision:n(form.elements.revision.value)||null,customer_id:form.elements.customer_id.value||null,customer_name:form.elements.customer_name.value,customer_snapshot:Object.fromEntries(fields.map(([key])=>[key,form.elements['customer_'+key].value])),offer_date:form.elements.offer_date.value,valid_until:form.elements.valid_until.value,title:form.elements.title.value,notes:form.elements.notes.value,status:form.elements.status.value,vat_rate:form.elements.vat_rate.value,items:[...form.querySelectorAll('[data-offer-line]')].map(row=>({kind:row.dataset.kind,material_id:row.dataset.materialId||null,name:row.querySelector('[data-offer-name]').value,quantity:row.querySelector('[data-offer-quantity]').value,unit_price:row.querySelector('[data-offer-price]').value}))};
+      return {id:form.elements.id.value,offer_number:list().find(row=>same(row.id,form.elements.id.value))?.offer_number||'',business_id:form.dataset.company,revision:n(form.elements.revision.value)||null,customer_id:form.elements.customer_id.value||null,customer_name:form.elements.customer_name.value,resolved_customer_name:form.dataset.resolvedCustomerName||'',customer_snapshot:Object.fromEntries(fields.map(([key])=>[key,form.elements['customer_'+key].value])),offer_date:form.elements.offer_date.value,valid_until:form.elements.valid_until.value,title:form.elements.title.value,notes:form.elements.notes.value,status:form.elements.status.value,vat_rate:form.elements.vat_rate.value,items:[...form.querySelectorAll('[data-offer-line]')].map(row=>({kind:row.dataset.kind,material_id:row.dataset.materialId||null,name:row.querySelector('[data-offer-name]').value,resolved_name:row.dataset.resolvedName||'',quantity:row.querySelector('[data-offer-quantity]').value,unit_price:row.querySelector('[data-offer-price]').value}))};
     }
-    function update(form){
+    function update(form,persist=true){
       if(!form)return;
       const data=snapshot(form),sum=totals(data.items,data.vat_rate);
       form.querySelectorAll('[data-offer-line]').forEach((row,index)=>{row.querySelector('[data-offer-line-total]').textContent=money(lineCents(data.items[index])/100);});
       for(const [selector,value] of [['subtotal',sum.subtotal],['tax',sum.tax],['total',sum.total]])form.querySelector('[data-offer-'+selector+']').textContent=money(value);
       ui.draft=data;
+      if(persist)remember(data);
     }
     function fillCustomer(form,customer){
       form.elements.customer_id.value=customer.id;form.elements.customer_name.value=customer.name;
@@ -55,12 +67,14 @@
     function input(event){
       const form=event.target.closest('form[data-form="offer"]');if(!form)return;
       if(event.target.name==='customer_name'){
+        if(lower(form.dataset.resolvedCustomerName)!==lower(event.target.value))form.dataset.resolvedCustomerName='';
         const selected=customers().find(row=>lower(row.name)===lower(event.target.value));
         if(selected&&!same(form.elements.customer_id.value,selected.id))fillCustomer(form,selected);
         else if(!selected){if(form.elements.customer_id.value)for(const [key] of fields)form.elements['customer_'+key].value='';form.elements.customer_id.value='';}
       }
       if(event.target.matches('[data-offer-name]')){
         const row=event.target.closest('[data-offer-line]'),selected=materials(row.dataset.kind).find(item=>lower(item.name)===lower(event.target.value));
+        if(lower(row.dataset.resolvedName)!==lower(event.target.value))row.dataset.resolvedName='';
         if(selected){if(lower(row.dataset.matchedName)!==lower(selected.name))row.querySelector('[data-offer-price]').value=n(selected.unit_price);row.dataset.materialId=selected.id;row.dataset.matchedName=selected.name;}
         else{row.dataset.materialId='';row.dataset.matchedName='';}
       }
@@ -72,23 +86,28 @@
       if(ui.saving||!isManager())return;if(!same(form.dataset.company,businessId()))throw new Error('Bitte das Angebot in seiner ursprünglichen Firma erneut öffnen.');
       update(form);const data=snapshot(form);
       if(!data.items.length){status(form,'Bitte mindestens eine Position hinzufügen.',true);return;}
-      ui.generation++;ui.loading=false;ui.saving=true;form.querySelectorAll('button').forEach(button=>button.disabled=true);status(form,'Angebot wird gespeichert …');
+      const context=draftKey(),controls=[...form.querySelectorAll('input,select,textarea,button')].map(node=>[node,node.disabled]);
+      ui.generation++;ui.loading=false;ui.saving=true;controls.forEach(([node])=>node.disabled=true);status(form,'Angebot wird gespeichert …');
       try{
         let customer=customers().find(row=>lower(row.name)===lower(data.customer_name));
-        if(!customer)customer=chooseSimilar(data.customer_name,customers(),'Kunden');
+        if(!customer&&lower(data.resolved_customer_name)!==lower(data.customer_name))customer=chooseSimilar(data.customer_name,customers(),'Kunden');
         if(customer&&!same(data.customer_id,customer.id)){fillCustomer(form,customer);Object.assign(data,{customer_id:customer.id,customer_name:customer.name,customer_snapshot:snapshot(form).customer_snapshot});}
+        form.dataset.resolvedCustomerName=data.customer_name;update(form);
         data.items=data.items.map((item,index)=>{
           const records=materials(item.kind);let material=records.find(row=>lower(row.name)===lower(item.name));
-          if(!material)material=chooseSimilar(item.name,records,'Artikel');
+          if(!material&&lower(item.resolved_name)!==lower(item.name))material=chooseSimilar(item.name,records,'Artikel');
           if(material&&!same(item.material_id,material.id)){const row=form.querySelectorAll('[data-offer-line]')[index];row.querySelector('[data-offer-name]').value=material.name;row.querySelector('[data-offer-price]').value=n(material.unit_price);row.dataset.materialId=material.id;row.dataset.matchedName=material.name;item={...item,name:material.name,unit_price:n(material.unit_price),material_id:material.id};}
-          return {...item,name:item.name.trim(),quantity:n(item.quantity),unit_price:n(item.unit_price)};
+          form.querySelectorAll('[data-offer-line]')[index].dataset.resolvedName=item.name;update(form);
+          return {kind:item.kind,material_id:item.material_id,name:item.name.trim(),quantity:n(item.quantity),unit_price:n(item.unit_price)};
         });
         data.customer_name=data.customer_name.trim();data.title=data.title.trim();data.vat_rate=n(data.vat_rate);
         const result=await api('/rest/v1/rpc/save_offer_v857',{method:'POST',body:{p_data:data,p_revision:data.revision}}),saved=Array.isArray(result)?result[0]:result;
         if(!saved?.id)throw new Error('Das Angebot konnte nicht gespeichert werden.');
+        forget(context);
+        if(context!==draftKey()||!isManager())return;
         state.rows.offers=[saved,...(state.rows.offers||[]).filter(row=>!same(row.id,saved.id))];state.offerId=saved.id;ui.draft=null;ui.saving=false;render();reveal();status(root.querySelector('form[data-form="offer"]'),'Angebot wurde gespeichert.');
-      }catch(error){update(form);status(form,error.message||'Das Angebot konnte nicht gespeichert werden. Die Eingaben bleiben erhalten.',true);}
-      finally{ui.saving=false;form.querySelectorAll('button').forEach(button=>button.disabled=false);}
+      }catch(error){if(context===draftKey()){update(form);status(form,(error.message||'Das Angebot konnte nicht gespeichert werden.')+' '+(ui.backup?'Die Eingaben sind in diesem Browser-Tab zwischengesichert. Nach erneuter Anmeldung unter „Angebote“ fortsetzen.':'Die Eingaben bleiben im Formular erhalten. Bitte diese Seite nicht schließen.'),true);}}
+      finally{ui.saving=false;controls.forEach(([node,disabled])=>node.disabled=disabled);}
     }
     async function pdf(id,button){
       const offer=list().find(row=>same(row.id,id));if(!offer||!isManager())return;
@@ -100,7 +119,7 @@
     async function removeOffer(id){
       const offer=list().find(row=>same(row.id,id));if(!offer||!isManager()||ui.saving||!confirm('Angebot '+offer.offer_number+' wirklich löschen?'))return;
       ui.generation++;ui.loading=false;ui.saving=true;
-      try{await api('/rest/v1/rpc/delete_offer_v857',{method:'POST',body:{p_id:offer.id,p_revision:offer.revision}});state.rows.offers=state.rows.offers.filter(row=>!same(row.id,id));state.offerId='';ui.draft=null;render();}
+      try{await api('/rest/v1/rpc/delete_offer_v857',{method:'POST',body:{p_id:offer.id,p_revision:offer.revision}});forget();state.rows.offers=state.rows.offers.filter(row=>!same(row.id,id));state.offerId='';ui.draft=null;render();}
       catch(error){status(root.querySelector('form[data-form="offer"]'),error.message||'Angebot konnte nicht gelöscht werden.',true);}
       finally{ui.saving=false;}
     }
@@ -110,9 +129,9 @@
       root.addEventListener('submit',event=>{const form=event.target;if(form.dataset.form!=='offer')return;event.preventDefault();event.stopImmediatePropagation();save(form).catch(error=>status(form,error.message,true));},true);
       root.addEventListener('click',event=>{
         const button=event.target.closest('[data-action]');if(!button)return;const action=button.dataset.action;if(!action.startsWith('offer-'))return;event.stopImmediatePropagation();if(!isManager()||ui.saving)return;
-        if(action==='offer-new'){state.offerId='new';ui.draft=blank();render();reveal();}
+        if(action==='offer-new'){forget();state.offerId='new';ui.draft=blank();render();reveal();}
         if(action==='offer-open'){const offer=list().find(row=>same(row.id,button.dataset.id));if(!offer)return;state.offerId=offer.id;ui.draft=structuredClone(offer);render();reveal();}
-        if(action==='offer-close'){state.offerId='';ui.draft=null;render();}
+        if(action==='offer-close'){forget();state.offerId='';ui.draft=null;render();}
         if(action==='offer-add-material'||action==='offer-add-labor'){const form=button.closest('form');if(form.querySelectorAll('[data-offer-line]').length>=100){status(form,'Höchstens 100 Positionen pro Angebot.',true);return;}const material=action==='offer-add-labor'?materials('labor').find(row=>row.name==='Monteurstunde')||materials('labor')[0]:null;form.querySelector('[data-offer-lines]').insertAdjacentHTML('beforeend',line({kind:action==='offer-add-labor'?'labor':'material',name:material?.name||'',material_id:material?.id||null,quantity:1,unit_price:n(material?.unit_price)}));update(form);form.querySelector('[data-offer-lines]').lastElementChild.querySelector('input').focus({preventScroll:true});}
         if(action==='offer-remove-line'){const form=button.closest('form');button.closest('[data-offer-line]').remove();update(form);}
         if(action==='offer-pdf')pdf(button.dataset.id,button);
@@ -122,7 +141,13 @@
       root.addEventListener('click',event=>{const button=event.target.closest('[data-action="nav"]');if(button?.dataset.view==='offers')load().then(()=>{if(state.view==='offers')render();});});
       root.addEventListener('change',event=>{if(event.target.matches('[data-select="business"]')){state.offerId='';ui.draft=null;load().then(()=>{if(state.view==='offers')render();});}});
     }
-    return {load,view,bind,setup:()=>{const form=root.querySelector('form[data-form="offer"]');if(form)update(form);},totals};
+    function setup(){
+      const form=root.querySelector('form[data-form="offer"]');if(!form)return;
+      form.dataset.resolvedCustomerName=ui.draft?.resolved_customer_name||'';
+      form.querySelectorAll('[data-offer-line]').forEach((row,index)=>{const item=ui.draft?.items[index];if(item&&lower(item.name)===lower(row.querySelector('[data-offer-name]').value))row.dataset.resolvedName=item.resolved_name||'';});
+      update(form,false);
+    }
+    return {load,view,bind,setup,totals};
   }
   window.OffersFeature={create};
 })();

@@ -2,7 +2,7 @@
 (() => {
   'use strict';
   function create(app){
-    const {state,root,escape,n,same,lower,isManager,businessId,managerBusiness,api,allRows,render,chooseSimilar}=app;
+    const {state,root,escape,n,same,lower,isManager,businessId,managerBusiness,api,allRows,render,chooseSimilar,normalizeUnit,materialUnit,unitSelect}=app;
     const ui={draft:null,saving:false,loading:false,error:'',generation:0,context:'',recovered:false,backup:false};
     // Tab-local, account/company-isolated recovery. Never stores credentials.
     const draftKey=()=>state.profile?.id&&businessId()?'zeiterfassung-offer-draft-v859:'+state.profile.id+':'+businessId():'';
@@ -32,7 +32,7 @@
     }
     function line(item={kind:'material',name:'',quantity:1,unit_price:0}){
       const labor=item.kind==='labor';
-      return `<section class="offer-line" data-offer-line data-kind="${labor?'labor':'material'}" data-material-id="${escape(item.material_id||'')}" data-matched-name="${escape(item.name||'')}"><label class="offer-position">${labor?'Arbeitsleistung':'Material'}<input data-offer-name required maxlength="200" list="offer-${labor?'labor':'materials'}" value="${escape(item.name||'')}" placeholder="${labor?'Monteurstunde, Meisterstunde …':'Artikel eingeben'}"></label><label>${labor?'Stunden':'Menge'}<input data-offer-quantity type="number" required min="${labor?'0.25':'0.01'}" max="100000" step="${labor?'0.25':'0.01'}" value="${escape(item.quantity??1)}"></label><label>${labor?'Preis je Stunde (€)':'Einzelpreis (€)'}<input data-offer-price type="number" required min="0" max="1000000" step="0.01" value="${escape(item.unit_price??0)}"></label><div class="offer-line-total"><span>Gesamt</span><b data-offer-line-total>${money(n(item.quantity)*n(item.unit_price))}</b></div><button type="button" class="danger small" data-action="offer-remove-line" aria-label="Position entfernen">Entfernen</button></section>`;
+      return `<section class="offer-line" data-offer-line data-kind="${labor?'labor':'material'}" data-material-id="${escape(item.material_id||'')}" data-matched-name="${escape(item.name||'')}"><label class="offer-position">${labor?'Arbeitsleistung':'Material'}<input data-offer-name required maxlength="200" list="offer-${labor?'labor':'materials'}" value="${escape(item.name||'')}" placeholder="${labor?'Monteurstunde, Meisterstunde …':'Artikel eingeben'}"></label><label>${labor?'Stunden':'Menge'}<input data-offer-quantity type="number" required min="${labor?'0.25':'0.01'}" max="100000" step="${labor?'0.25':'0.01'}" value="${escape(item.quantity??1)}"></label>${unitSelect('offer_unit',normalizeUnit(item.unit,labor),`data-offer-unit data-unit-explicit="${item.unit_explicit??Boolean(item.unit)}"`)}<label>Einzelpreis (€)<input data-offer-price type="number" required min="0" max="1000000" step="0.01" value="${escape(item.unit_price??0)}"></label><div class="offer-line-total"><span>Gesamt</span><b data-offer-line-total>${money(n(item.quantity)*n(item.unit_price))}</b></div><button type="button" class="danger small" data-action="offer-remove-line" aria-label="Position entfernen">Entfernen</button></section>`;
     }
     function form(model){
       const snapshot=model.customer_snapshot||{};
@@ -49,7 +49,7 @@
       return `<section class="page-head"><div><span class="eyebrow">${escape(managerBusiness()?.company_name||'Geschäftskonto')}</span><h2>Angebote</h2><p>Kundenangebote mit Materialien und Arbeitsstunden</p></div><div class="actions"><button type="button" class="primary" data-action="offer-new">+ Angebot erstellen</button><button type="button" class="secondary" data-action="offer-refresh">Aktualisieren</button></div></section>${ui.error?`<p class="notice error">${escape(ui.error)}</p>`:''}${ui.recovered&&model?'<p class="notice">Ungespeicherte Angebotseingaben aus diesem Browser-Tab wurden wiederhergestellt. Bitte prüfen und speichern.</p>':''}${model?form(model):''}<section class="list-section"><h3>Gespeicherte Angebote</h3><div id="offer-list">${listHtml()}</div></section>`;
     }
     function snapshot(form){
-      return {id:form.elements.id.value,offer_number:list().find(row=>same(row.id,form.elements.id.value))?.offer_number||'',business_id:form.dataset.company,revision:n(form.elements.revision.value)||null,customer_id:form.elements.customer_id.value||null,customer_name:form.elements.customer_name.value,resolved_customer_name:form.dataset.resolvedCustomerName||'',customer_snapshot:Object.fromEntries(fields.map(([key])=>[key,form.elements['customer_'+key].value])),offer_date:form.elements.offer_date.value,valid_until:form.elements.valid_until.value,title:form.elements.title.value,notes:form.elements.notes.value,status:form.elements.status.value,vat_rate:form.elements.vat_rate.value,items:[...form.querySelectorAll('[data-offer-line]')].map(row=>({kind:row.dataset.kind,material_id:row.dataset.materialId||null,name:row.querySelector('[data-offer-name]').value,resolved_name:row.dataset.resolvedName||'',quantity:row.querySelector('[data-offer-quantity]').value,unit_price:row.querySelector('[data-offer-price]').value}))};
+      return {id:form.elements.id.value,offer_number:list().find(row=>same(row.id,form.elements.id.value))?.offer_number||'',business_id:form.dataset.company,revision:n(form.elements.revision.value)||null,customer_id:form.elements.customer_id.value||null,customer_name:form.elements.customer_name.value,resolved_customer_name:form.dataset.resolvedCustomerName||'',customer_snapshot:Object.fromEntries(fields.map(([key])=>[key,form.elements['customer_'+key].value])),offer_date:form.elements.offer_date.value,valid_until:form.elements.valid_until.value,title:form.elements.title.value,notes:form.elements.notes.value,status:form.elements.status.value,vat_rate:form.elements.vat_rate.value,items:[...form.querySelectorAll('[data-offer-line]')].map(row=>({kind:row.dataset.kind,material_id:row.dataset.materialId||null,name:row.querySelector('[data-offer-name]').value,resolved_name:row.dataset.resolvedName||'',quantity:row.querySelector('[data-offer-quantity]').value,unit_price:row.querySelector('[data-offer-price]').value,unit:row.querySelector('[data-offer-unit]').value,unit_explicit:row.querySelector('[data-offer-unit]').dataset.unitExplicit==='true'}))};
     }
     function update(form,persist=true){
       if(!form)return;
@@ -75,9 +75,10 @@
       if(event.target.matches('[data-offer-name]')){
         const row=event.target.closest('[data-offer-line]'),selected=materials(row.dataset.kind).find(item=>lower(item.name)===lower(event.target.value));
         if(lower(row.dataset.resolvedName)!==lower(event.target.value))row.dataset.resolvedName='';
-        if(selected){if(lower(row.dataset.matchedName)!==lower(selected.name))row.querySelector('[data-offer-price]').value=n(selected.unit_price);row.dataset.materialId=selected.id;row.dataset.matchedName=selected.name;}
+        if(selected){if(row.querySelector('[data-offer-unit]').dataset.unitExplicit!=='true')row.querySelector('[data-offer-unit]').value=materialUnit(selected);if(lower(row.dataset.matchedName)!==lower(selected.name))row.querySelector('[data-offer-price]').value=n(selected.unit_price);row.dataset.materialId=selected.id;row.dataset.matchedName=selected.name;}
         else{row.dataset.materialId='';row.dataset.matchedName='';}
       }
+      if(event.target.matches('[data-offer-unit]'))event.target.dataset.unitExplicit='true';
       if(event.target.name==='offer_date')form.elements.valid_until.min=event.target.value;
       update(form);
     }
@@ -96,9 +97,9 @@
         data.items=data.items.map((item,index)=>{
           const records=materials(item.kind);let material=records.find(row=>lower(row.name)===lower(item.name));
           if(!material&&lower(item.resolved_name)!==lower(item.name))material=chooseSimilar(item.name,records,'Artikel');
-          if(material&&!same(item.material_id,material.id)){const row=form.querySelectorAll('[data-offer-line]')[index];row.querySelector('[data-offer-name]').value=material.name;row.querySelector('[data-offer-price]').value=n(material.unit_price);row.dataset.materialId=material.id;row.dataset.matchedName=material.name;item={...item,name:material.name,unit_price:n(material.unit_price),material_id:material.id};}
+          if(material&&!same(item.material_id,material.id)){const row=form.querySelectorAll('[data-offer-line]')[index];row.querySelector('[data-offer-name]').value=material.name;row.querySelector('[data-offer-price]').value=n(material.unit_price);row.dataset.materialId=material.id;row.dataset.matchedName=material.name;if(!item.unit_explicit)row.querySelector('[data-offer-unit]').value=materialUnit(material);item={...item,name:material.name,unit_price:n(material.unit_price),material_id:material.id,unit:row.querySelector('[data-offer-unit]').value};}
           form.querySelectorAll('[data-offer-line]')[index].dataset.resolvedName=item.name;update(form);
-          return {kind:item.kind,material_id:item.material_id,name:item.name.trim(),quantity:n(item.quantity),unit_price:n(item.unit_price)};
+          return {kind:item.kind,material_id:item.material_id,name:item.name.trim(),quantity:n(item.quantity),unit_price:n(item.unit_price),unit:normalizeUnit(item.unit,item.kind==='labor')};
         });
         data.customer_name=data.customer_name.trim();data.title=data.title.trim();data.vat_rate=n(data.vat_rate);
         const result=await api('/rest/v1/rpc/save_offer_v857',{method:'POST',body:{p_data:data,p_revision:data.revision}}),saved=Array.isArray(result)?result[0]:result;
@@ -132,7 +133,7 @@
         if(action==='offer-new'){forget();state.offerId='new';ui.draft=blank();render();reveal();}
         if(action==='offer-open'){const offer=list().find(row=>same(row.id,button.dataset.id));if(!offer)return;state.offerId=offer.id;ui.draft=structuredClone(offer);render();reveal();}
         if(action==='offer-close'){forget();state.offerId='';ui.draft=null;render();}
-        if(action==='offer-add-material'||action==='offer-add-labor'){const form=button.closest('form');if(form.querySelectorAll('[data-offer-line]').length>=100){status(form,'Höchstens 100 Positionen pro Angebot.',true);return;}const material=action==='offer-add-labor'?materials('labor').find(row=>row.name==='Monteurstunde')||materials('labor')[0]:null;form.querySelector('[data-offer-lines]').insertAdjacentHTML('beforeend',line({kind:action==='offer-add-labor'?'labor':'material',name:material?.name||'',material_id:material?.id||null,quantity:1,unit_price:n(material?.unit_price)}));update(form);form.querySelector('[data-offer-lines]').lastElementChild.querySelector('input').focus({preventScroll:true});}
+        if(action==='offer-add-material'||action==='offer-add-labor'){const form=button.closest('form');if(form.querySelectorAll('[data-offer-line]').length>=100){status(form,'Höchstens 100 Positionen pro Angebot.',true);return;}const material=action==='offer-add-labor'?materials('labor').find(row=>row.name==='Monteurstunde')||materials('labor')[0]:null;form.querySelector('[data-offer-lines]').insertAdjacentHTML('beforeend',line({kind:action==='offer-add-labor'?'labor':'material',name:material?.name||'',material_id:material?.id||null,quantity:1,unit_price:n(material?.unit_price),unit:material?materialUnit(material):(action==='offer-add-labor'?'H':'Stk'),unit_explicit:false}));update(form);form.querySelector('[data-offer-lines]').lastElementChild.querySelector('input').focus({preventScroll:true});}
         if(action==='offer-remove-line'){const form=button.closest('form');button.closest('[data-offer-line]').remove();update(form);}
         if(action==='offer-pdf')pdf(button.dataset.id,button);
         if(action==='offer-delete')removeOffer(button.dataset.id);

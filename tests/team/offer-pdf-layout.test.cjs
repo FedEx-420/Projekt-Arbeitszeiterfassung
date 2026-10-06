@@ -23,7 +23,7 @@ async function main(){
   for(const [name,model] of cases){
     const before=JSON.stringify(model),bytes=await createOffer({offer:model,company:'Elektro Test & Partner'});
     assert.equal(JSON.stringify(model),before,'PDF must not change a saved quotation');
-    const pdf=await PDFLib.PDFDocument.load(bytes);assert.ok(pdf.getPageCount()>0);assert.equal(pdf.getCreator(),'Zeiterfassung v858');
+    const pdf=await PDFLib.PDFDocument.load(bytes);assert.ok(pdf.getPageCount()>0);assert.equal(pdf.getCreator(),'Zeiterfassung v860');
     if(name==='Angebot_Mehrseitig'||name==='Angebot_100_Positionen')assert.ok(pdf.getPageCount()>1);
     fs.writeFileSync(path.join(output,name+'.pdf'),bytes);
     manifest.push({name,count:model.items.length,pages:pdf.getPageCount(),subtotal:model.subtotal,tax:model.tax_amount,total:model.total,vat:model.vat_rate,lastName:model.items.at(-1).name});

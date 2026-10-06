@@ -315,7 +315,20 @@
     return `<section class="page-head"><div><span class="eyebrow">Zeiterfassung von ${escape(worker()?.username || '')}</span><h2>${dateText(state.date)}</h2></div>${dayPicker()}</section><div data-day-plans>${plannedAssignmentsPanel(id, state.date)}</div>${detail}${form}<section class="list-section"><h3>Einträge des Tages</h3>${cards}</section>`;
   }
 
-  function materialRow(item = {}) { return `<div class="material-row"><label>Material<input name="material" list="materials" value="${escape(item.position_name || item.name || '')}"></label><label>Stückzahl<input name="quantity" type="number" min="0.25" step="0.25" value="${escape(item.quantity || 1)}"></label></div>`; }
+  const MATERIAL_UNITS = ['Stk','M','H','Pau'];
+  function normalizeUnit(value,hourly=false) { return ({'stk':'Stk','stk.':'Stk','m':'M','h':'H','pau':'Pau'})[lower(value)] || (hourly?'H':'Stk'); }
+  const materialUnit = material => normalizeUnit(material?.unit,isHourlyMaterial(material));
+  const itemUnit = item => normalizeUnit(item?.unit,isHourlyMaterial(item?.position_name || item?.name));
+  function unitSelect(name,value,attributes='') { return `<label>Einheit<select name="${escape(name)}" class="material-unit" ${attributes}>${MATERIAL_UNITS.map(unit=>`<option value="${unit}" ${unit===value?'selected':''}>${unit}</option>`).join('')}</select></label>`; }
+  function materialRow(item = {}) { return `<div class="material-row"><label>Material<input name="material" list="materials" value="${escape(item.position_name || item.name || '')}"></label><label>Menge<input name="quantity" type="number" min="0.25" step="0.25" value="${escape(item.quantity || 1)}"></label>${unitSelect('unit',itemUnit(item),`data-material-unit data-unit-explicit="${Boolean(item.id || item.unit)}"`)}</div>`; }
+  root.addEventListener('change',event=>{if(event.target.matches('[data-material-unit]'))event.target.dataset.unitExplicit='true';});
+  root.addEventListener('input',event=>{
+    if(event.target.name!=='material')return;
+    const row=event.target.closest('.material-row'),select=row?.querySelector('[data-material-unit]');
+    if(!select || select.dataset.unitExplicit==='true')return;
+    const material=state.rows.materials.find(item=>same(item.business_id,businessId())&&item.active!==false&&lower(item.name)===lower(event.target.value));
+    if(material)select.value=materialUnit(material);
+  });
   function materialList() { return `<datalist id="materials">${state.rows.materials.filter(row => row.active !== false).map(row => `<option value="${escape(row.name)}"></option>`).join('')}</datalist>`; }
   function signatureFields(order = {}) {
     const signedBy = String(order.signed_by || ''), signature = String(order.signature_data || ''), hasSignature = signature.startsWith('data:image/png;base64,');
@@ -428,18 +441,18 @@
   }
 
   function materialEditFields(material) {
-    return '<input type="hidden" name="id" value="' + escape(material.id) + '"><label>Artikel<input name="name" required value="' + escape(material.name) + '"></label><label>Preis in €<input name="price" type="number" min="0" step="0.01" value="' + n(material.unit_price) + '"></label>';
+    return '<input type="hidden" name="id" value="' + escape(material.id) + '"><label>Artikel<input name="name" required value="' + escape(material.name) + '"></label><label>Preis in €<input name="price" type="number" min="0" step="0.01" value="' + n(material.unit_price) + '"></label>' + unitSelect('unit',materialUnit(material));
   }
   function materialsView() {
     const materials = state.rows.materials.filter(row => same(row.business_id, businessId()) && row.active !== false);
     const others = materials.filter(row => !isHourlyMaterial(row));
     const selected = others.find(row => same(row.id, state.materialId));
-    const hourlyCards = HOURLY_MATERIALS.map(name => materials.find(row => lower(row.name) === lower(name))).filter(Boolean).map(material => '<section class="panel"><h3>' + escape(material.name) + '</h3><p>Wird nach der in den Einstellungen hinterlegten Arbeitskraft des Mitarbeiters automatisch in den Arbeitsschein übernommen. Die Position kann nicht gelöscht oder umbenannt werden.</p><form data-form="hourly-price" class="entry-form"><input type="hidden" name="id" value="' + escape(material.id) + '"><label>Preis pro ' + escape(material.name) + ' in €<input name="price" type="number" min="0" step="0.01" value="' + n(material.unit_price) + '"></label><button class="primary">Preis speichern</button></form></section>').join('');
-    const list = others.map(row => '<article class="row-card"><div><b>' + escape(row.name) + '</b><span>' + n(row.unit_price).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' }) + '</span></div><div class="actions"><button type="button" class="secondary small" data-action="edit-material" data-id="' + escape(row.id) + '">Bearbeiten</button><button type="button" class="danger small" data-action="delete-material" data-id="' + escape(row.id) + '">Löschen</button></div></article>').join('') || '<p class="empty">Keine weiteren Materialien vorhanden.</p>';
+    const hourlyCards = HOURLY_MATERIALS.map(name => materials.find(row => lower(row.name) === lower(name))).filter(Boolean).map(material => '<section class="panel"><h3>' + escape(material.name) + '</h3><p>Wird nach der in den Einstellungen hinterlegten Arbeitskraft des Mitarbeiters automatisch in den Arbeitsschein übernommen. Die Position kann nicht gelöscht oder umbenannt werden.</p><form data-form="hourly-price" class="entry-form"><input type="hidden" name="id" value="' + escape(material.id) + '"><label>Preis pro ' + escape(material.name) + ' in €<input name="price" type="number" min="0" step="0.01" value="' + n(material.unit_price) + '"></label>' + unitSelect('unit',materialUnit(material)) + '<button class="primary">Preis speichern</button></form></section>').join('');
+    const list = others.map(row => '<article class="row-card"><div><b>' + escape(row.name) + '</b><span>' + n(row.unit_price).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' }) + ' / ' + escape(materialUnit(row)) + '</span></div><div class="actions"><button type="button" class="secondary small" data-action="edit-material" data-id="' + escape(row.id) + '">Bearbeiten</button><button type="button" class="danger small" data-action="delete-material" data-id="' + escape(row.id) + '">Löschen</button></div></article>').join('') || '<p class="empty">Keine weiteren Materialien vorhanden.</p>';
     const editor = selected
       ? '<section class="panel"><section class="page-head"><div><span class="eyebrow">Materialliste</span><h3>Material bearbeiten</h3></div><button type="button" class="secondary small" data-action="close-material-edit">Abbrechen</button></section><form data-form="material-edit" class="entry-form">' + materialEditFields(selected) + '<button class="primary wide">Änderungen speichern</button></form><p>Preis- und Namensänderungen werden nur auf offene, noch nicht abgerechnete Arbeitsscheine übertragen.</p></section>'
       : '';
-    return '<section class="page-head"><div><span class="eyebrow">Material</span><h2>Materialliste</h2></div></section>' + hourlyCards + '<section class="panel"><h3>Neues Material</h3><form data-form="material" class="entry-form"><label>Artikel<input name="name" required></label><label>Preis in €<input name="price" type="number" min="0" step="0.01" value="0"></label><button class="primary">Artikel speichern</button></form></section><section class="list-section"><h3>Vorhandene Materialien</h3>' + list + '</section>' + editor;
+    return '<section class="page-head"><div><span class="eyebrow">Material</span><h2>Materialliste</h2></div></section>' + hourlyCards + '<section class="panel"><h3>Neues Material</h3><form data-form="material" class="entry-form"><label>Artikel<input name="name" required></label><label>Preis in €<input name="price" type="number" min="0" step="0.01" value="0"></label>' + unitSelect('unit','Stk') + '<button class="primary">Artikel speichern</button></form></section><section class="list-section"><h3>Vorhandene Materialien</h3>' + list + '</section>' + editor;
   }
   function orderInCurrentBusiness(order) { return same(state.rows.people.find(person => same(person.id, order.employee_id))?.business_id, businessId()); }
   function invoiceGroups(invoiced) {
@@ -458,7 +471,7 @@
     const invoiced = state.billingMode === 'paid', group = invoiceGroups(invoiced).find(item => same(item.key, state.billingKey));
     if (!group) return `<section class="panel"><h2>Abrechnung nicht gefunden</h2><button type="button" class="secondary" data-action="close-billing">Zurück</button></section>`;
     const total = group.orders.reduce((sum, row) => sum + n(row.executed_hours), 0);
-    const combinedDetails = group.orders.map(row => { const materials = state.rows.items.filter(item => same(item.work_order_id, row.id)); return `<div class="row-card"><div><b>${dateText(row.work_date)} · ${escape(row.title || 'Arbeitsschein')}</b><span>${timeText(row.start_time)} – ${timeText(row.end_time)} · Pause ${h(row.pause_hours)} · ${h(row.executed_hours)}</span>${row.documentation ? `<p>${escape(row.documentation)}</p>` : ''}${materials.length ? `<p><b>Material:</b> ${materials.map(item => `${escape(item.position_name)} (${n(item.quantity).toLocaleString('de-DE')})`).join(', ')}</p>` : ''}</div></div>`; }).join('');
+    const combinedDetails = group.orders.map(row => { const materials = state.rows.items.filter(item => same(item.work_order_id, row.id)); return `<div class="row-card"><div><b>${dateText(row.work_date)} · ${escape(row.title || 'Arbeitsschein')}</b><span>${timeText(row.start_time)} – ${timeText(row.end_time)} · Pause ${h(row.pause_hours)} · ${h(row.executed_hours)}</span>${row.documentation ? `<p>${escape(row.documentation)}</p>` : ''}${materials.length ? `<p><b>Material:</b> ${materials.map(item => `${escape(item.position_name)} (${n(item.quantity).toLocaleString('de-DE')} ${escape(itemUnit(item))})`).join(', ')}</p>` : ''}</div></div>`; }).join('');
     return `<section class="page-head"><div><span class="eyebrow">${invoiced ? 'Bereits abgerechnet' : 'Ein gemeinsamer offener Arbeitsschein'}</span><h2>${escape(group.customerName)}</h2><p>${group.orders.length} zusammengefügte Einträge · ${h(total)}</p></div><div class="actions">${invoiced ? '' : '<button type="button" class="primary" data-action="invoice-group">Rechnung erstellen</button><button type="button" class="secondary" data-action="mark-invoice-group">Als abgerechnet markieren</button>'}<button type="button" class="secondary" data-action="billing-pdf">Arbeitsnachweis als PDF</button><button type="button" class="secondary" data-action="close-billing">Zurück</button></div></section><section class="panel"><h3>Gesamter Arbeitsschein</h3>${combinedDetails}</section>`;
   }
 
@@ -536,26 +549,26 @@
     const created = await write('materials', { business_id: targetBusinessId, name, unit_price: 0, active: true });
     return created?.[0] || null;
   }
-  async function ensureMaterial(value, targetBusinessId = businessId()) {
+  async function ensureMaterial(value, targetBusinessId = businessId(), unit = 'Stk') {
     const name = String(value || '').trim(); if (!name) return null;
     const current = state.rows.materials.find(row => same(row.business_id, targetBusinessId) && lower(row.name) === lower(name));
     if (current) return current;
     const selected = chooseSimilar(name, state.rows.materials.filter(row => same(row.business_id, targetBusinessId) && row.active !== false), 'Artikel'); if (selected) return selected;
-    const created = await write('materials', { business_id: targetBusinessId, name, unit_price: 0, active: true });
+    const created = await write('materials', { business_id: targetBusinessId, name, unit_price: 0, unit: normalizeUnit(unit), active: true });
     return created?.[0] || null;
   }
   async function saveMaterials(form, order, replace = false) {
     const targetBusinessId = materialBusinessId(order.employee_id);
-    const materials = [...form.querySelectorAll('[name="material"]')], quantities = [...form.querySelectorAll('[name="quantity"]')];
-    const resolved = []; for (let index = 0; index < materials.length; index++) { const material = await ensureMaterial(materials[index].value, targetBusinessId); if (material && !isHourlyMaterial(material)) resolved.push({ material, quantity: Math.max(0.25, n(quantities[index]?.value || 1)) }); }
+    const materials = [...form.querySelectorAll('[name="material"]')], quantities = [...form.querySelectorAll('[name="quantity"]')], units = [...form.querySelectorAll('[name="unit"]')];
+    const resolved = []; for (let index = 0; index < materials.length; index++) { const material = await ensureMaterial(materials[index].value, targetBusinessId, units[index]?.value); if (material && !isHourlyMaterial(material)) resolved.push({ material, quantity: Math.max(0.25, n(quantities[index]?.value || 1)), unit: units[index]?.dataset.unitExplicit==='true' ? normalizeUnit(units[index].value) : materialUnit(material) }); }
     if (replace) await remove('work_order_items', `work_order_id=eq.${encodeURIComponent(order.id)}`);
-    for (const item of resolved) await write('work_order_items', { work_order_id: order.id, material_id: item.material.id, position_name: item.material.name, quantity: item.quantity, unit_price: n(item.material.unit_price) });
+    for (const item of resolved) await write('work_order_items', { work_order_id: order.id, material_id: item.material.id, position_name: item.material.name, quantity: item.quantity, unit: item.unit, unit_price: n(item.material.unit_price) });
   }
   async function saveHourlyMaterial(order, hours) {
     const name = hourlyNameForEmployee(order.employee_id);
     const material = await ensureHourlyMaterial(name, materialBusinessId(order.employee_id));
     if (!material?.id) throw new Error('Die Stundenposition konnte nicht angelegt werden.');
-    await write('work_order_items', { work_order_id: order.id, material_id: material.id, position_name: name, quantity: Math.max(0.25, n(hours)), unit_price: n(material.unit_price) });
+    await write('work_order_items', { work_order_id: order.id, material_id: material.id, position_name: name, quantity: Math.max(0.25, n(hours)), unit: materialUnit(material), unit_price: n(material.unit_price) });
   }
   function currentMaterialForItem(item, order) {
     const direct = state.rows.materials.find(material => same(material.id, item?.material_id));
@@ -585,7 +598,7 @@
     const material = state.rows.materials.find(row => same(row.id, form.elements.id.value) && same(row.business_id, businessId()) && isHourlyMaterial(row));
     if (!material) throw new Error('Die geschützte Stundenposition wurde nicht gefunden.');
     const price = Math.max(0, n(form.elements.price.value));
-    await write('materials', { unit_price: price }, 'PATCH', 'id=eq.' + material.id);
+    await write('materials', { unit_price: price, unit: normalizeUnit(form.elements.unit?.value || materialUnit(material),true) }, 'PATCH', 'id=eq.' + material.id);
     const openOrderIds = new Set(state.rows.orders.filter(order => !order.invoiced).map(order => order.id));
     for (const item of state.rows.items.filter(item => same(item.material_id, material.id) && openOrderIds.has(item.work_order_id))) await write('work_order_items', { unit_price: price }, 'PATCH', 'id=eq.' + item.id);
     await load(); notice('Preis für ' + material.name + ' gespeichert. Offene Arbeitsscheine wurden aktualisiert.'); render();
@@ -597,7 +610,7 @@
     const name = String(form.elements.name.value || '').trim();
     if (!name) throw new Error('Bitte einen Artikelnamen eingeben.');
     const price = Math.max(0, n(form.elements.price.value));
-    await write('materials', { name, unit_price: price }, 'PATCH', 'id=eq.' + material.id);
+    await write('materials', { name, unit_price: price, unit: normalizeUnit(form.elements.unit?.value || materialUnit(material)) }, 'PATCH', 'id=eq.' + material.id);
     const openOrderIds = new Set(state.rows.orders.filter(order => !order.invoiced).map(order => order.id));
     for (const item of state.rows.items.filter(item => same(item.material_id, material.id) && openOrderIds.has(item.work_order_id))) await write('work_order_items', { position_name: name, unit_price: price }, 'PATCH', 'id=eq.' + item.id);
     state.materialId = '';
@@ -924,7 +937,7 @@
     const submitters = {
       login: () => login(form.elements.username.value, form.elements.password.value, form.elements.company.value, form.elements.administrator_login?.checked === true),
       time: () => saveTime(form), order: () => saveOrder(form), 'order-edit': () => updateOrder(form), customer: () => saveCustomer(form),
-      material: () => { if (isHourlyMaterial(form.elements.name.value)) throw new Error('Diese geschützte Stundenposition ist bereits vorhanden.'); return write('materials', { business_id: businessId(), name: String(form.elements.name.value || '').trim(), unit_price: n(form.elements.price.value), active: true }); },
+      material: () => { if (isHourlyMaterial(form.elements.name.value)) throw new Error('Diese geschützte Stundenposition ist bereits vorhanden.'); return write('materials', { business_id: businessId(), name: String(form.elements.name.value || '').trim(), unit_price: n(form.elements.price.value), unit: normalizeUnit(form.elements.unit?.value), active: true }); },
       'hourly-price': () => updateHourlyPrice(form),
       'material-edit': () => updateMaterial(form),
       vacation: () => flow('request', { employeeId: workerId(), startDate: form.elements.start.value, endDate: form.elements.end.value }),
@@ -954,10 +967,10 @@
     const invoiceNumber = `RE-${today().replaceAll('-', '')}-${String(first?.id || '').replace(/[^a-z0-9]/gi, '').slice(0, 8).toUpperCase() || 'OFFEN'}`;
     const employeeInfo = order => { const person = state.rows.people.find(row => same(row.id, order.employee_id)); if (order.team_periods?.length) return { name: [...new Set(order.team_periods.map(p=>p.employee_name || personName(teamPerson(p.employee_id))))].join(', '), time: order.team_periods.map(p=>timeText(p.start_time)+' – '+timeText(p.end_time)).join(' / '), hours:h(orderHours(order)) }; return { name: person?.display_name || person?.username || 'Mitarbeiter nicht verfügbar', time: `${timeText(order.start_time)} – ${timeText(order.end_time)}`, hours: h(order.executed_hours) }; };
     const executionRows = group.orders.map(order => { const employee = employeeInfo(order); if (order.team_periods?.length) return `<div><b>${dateText(order.work_date)}</b>${teamExecutionHtml(order)}</div>`; return `<div class="pdf-execution-row"><b>${escape(employee.name)}</b><br><span class="pdf-muted">${dateText(order.work_date)} · ${escape(employee.time)} · ${escape(employee.hours)}</span></div>`; }).join('');
-    const itemRows = group.orders.flatMap(order => { const employee = employeeInfo(order), orderItems = state.rows.items.filter(item => same(item.work_order_id, order.id)), items = orderItems.length ? orderItems : [{ position_name: order.title || 'Arbeitsleistung', quantity: n(order.executed_hours), unit_price: 0 }]; return items.map(item => { const price = invoiceItemPrice(item, order), name = invoiceItemName(item, order), hourly = isHourlyMaterial(name); return `<tr><td>${dateText(order.work_date)}</td><td><b>${escape(name)}</b>${hourly ? '<span class="pdf-tag">Arbeitszeit</span>' : ''}<small>${escape(employee.name)} · ${escape(employee.time)}${order.title ? ` · ${escape(order.title)}` : ''}</small></td><td class="number">${n(item.quantity).toLocaleString('de-DE')}</td><td class="number">${money(price)}</td><td class="number">${money(n(item.quantity) * price)}</td></tr>`; }); }).join('');
+    const itemRows = group.orders.flatMap(order => { const employee = employeeInfo(order), orderItems = state.rows.items.filter(item => same(item.work_order_id, order.id)), items = orderItems.length ? orderItems : [{ position_name: order.title || 'Arbeitsleistung', quantity: n(order.executed_hours), unit_price: 0 }]; return items.map(item => { const price = invoiceItemPrice(item, order), name = invoiceItemName(item, order), hourly = isHourlyMaterial(name); return `<tr><td>${dateText(order.work_date)}</td><td><b>${escape(name)}</b>${hourly ? '<span class="pdf-tag">Arbeitszeit</span>' : ''}<small>${escape(employee.name)} · ${escape(employee.time)}${order.title ? ` · ${escape(order.title)}` : ''}</small></td><td class="number">${n(item.quantity).toLocaleString('de-DE')} ${escape(itemUnit(item))}</td><td class="number">${money(price)}</td><td class="number">${money(n(item.quantity) * price)}</td></tr>`; }); }).join('');
     const total = group.orders.reduce((sum, order) => sum + state.rows.items.filter(item => same(item.work_order_id, order.id)).reduce((itemSum, item) => itemSum + n(item.quantity) * invoiceItemPrice(item, order), 0), 0);
     const windowRef = window.open('', '_blank'); if (!windowRef) throw new Error('Bitte Pop-ups erlauben, um die Rechnung als PDF zu erstellen.');
-    windowRef.document.write(`<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Rechnung ${escape(invoiceNumber)}</title><style>${pdfStyles()}</style></head><body><main class="pdf-page">${pdfBrandHeader('Rechnung', invoiceNumber, company)}<section class="pdf-grid"><article class="pdf-card"><span class="pdf-card-label">Rechnung an</span><b>${escape([fields.first_name, customerName].filter(Boolean).join(' ') || customerName)}</b>${customerAddress.length ? `<br>${customerAddress.map(escape).join('<br>')}` : ''}</article><article class="pdf-card"><span class="pdf-card-label">Rechnungsdaten</span>Ausgestellt am ${dateText(today())}<br>Leistungszeitraum: ${dateText(first?.work_date)}${same(first?.work_date, last?.work_date) ? '' : ` bis ${dateText(last?.work_date)}`}<br>${group.orders.length} Arbeitsschein(e)</article></section><section class="pdf-execution"><b>Ausführung durch</b>${executionRows}</section><section class="pdf-section"><h2>Leistungen und Material</h2><table class="pdf-table"><thead><tr><th>Datum</th><th>Position / Ausführung</th><th class="number">Menge</th><th class="number">Einzelpreis</th><th class="number">Gesamt</th></tr></thead><tbody>${itemRows}</tbody></table></section><div class="pdf-total"><b>Rechnungsbetrag</b><b>${money(total)}</b></div><p class="pdf-note">Diese Rechnung wurde automatisch aus ${group.orders.length} Arbeitsschein(en) erstellt.</p></main></body></html>`);
+    windowRef.document.write(`<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Rechnung ${escape(invoiceNumber)}</title><style>${pdfStyles()}</style></head><body><main class="pdf-page">${pdfBrandHeader('Rechnung', invoiceNumber, company)}<section class="pdf-grid"><article class="pdf-card"><span class="pdf-card-label">Rechnung an</span><b>${escape([fields.first_name, customerName].filter(Boolean).join(' ') || customerName)}</b>${customerAddress.length ? `<br>${customerAddress.map(escape).join('<br>')}` : ''}</article><article class="pdf-card"><span class="pdf-card-label">Rechnungsdaten</span>Ausgestellt am ${dateText(today())}<br>Leistungszeitraum: ${dateText(first?.work_date)}${same(first?.work_date, last?.work_date) ? '' : ` bis ${dateText(last?.work_date)}`}<br>${group.orders.length} Arbeitsschein(e)</article></section><section class="pdf-execution"><b>Ausführung durch</b>${executionRows}</section><section class="pdf-section"><h2>Leistungen und Material</h2><table class="pdf-table"><thead><tr><th>Datum</th><th>Position / Ausführung</th><th class="number">Menge / Einheit</th><th class="number">Einzelpreis</th><th class="number">Gesamt</th></tr></thead><tbody>${itemRows}</tbody></table></section><div class="pdf-total"><b>Rechnungsbetrag</b><b>${money(total)}</b></div><p class="pdf-note">Diese Rechnung wurde automatisch aus ${group.orders.length} Arbeitsschein(en) erstellt.</p></main></body></html>`);
     windowRef.document.close(); addPdfReturnBar(windowRef); return windowRef;
   }
   function billingDayGroups(orders) {
@@ -991,10 +1004,10 @@
         const items = state.rows.items.filter(item => same(item.work_order_id, order.id));
         return items.map(item => {
           const price = invoiceItemPrice(item, order), name = invoiceItemName(item, order);
-          return `<tr><td>${escape(name)}${isHourlyMaterial(name) ? '<span class="pdf-tag">Arbeitszeit</span>' : ''}${order.title ? `<small>${escape(order.title)}</small>` : ''}</td><td class="number">${n(item.quantity).toLocaleString('de-DE')}</td><td class="number">${money(price)}</td><td class="number">${money(n(item.quantity) * price)}</td></tr>`;
+          return `<tr><td>${escape(name)}${isHourlyMaterial(name) ? '<span class="pdf-tag">Arbeitszeit</span>' : ''}${order.title ? `<small>${escape(order.title)}</small>` : ''}</td><td class="number">${n(item.quantity).toLocaleString('de-DE')} ${escape(itemUnit(item))}</td><td class="number">${money(price)}</td><td class="number">${money(n(item.quantity) * price)}</td></tr>`;
         });
       }).join('') || '<tr><td colspan="4" class="pdf-empty">Kein Material erfasst.</td></tr>';
-      return `<section class="pdf-section"><h2>${dateText(day.date)}</h2><div class="pdf-card"><span class="pdf-card-label">Mitarbeiter auf der Baustelle</span><ul style="margin:6px 0 0;padding-left:20px">${teamRows}</ul>${documentations ? `<br><b>Dokumentation</b><ul style="margin:6px 0 0;padding-left:20px">${documentations}</ul>` : ''}</div><table class="pdf-table"><thead><tr><th>Leistung / Material</th><th class="number">Menge</th><th class="number">Einzelpreis</th><th class="number">Gesamt</th></tr></thead><tbody>${rows}</tbody></table></section>`;
+      return `<section class="pdf-section"><h2>${dateText(day.date)}</h2><div class="pdf-card"><span class="pdf-card-label">Mitarbeiter auf der Baustelle</span><ul style="margin:6px 0 0;padding-left:20px">${teamRows}</ul>${documentations ? `<br><b>Dokumentation</b><ul style="margin:6px 0 0;padding-left:20px">${documentations}</ul>` : ''}</div><table class="pdf-table"><thead><tr><th>Leistung / Material</th><th class="number">Menge / Einheit</th><th class="number">Einzelpreis</th><th class="number">Gesamt</th></tr></thead><tbody>${rows}</tbody></table></section>`;
     }).join('');
     const totalHours = group.orders.reduce((sum, order) => sum + orderHours(order), 0), totalMaterial = group.orders.reduce((sum, order) => sum + state.rows.items.filter(item => same(item.work_order_id, order.id)).reduce((itemSum, item) => itemSum + n(item.quantity) * invoiceItemPrice(item, order), 0), 0);
     const windowRef = window.open('', '_blank'); if (!windowRef) throw new Error('Bitte Pop-ups erlauben, um die PDF zu erstellen.');
@@ -1003,11 +1016,11 @@
   function printOrderPdf(orderId) {
     const order = state.rows.orders.find(row => same(row.id, orderId)); if (!order) throw new Error('Der Arbeitsschein wurde nicht gefunden.');
     const person = state.rows.people.find(row => same(row.id, order.employee_id)) || worker(), items = state.rows.items.filter(item => same(item.work_order_id, order.id)), money = value => n(value).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
-    const materialRows = items.map(item => { const price = invoiceItemPrice(item, order), name = invoiceItemName(item, order); return `<tr><td><b>${escape(name)}</b>${isHourlyMaterial(name) ? '<span class="pdf-tag">Arbeitszeit</span>' : ''}</td><td class="number">${n(item.quantity).toLocaleString('de-DE')}</td><td class="number">${money(price)}</td><td class="number">${money(n(item.quantity) * price)}</td></tr>`; }).join('');
+    const materialRows = items.map(item => { const price = invoiceItemPrice(item, order), name = invoiceItemName(item, order); return `<tr><td><b>${escape(name)}</b>${isHourlyMaterial(name) ? '<span class="pdf-tag">Arbeitszeit</span>' : ''}</td><td class="number">${n(item.quantity).toLocaleString('de-DE')} ${escape(itemUnit(item))}</td><td class="number">${money(price)}</td><td class="number">${money(n(item.quantity) * price)}</td></tr>`; }).join('');
     const total = items.reduce((sum, item) => sum + n(item.quantity) * invoiceItemPrice(item, order), 0), documentation = String(order.documentation || '').trim(), employeeName = person?.display_name || person?.username || 'Mitarbeiter';
     const signature = String(order.signature_data || ''), signatureSection = signature.startsWith('data:image/png;base64,') ? `<section class="pdf-section"><h2>Unterschrift</h2><article class="pdf-card"><img src="${escape(signature)}" alt="Unterschrift" style="display:block;width:min(100%,380px);height:120px;object-fit:contain;object-position:left;border-bottom:1px solid #d9e6e3;margin-bottom:9px"><b>Unterschrieben von:</b> ${escape(order.signed_by || '—')}</article></section>` : '';
     const windowRef = window.open('', '_blank'); if (!windowRef) throw new Error('Bitte Pop-ups erlauben, um die PDF zu erstellen.');
-    windowRef.document.write(`<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Arbeitsnachweis</title><style>${pdfStyles()}</style></head><body><main class="pdf-page">${pdfBrandHeader('Arbeitsnachweis', dateText(order.work_date))}<section class="pdf-grid"><article class="pdf-card"><span class="pdf-card-label">Kunde</span><b>${escape(order.customer_name || 'Ohne Kunde')}</b><br>${escape(order.title || 'Ohne Beschreibung')}</article><article class="pdf-card"><span class="pdf-card-label">Ausgeführt von</span>${teamExecutionHtml(order)}</article></section>${documentation ? `<section class="pdf-section"><h2>Dokumentation</h2><article class="pdf-card">${escape(documentation).replace(/\n/g, '<br>')}</article></section>` : ''}${signatureSection}<section class="pdf-section"><h2>Leistungen und Material</h2>${items.length ? `<table class="pdf-table"><thead><tr><th>Position</th><th class="number">Menge</th><th class="number">Einzelpreis</th><th class="number">Gesamt</th></tr></thead><tbody>${materialRows}</tbody></table>` : '<p class="pdf-empty">Keine Positionen erfasst.</p>'}</section><div class="pdf-total"><b>Gesamtsumme</b><b>${money(total)}</b></div><p class="pdf-note">Monteur- und Aushilfsstunden erscheinen als Arbeitszeitpositionen mit ihrem jeweiligen Preis.</p></main><script>window.onload=()=>window.print()<\/script></body></html>`); windowRef.document.close(); addPdfReturnBar(windowRef);
+    windowRef.document.write(`<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Arbeitsnachweis</title><style>${pdfStyles()}</style></head><body><main class="pdf-page">${pdfBrandHeader('Arbeitsnachweis', dateText(order.work_date))}<section class="pdf-grid"><article class="pdf-card"><span class="pdf-card-label">Kunde</span><b>${escape(order.customer_name || 'Ohne Kunde')}</b><br>${escape(order.title || 'Ohne Beschreibung')}</article><article class="pdf-card"><span class="pdf-card-label">Ausgeführt von</span>${teamExecutionHtml(order)}</article></section>${documentation ? `<section class="pdf-section"><h2>Dokumentation</h2><article class="pdf-card">${escape(documentation).replace(/\n/g, '<br>')}</article></section>` : ''}${signatureSection}<section class="pdf-section"><h2>Leistungen und Material</h2>${items.length ? `<table class="pdf-table"><thead><tr><th>Position</th><th class="number">Menge / Einheit</th><th class="number">Einzelpreis</th><th class="number">Gesamt</th></tr></thead><tbody>${materialRows}</tbody></table>` : '<p class="pdf-empty">Keine Positionen erfasst.</p>'}</section><div class="pdf-total"><b>Gesamtsumme</b><b>${money(total)}</b></div><p class="pdf-note">Monteur- und Aushilfsstunden erscheinen als Arbeitszeitpositionen mit ihrem jeweiligen Preis.</p></main><script>window.onload=()=>window.print()<\/script></body></html>`); windowRef.document.close(); addPdfReturnBar(windowRef);
   }
   function printPdf() {
     const person = worker(), id = workerId(), ownEntries = effectiveTimeEntries(id), totalHours = ownEntries.reduce((sum, row) => sum + n(row.executed_hours), 0);
@@ -1785,10 +1798,10 @@
     const periods = collectTeamPeriods(form), signature = signatureValues(form);
     const customer = await ensureCustomer(form.elements.customer.value,owner,planningCustomers(owner));
     if (!customer?.id) throw new Error('Der Kunde konnte nicht gespeichert werden.');
-    const inputs = [...form.querySelectorAll('[name="material"]')], quantities = [...form.querySelectorAll('[name="quantity"]')], items = [];
+    const inputs = [...form.querySelectorAll('[name="material"]')], quantities = [...form.querySelectorAll('[name="quantity"]')], units = [...form.querySelectorAll('[name="unit"]')], items = [];
     for (let index=0; index<inputs.length; index++) {
-      const material = await ensureMaterial(inputs[index].value,businessId());
-      if (material && !isHourlyMaterial(material)) items.push({ material_id:material.id, quantity:Math.max(0.25,n(quantities[index]?.value || 1)) });
+      const material = await ensureMaterial(inputs[index].value,businessId(),units[index]?.value);
+      if (material && !isHourlyMaterial(material)) items.push({ material_id:material.id, quantity:Math.max(0.25,n(quantities[index]?.value || 1)), unit:units[index]?.dataset.unitExplicit==='true' ? normalizeUnit(units[index].value) : materialUnit(material) });
     }
     const saved = await api('/rest/v1/rpc/save_team_work_order',{method:'POST',body:{p_order:{ ...(existing ? {id:existing.id} : {}),employee_id:owner,work_date:date,customer_id:customer.id,title:String(form.elements.title.value || '').trim(),documentation:String(form.elements.documentation.value || ''),...signature},p_periods:periods,p_items:items,p_plan_id:planId || null}});
     const order = Array.isArray(saved) ? saved[0] : saved;
@@ -1880,7 +1893,7 @@
   }
   const settingsBeforeV857=settingsView;
   settingsView=()=>{const html=settingsBeforeV857(),end=html.indexOf('</section>')+10;return html.slice(0,end)+annualDownloadPanel()+html.slice(end);};
-  const offersFeature=window.OffersFeature?.create({state,root,escape,n,same,lower,isManager,businessId,managerBusiness,api,allRows,render:()=>render(),chooseSimilar,customers:()=>planningCustomers(businessId()),today,dateText,logoBytes:planningLogoBytes});
+  const offersFeature=window.OffersFeature?.create({state,root,escape,n,same,lower,isManager,businessId,managerBusiness,api,allRows,render:()=>render(),chooseSimilar,normalizeUnit,materialUnit,unitSelect,customers:()=>planningCustomers(businessId()),today,dateText,logoBytes:planningLogoBytes});
   if(offersFeature){
     const menusBeforeV857=menuItems,viewBeforeV857=viewHtml,reloadBeforeV857=reload,renderBeforeV857=render;
     menuItems=()=>{const items=menusBeforeV857();if(isManager())items.splice(items.findIndex(row=>row[0]==='materials'),0,['offers','Angebote',true]);return items;};

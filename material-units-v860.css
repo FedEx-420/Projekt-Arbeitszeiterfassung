@@ -1,0 +1,4 @@
+/* Unit controls never resize or replace the material input while typing. */
+.material-row{grid-template-columns:minmax(0,2fr) minmax(80px,1fr) minmax(80px,.8fr)}
+.material-row label,.offer-line select{min-width:0}
+@media(max-width:600px){.material-row{grid-template-columns:repeat(2,minmax(0,1fr))}.material-row>label:first-child{grid-column:1/-1}}

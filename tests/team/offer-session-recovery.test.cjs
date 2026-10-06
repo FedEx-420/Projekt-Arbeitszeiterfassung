@@ -12,7 +12,7 @@ const server=http.createServer((req,res)=>{
   res.setHeader('Content-Type',name.endsWith('.js')?'application/javascript':name.endsWith('.css')?'text/css':name.endsWith('.html')?'text/html':'application/octet-stream');res.end(fs.readFileSync(file));
 });
 async function main(){
-  const {db,ids,actor,admin}=await fixture({offers:true});let queue=Promise.resolve(),passed=0,refreshes=0,saves=0,failRefresh=false,failSave=false,expireServer=false,serial=0;const errors=[];
+  const {db,ids,actor,admin}=await fixture({offers:true,units:true});let queue=Promise.resolve(),passed=0,refreshes=0,saves=0,failRefresh=false,failSave=false,expireServer=false,serial=0;const errors=[];
   const token=(exp,label)=>'test.'+Buffer.from(JSON.stringify({exp})).toString('base64url')+'.'+label;
   const session=(label='fresh',expired=false)=>{const exp=Math.floor(Date.now()/1000)+(expired?60:12000);return {access_token:token(exp,label+'-'+(++serial)),refresh_token:'synthetic-refresh-'+serial,expires_at:exp,expires_in:12000,user:{id:ids.business}};};
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));

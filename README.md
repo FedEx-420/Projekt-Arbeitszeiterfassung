@@ -20,3 +20,5 @@ Die Tagesplanungen werden auf diesen Seiten alle 20 Sekunden und beim erneuten �
 
 Angebote sind firmengebunden und serverseitig durch RLS abgesichert. Sie buchen keine Arbeitszeiten, erzeugen keine Arbeitsscheine und ändern keine Rechnungen. Preise/Adressen werden als Angebotsstand gespeichert und können im Angebot bearbeitet werden; spätere Änderungen der Materialliste verändern gespeicherte Angebote nicht. Bei gleichzeitigem Bearbeiten verhindert eine Revisionsprüfung das Überschreiben eines neueren Stands. Neue freie Angebotspositionen legen keine globalen Artikel oder Kunden an. MwSt. wird pro Angebot ausdrücklich eingestellt (anfangs 0 %). Nach dem Speichern enthält die PDF den gespeicherten Stand.
 
+Die Angebots-PDF nummeriert jede Material-/Arbeitsposition fortlaufend über alle Seiten. Einzelpreise und Positionssummen sind rechtsbündig. Der hervorgehobene Abschlussblock zeigt Netto, Mehrwertsteuer und Gesamtbetrag inkl. MwSt. mit derselben rechten Kante wie die Positionssummen; die letzte Position und der vollständige Summenblock bleiben zusammen.
+

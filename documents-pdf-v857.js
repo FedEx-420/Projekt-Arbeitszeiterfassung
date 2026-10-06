@@ -54,15 +54,16 @@
       const gap=8,w=(content-gap*2)/3,rows=Math.ceil(values.length/3);room(rows*57+5);
       values.forEach(([label,value],index)=>{const row=Math.floor(index/3),x=margin+(index%3)*(w+gap),top=y-row*57;page.drawRectangle({x,y:top-49,width:w,height:49,color:colors.pale});draw(label,x+10,top-15,8,bold,colors.muted);draw(value,x+10,top-35,13,bold,colors.teal);});y-=rows*57+7;
     }
-    function table(headers,rows,widths){
+    function table(headers,rows,widths,{numericHeaders=[],lastRowReserve=0}={}){
       const positions=widths.map((_,index)=>margin+widths.slice(0,index).reduce((sum,value)=>sum+value,0));
-      const head=()=>{room(30);page.drawRectangle({x:margin,y:y-25,width:content,height:25,color:colors.pale});headers.forEach((label,index)=>draw(label,positions[index]+6,y-16,8,bold,colors.teal));y-=25;};
+      const head=()=>{room(30);page.drawRectangle({x:margin,y:y-25,width:content,height:25,color:colors.pale});headers.forEach((label,index)=>draw(label,numericHeaders.includes(index)?positions[index]+widths[index]-6-bold.widthOfTextAtSize(safe(label),8):positions[index]+6,y-16,8,bold,colors.teal));y-=25;};
       head();
-      for(const row of rows){
+      for(const [rowIndex,row] of rows.entries()){
         const cells=row.cells.map((value,index)=>wrap(value,widths[index]-12,8.5)),lineCount=Math.max(1,...cells.map(cell=>cell.length));let offset=0;
-        if(y-Math.min(lineCount*12+14,height-240)<60){newPage();head();}
+        const reserve=rowIndex===rows.length-1?lastRowReserve:0;
+        if(y-Math.min(lineCount*12+14+reserve,height-240)<60){newPage();head();}
         while(offset<lineCount){
-          const fit=Math.min(lineCount-offset,Math.floor((y-60-14)/12));
+          const fit=Math.min(lineCount-offset,Math.floor((y-60-14-reserve)/12));
           if(fit<1){newPage();head();continue;}
           const rowHeight=fit*12+14;
           if(row.kind&&colors[row.kind])page.drawRectangle({x:margin,y:y-rowHeight,width:content,height:rowHeight,color:colors[row.kind]});
@@ -76,13 +77,34 @@
       }
       y-=10;
     }
+    function offerTotals(offer){
+      // Share the right edge with the table's "Gesamt" column. Keep the
+      // complete summary together, including on multipage quotations.
+      room(112);
+      const boxWidth=322,x=margin+content-boxWidth,right=margin+content-6,top=y;
+      page.drawRectangle({x,y:top-104,width:boxWidth,height:104,color:colors.pale});
+      const rows=[
+        {label:'Zwischensumme (netto)',value:offer.subtotal,offset:22,size:10,font:normal,color:colors.ink},
+        {label:'Mehrwertsteuer ('+count(offer.vat_rate)+' %)',value:offer.tax_amount,offset:44,size:10,font:normal,color:colors.ink},
+        {label:'Gesamtbetrag inkl. MwSt.',value:offer.total,offset:84,size:12.5,font:bold,color:colors.teal}
+      ];
+      page.drawLine({start:{x:x+12,y:top-59},end:{x:margin+content-6,y:top-59},thickness:1,color:colors.line});
+      rows.forEach((row,index)=>{
+        const labelSize=index===2?10.5:10,text=money(row.value);
+        const available=right-(x+12)-row.font.widthOfTextAtSize(safe(row.label),labelSize)-14;
+        const size=Math.min(row.size,available/row.font.widthOfTextAtSize(safe(text),1));
+        draw(row.label,x+12,top-row.offset,labelSize,row.font,row.color);
+        draw(text,right-row.font.widthOfTextAtSize(safe(text),size),top-row.offset,size,row.font,row.color);
+      });
+      y-=116;
+    }
     function finish(){
       const pages=pdf.getPages();
       pages.forEach((sheet,index)=>{sheet.drawLine({start:{x:margin,y:43},end:{x:width-margin,y:43},thickness:.5,color:colors.line});sheet.drawText(safe(footer),{x:margin,y:29,size:8,font:normal,color:colors.muted});const text='Seite '+(index+1)+' / '+pages.length;sheet.drawText(text,{x:width-margin-normal.widthOfTextAtSize(text,8),y:29,size:8,font:normal,color:colors.muted});});
-      pdf.setTitle(safe(title));pdf.setAuthor(safe(data.company||'Zeiterfassung'));pdf.setCreator('Zeiterfassung v857');return pdf.save();
+      pdf.setTitle(safe(title));pdf.setAuthor(safe(data.company||'Zeiterfassung'));pdf.setCreator('Zeiterfassung v858');return pdf.save();
     }
     newPage();
-    return {pdf,colors,draw,wrap,lines,heading,cards,table,room,finish,get y(){return y;},set y(value){y=value;},set context(value){context=value;},margin,content};
+    return {pdf,colors,draw,wrap,lines,heading,cards,table,offerTotals,room,finish,get y(){return y;},set y(value){y=value;},set context(value){context=value;},margin,content};
   }
   async function createTimeAccount(data){
     const year=data.year,e=await layout(data,'Jahresübersicht '+year.year,'Arbeitsstunden, Urlaub, Krankheit und NRW-Feiertage','Arbeitszeiten und Abwesenheiten');
@@ -108,9 +130,8 @@
     e.lines('Datum: '+date(offer.offer_date)+(offer.valid_until?' | Gültig bis: '+date(offer.valid_until):''),{size:9,gap:15});
     e.heading('Leistungsbeschreibung',80);e.lines(offer.title,{size:10,gap:15});e.y-=9;
     e.context=offer.offer_number;
-    e.table(['Position','Menge','Einheit','Einzelpreis','Gesamt'],offer.items.map(item=>({numeric:[1,3,4],cells:[item.name+(item.kind==='labor'?'\nArbeitsstunden':''),count(item.quantity),item.unit|| (item.kind==='labor'?'h':'Stk.'),money(item.unit_price),money(item.line_total)]})),[237,48,45,92,93.28]);
-    e.room(88);
-    for(const [label,value] of [['Zwischensumme (netto)',offer.subtotal],['MwSt. '+count(offer.vat_rate)+' %',offer.tax_amount],['Gesamtbetrag',offer.total]]){e.lines(label+': '+money(value),{size:label==='Gesamtbetrag'?14:10,color:label==='Gesamtbetrag'?e.colors.teal:e.colors.ink,gap:label==='Gesamtbetrag'?25:18,indent:240});}
+    e.table(['Position','Material / Leistung','Menge','Einheit','Einzelpreis','Gesamt'],offer.items.map((item,index)=>({numeric:[0,2,4,5],cells:[String(index+1),item.name+(item.kind==='labor'?'\nArbeitsstunden':''),count(item.quantity),item.unit|| (item.kind==='labor'?'h':'Stk.'),money(item.unit_price),money(item.line_total)]})),[44,181,48,45,97,100.28],{numericHeaders:[0,2,4,5],lastRowReserve:126});
+    e.offerTotals(offer);
     e.context='';
     if(offer.notes){e.heading('Hinweise',70);e.lines(offer.notes,{size:9,gap:14});}
     return e.finish();

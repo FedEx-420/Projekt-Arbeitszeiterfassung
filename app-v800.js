@@ -315,8 +315,8 @@
     return `<section class="page-head"><div><span class="eyebrow">Zeiterfassung von ${escape(worker()?.username || '')}</span><h2>${dateText(state.date)}</h2></div>${dayPicker()}</section><div data-day-plans>${plannedAssignmentsPanel(id, state.date)}</div>${detail}${form}<section class="list-section"><h3>Einträge des Tages</h3>${cards}</section>`;
   }
 
-  const MATERIAL_UNITS = ['Stk','M','H','Pau'];
-  function normalizeUnit(value,hourly=false) { return ({'stk':'Stk','stk.':'Stk','m':'M','h':'H','pau':'Pau'})[lower(value)] || (hourly?'H':'Stk'); }
+  const MATERIAL_UNITS = ['Stk','M','H','Pau','Kg'];
+  function normalizeUnit(value,hourly=false) { return ({'stk':'Stk','stk.':'Stk','m':'M','h':'H','pau':'Pau','kg':'Kg'})[lower(value)] || (hourly?'H':'Stk'); }
   const materialUnit = material => normalizeUnit(material?.unit,isHourlyMaterial(material));
   const itemUnit = item => normalizeUnit(item?.unit,isHourlyMaterial(item?.position_name || item?.name));
   function unitSelect(name,value,attributes='') { return `<label>Einheit<select name="${escape(name)}" class="material-unit" ${attributes}>${MATERIAL_UNITS.map(unit=>`<option value="${unit}" ${unit===value?'selected':''}>${unit}</option>`).join('')}</select></label>`; }

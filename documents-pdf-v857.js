@@ -101,7 +101,7 @@
     function finish(){
       const pages=pdf.getPages();
       pages.forEach((sheet,index)=>{sheet.drawLine({start:{x:margin,y:43},end:{x:width-margin,y:43},thickness:.5,color:colors.line});sheet.drawText(safe(footer),{x:margin,y:29,size:8,font:normal,color:colors.muted});const text='Seite '+(index+1)+' / '+pages.length;sheet.drawText(text,{x:width-margin-normal.widthOfTextAtSize(text,8),y:29,size:8,font:normal,color:colors.muted});});
-      pdf.setTitle(safe(title));pdf.setAuthor(safe(data.company||'Zeiterfassung'));pdf.setCreator('Zeiterfassung v860');return pdf.save();
+      pdf.setTitle(safe(title));pdf.setAuthor(safe(data.company||'Zeiterfassung'));pdf.setCreator('Zeiterfassung v861');return pdf.save();
     }
     newPage();
     return {pdf,colors,draw,wrap,lines,heading,cards,table,offerTotals,room,finish,get y(){return y;},set y(value){y=value;},set context(value){context=value;},margin,content};
@@ -130,7 +130,7 @@
     e.lines('Datum: '+date(offer.offer_date)+(offer.valid_until?' | Gültig bis: '+date(offer.valid_until):''),{size:9,gap:15});
     e.heading('Leistungsbeschreibung',80);e.lines(offer.title,{size:10,gap:15});e.y-=9;
     e.context=offer.offer_number;
-    e.table(['Position','Material / Leistung','Menge','Einheit','Einzelpreis','Gesamt'],offer.items.map((item,index)=>({numeric:[0,2,4,5],cells:[String(index+1),item.name+(item.kind==='labor'?'\nArbeitsstunden':''),count(item.quantity),({stk:'Stk','stk.':'Stk',m:'M',h:'H',pau:'Pau'}[String(item.unit||'').trim().toLowerCase()]||(item.kind==='labor'?'H':'Stk')),money(item.unit_price),money(item.line_total)]})),[44,181,48,45,97,100.28],{numericHeaders:[0,2,4,5],lastRowReserve:126});
+    e.table(['Position','Material / Leistung','Menge','Einheit','Einzelpreis','Gesamt'],offer.items.map((item,index)=>({numeric:[0,2,4,5],cells:[String(index+1),item.name+(item.kind==='labor'?'\nArbeitsstunden':''),count(item.quantity),({stk:'Stk','stk.':'Stk',m:'M',h:'H',pau:'Pau',kg:'Kg'}[String(item.unit||'').trim().toLowerCase()]||(item.kind==='labor'?'H':'Stk')),money(item.unit_price),money(item.line_total)]})),[44,181,48,45,97,100.28],{numericHeaders:[0,2,4,5],lastRowReserve:126});
     e.offerTotals(offer);
     e.context='';
     if(offer.notes){e.heading('Hinweise',70);e.lines(offer.notes,{size:9,gap:14});}

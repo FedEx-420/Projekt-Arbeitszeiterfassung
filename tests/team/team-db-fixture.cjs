@@ -75,6 +75,7 @@ async function fixture({legacyRecords=false,offers=false,units=false}={}) {
   if(offers)await db.exec(fs.readFileSync(path.resolve(__dirname,'../../supabase/migrations/20261005073938_offers_v857.sql'),'utf8'));
   if(units){
     await db.exec(fs.readFileSync(path.resolve(__dirname,'../../supabase/migrations/20261006122754_material_units_v860.sql'),'utf8'));
+    await db.exec(fs.readFileSync(path.resolve(__dirname,'../../supabase/migrations/20261006133602_material_unit_kg_v861.sql'),'utf8'));
     // Mirror the already installed catalog write policies for UI unit tests.
     await db.exec(`create policy material_insert on materials for insert to authenticated with check(app_private.fixture_manager(business_id) or business_id=app_private.fixture_company(auth.uid())); create policy material_manage on materials for update to authenticated using(app_private.fixture_manager(business_id)) with check(app_private.fixture_manager(business_id));`);
   }

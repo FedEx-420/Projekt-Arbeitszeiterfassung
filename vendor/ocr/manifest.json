@@ -1,0 +1,35 @@
+{
+  "version": "tesseract-6.0.1-core-6.0.0",
+  "binaryAssets": [
+    {
+      "file": "vendor/ocr/core/tesseract-core-lstm.wasm",
+      "bytes": 2871085,
+      "sha256": "220e2e87551edccb85519796a170469f8ab2a8055216789e3b8b1ada18b7bc2b"
+    },
+    {
+      "file": "vendor/ocr/core/tesseract-core-simd-lstm.wasm",
+      "bytes": 2871377,
+      "sha256": "187d76742dfc0d8929f0b49a619f145bb6370730776c7bd0d3e20c6b2098808d"
+    },
+    {
+      "file": "vendor/ocr/core/tesseract-core-simd.wasm",
+      "bytes": 3469078,
+      "sha256": "ca11ee92a02023e4f5083eefd0966fb83b297416da54e997b9f6ce445f719c9b"
+    },
+    {
+      "file": "vendor/ocr/core/tesseract-core.wasm",
+      "bytes": 3468788,
+      "sha256": "740f7e466a2f026e1f1e54a2e0d9957e386d8166110d1290224abd3d08986106"
+    },
+    {
+      "file": "vendor/ocr/languages/deu.traineddata.gz",
+      "bytes": 1333102,
+      "sha256": "306c4280d0cbed46fbff727486bd43b92730181bae80f56941a091f363bdf28b"
+    },
+    {
+      "file": "vendor/ocr/languages/eng.traineddata.gz",
+      "bytes": 2952873,
+      "sha256": "45b4cb346724ac1774f1c36f42f182b887bcdb28ebe63e6fff90ac41f3fcff91"
+    }
+  ]
+}

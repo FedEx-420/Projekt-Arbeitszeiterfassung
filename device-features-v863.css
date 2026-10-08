@@ -1,0 +1,17 @@
+.field-error{border:2px solid #c62828!important;outline:2px solid #c6282822!important;background-color:#fff8f8!important}
+.field-error-note{display:block;color:#a51b1b;font-size:.8rem;margin-top:4px}
+.form-error-summary{padding:12px;border-radius:10px;background:#fff1f0;color:#971a1a;margin:0 0 14px}
+.device-tools{display:flex;flex-wrap:wrap;gap:10px;margin:12px 0}
+.device-help{font-size:.9rem;color:#49665f;line-height:1.5}
+.device-dialog{border:0;border-radius:18px;padding:22px;width:min(760px,calc(100vw - 24px));max-height:90dvh;overflow:auto;color:#193631;box-shadow:0 18px 70px #0004}
+.device-dialog::backdrop{background:#12352d99}
+.device-dialog header{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}
+.scan-preview{display:block;max-width:100%;max-height:220px;object-fit:contain;margin:12px auto;border-radius:10px}
+.scan-line{display:grid;grid-template-columns:minmax(0,1fr) 105px 105px 40px;gap:8px;align-items:end;margin:10px 0}
+.scan-line label{min-width:0}.scan-line input{width:100%}
+.scan-totals{padding:12px;background:#edf6f3;border-radius:10px;display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.scan-status{white-space:pre-wrap}.receipt-detail{margin-top:10px}.receipt-detail summary{cursor:pointer;font-weight:600;padding:8px 0}
+.customer-order-list{margin-top:22px;border-top:1px solid #dce9e5;padding-top:18px}
+.customer-order-list .row-card{margin:8px 0}.customer-order-list .row-main{text-align:left;width:100%}
+.gps-status{white-space:pre-wrap}.device-dialog button{min-height:42px}
+@media(max-width:520px){.device-dialog{padding:16px}.scan-line{grid-template-columns:minmax(0,1fr) minmax(0,1fr) 38px}.scan-line label:first-child{grid-column:1/-1}.scan-line input{min-width:0}.device-tools>button{flex:1 1 150px}}

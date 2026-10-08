@@ -36,7 +36,8 @@ const database = {
   ],
   time_entries: [], work_orders: [], work_order_items: [],
   materials: [{ id: 'labor', business_id: 'company-one', name: 'Monteurstunde', unit_price: 55, active: true }],
-  mailbox_messages: [], mailbox_attachments: [], employee_payslips: [], work_order_documents: [], planning_requests: [], offers: []
+  mailbox_messages: [], mailbox_attachments: [], employee_payslips: [], work_order_documents: [], planning_requests: [], offers: [],
+  receipt_scans: [], company_notification_settings: [], customer_locations: [], order_arrivals: []
 };
 const notifications = [], writes = [], pageErrors = [], tests = [];
 let failPlanningGet = false;
@@ -254,7 +255,11 @@ async function main() {
       await page.locator('input[name="hours"]').fill('4');
     });
     await test('A signature remains required before saving a converted assignment', async () => {
-      assert.equal(await page.locator('[data-signature-submit]').isDisabled(), true);
+      const ordersBefore=database.work_orders.length;
+      await page.locator('[data-signature-submit]').click();
+      assert.equal(await page.locator('.signature-pad').getAttribute('aria-invalid'),'true');
+      assert.equal(await page.locator('[name="signed_by"]').getAttribute('aria-invalid'),'true');
+      assert.equal(database.work_orders.length,ordersBefore);
       await page.locator('input[name="signed_by"]').fill('Kunde Test');
       const canvas = page.locator('canvas.signature-pad'), bounds = await canvas.boundingBox();
       await page.mouse.move(bounds.x + 20, bounds.y + 40); await page.mouse.down();

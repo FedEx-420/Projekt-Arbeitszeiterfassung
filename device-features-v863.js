@@ -1,0 +1,264 @@
+/* Device features stay separate from time booking and material registration. */
+(() => {
+  'use strict';
+  const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+  const money = value => value == null || value === '' ? '' : Number(value).toFixed(2);
+  function amount(value) {
+    if (String(value ?? '').trim() === '') return null;
+    const number = Number(String(value).replace(/\s|€/g,'').replace(/\.(?=\d{3}(?:\D|$))/g,'').replace(',','.'));
+    return Number.isFinite(number) && number >= 0 ? Math.round(number * 100) / 100 : null;
+  }
+  function parseReceipt(text) {
+    const lines = String(text || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    const result = {items:[],gross:null,net:null,vatRate:null,raw:String(text || '')};
+    const rates = [...new Set([...result.raw.matchAll(/\b(19|7)[,.]?(?:00)?\s*%/g)].map(match => Number(match[1])))];
+    if (rates.length === 1) result.vatRate = rates[0];
+    for (const line of lines) {
+      const numbers = [...line.matchAll(/(?:\d{1,3}(?:\.\d{3})+|\d+)[,.]\d{2}(?!\d)/g)];
+      if (!numbers.length) continue;
+      const last = numbers.at(-1), value = amount(last[0]);
+      if (/\b(netto|net\b|nettobetrag)/i.test(line)) { result.net=value; continue; }
+      if (/\b(brutto|gesamt|summe|zu zahlen|endbetrag|total|eur\s+betrag)/i.test(line) && !/steuer|mwst|ust/i.test(line)) { result.gross=value; continue; }
+      if (/steuer|mwst|ust\b|bar\b|karte|rückgeld|gegeben|zahlung|rabatt|\bdatum\b|tel[.:]|\biban\b|\bbon\b/i.test(line)) continue;
+      const name = line.slice(0,last.index).replace(/\s+\d+[,.]\d{2}\s*$/,'').replace(/\s+[AB]\s*$/,'').trim();
+      if (/[a-zäöüß]/i.test(name) && name.length > 1) result.items.push({name,gross:value,net:null});
+    }
+    // A printed, single tax rate permits a proposed conversion. Mixed/absent
+    // rates stay blank: never invent a 19% rate or overwrite printed totals.
+    if (result.vatRate != null) {
+      for (const item of result.items) item.net=Math.round(item.gross/(1+result.vatRate/100)*100)/100;
+      if (result.net == null && result.gross != null) result.net=Math.round(result.gross/(1+result.vatRate/100)*100)/100;
+    }
+    return result;
+  }
+  function markField(field, message) {
+    field.classList.add('field-error');field.setAttribute('aria-invalid','true');
+    let note=field.parentElement.querySelector(':scope > .field-error-note');
+    if(!note){note=document.createElement('small');note.className='field-error-note';field.after(note);}
+    note.textContent=message;
+  }
+  function clearField(field) {
+    field.classList.remove('field-error');field.removeAttribute('aria-invalid');
+    field.parentElement?.querySelector(':scope > .field-error-note')?.remove();
+  }
+  function validateForm(form) {
+    if (!form || form.noValidate) return true;
+    const missing=[];
+    for (const field of form.querySelectorAll('input,select,textarea')) {
+      if (!field.willValidate) continue;
+      if ((field.required && !['checkbox','radio','file'].includes(field.type) && !field.value.trim()) || !field.validity.valid) {
+        markField(field,field.validity.valueMissing || !field.value.trim() ? 'Bitte ausfüllen.' : 'Bitte die Eingabe prüfen.');missing.push(field);
+      } else clearField(field);
+    }
+    const signature=form.querySelector('.signature-pad'), data=form.elements.signature_data?.value;
+    if(signature && (!data?.startsWith('data:image/png;base64,') || data.length<200)) {markField(signature,'Bitte unterschreiben.');missing.push(signature);}
+    else if(signature)clearField(signature);
+    form.querySelector(':scope > .form-error-summary')?.remove();
+    if(missing.length){const summary=document.createElement('p');summary.className='form-error-summary';summary.setAttribute('role','alert');summary.textContent='Bitte die rot markierten Felder vervollständigen oder korrigieren.';form.prepend(summary);missing[0].scrollIntoView({block:'center'});missing[0].focus({preventScroll:true});}
+    return !missing.length;
+  }
+  function initValidation(root) {
+    root.addEventListener('invalid',event=>{const form=event.target.closest('form');if(form)validateForm(form);},true);
+    root.addEventListener('click',event=>{const button=event.target.closest('button,input[type="submit"]');if(button&&button.form&&!button.disabled&&(button.type==='submit'||button.hasAttribute('data-signature-submit'))&&!validateForm(button.form)){event.preventDefault();event.stopImmediatePropagation();}},true);
+    root.addEventListener('submit',event=>{if(!validateForm(event.target)){event.preventDefault();event.stopImmediatePropagation();}},true);
+    root.addEventListener('input',event=>{const field=event.target;if(field.classList?.contains('field-error')&&field.validity?.valid&&(!field.required||field.value.trim()))clearField(field);});
+    root.addEventListener('change',event=>{const field=event.target;if(field.classList?.contains('field-error')&&field.validity?.valid)clearField(field);});
+  }
+  function create(ctx) {
+    const {root,state,api,write,allRows,upload,remove,download,render,businessId,workerId,isManager,isAdmin,orderForEmployee,orderHours,dateText,timeText,h,planningMeta,planEmployeeIds,logout}=ctx;
+    let scans=[],settings=[],loading=null,loadedUser='',ocr=null,dialog=null,scanForm=null,scanFile=null,scanPath='',scanId='',savedScan=null;
+    let pushActive=false,deviceBusy=false;
+    let locations=[],arrivals=[],watchId=null,watchOrder='',gpsSaving=false;
+    const metres=(a,b)=>{const rad=value=>value*Math.PI/180;const q=Math.sin(rad(a.latitude-b.latitude)/2)**2+Math.cos(rad(a.latitude))*Math.cos(rad(b.latitude))*Math.sin(rad(a.longitude-b.longitude)/2)**2;return 6371000*2*Math.asin(Math.min(1,Math.sqrt(q)));};
+    function stopGps(){if(watchId!=null)navigator.geolocation?.clearWatch(watchId);watchId=null;watchOrder='';}
+    initValidation(root);
+    const same=(a,b)=>String(a||'')===String(b||'');
+    const announce=(target,text)=>{target.textContent=text;target.setAttribute('role','status');};
+    async function load() {
+      const user=state.profile?.id;if(!user){scans=[];settings=[];locations=[];arrivals=[];stopGps();loadedUser='';return;}
+      if(loading)return loading;
+      const task=(async()=>{
+        const results=await Promise.allSettled([allRows('receipt_scans','select=*&order=receipt_date.desc,id.asc'),allRows('company_notification_settings'),allRows('customer_locations'),allRows('order_arrivals')]);
+        if(!same(state.profile?.id,user))return;
+        if(!same(loadedUser,user)){scans=[];settings=[];locations=[];arrivals=[];stopGps();}loadedUser=user;
+        if(results[0].status==='fulfilled')scans=results[0].value;
+        if(results[1].status==='fulfilled')settings=results[1].value;
+        if(results[2].status==='fulfilled')locations=results[2].value;
+        if(results[3].status==='fulfilled')arrivals=results[3].value;
+        if(navigator.serviceWorker&&window.PushManager){try{const registration=await navigator.serviceWorker.getRegistration();pushActive=!!await registration?.pushManager.getSubscription();}catch{pushActive=false;}}
+      })();loading=task;try{await task;}finally{if(loading===task)loading=null;}
+    }
+    function customerOrders(customer) {
+      return state.rows.orders.filter(order=>{
+        const matches=order.customer_id?same(order.customer_id,customer.id):String(order.customer_name||'').trim().toLocaleLowerCase('de-DE')===String(customer.name).trim().toLocaleLowerCase('de-DE');
+        if(!matches)return false;
+        if(!isManager())return orderForEmployee(order,state.profile.id);
+        const owner=state.rows.people.find(person=>same(person.id,order.employee_id));
+        return same(owner?.role==='business'?owner.id:owner?.business_id,businessId());
+      }).sort((a,b)=>String(b.work_date).localeCompare(String(a.work_date))||String(a.id).localeCompare(String(b.id)));
+    }
+    function customerOrdersHtml(customer) {
+      const orders=customerOrders(customer);
+      return `<section class="customer-order-list"><h3>Arbeitsscheine dieses Kunden (${orders.length})</h3><p class="device-help">${isManager()?'Alle Arbeitsscheine dieser Firma.':'Alle Arbeitsscheine, an denen du beteiligt bist.'}</p>${orders.map(order=>`<article class="row-card"><button type="button" class="row-main" data-action="open-order" data-id="${esc(order.id)}"><b>${dateText(order.work_date)} · ${esc(order.title||'Arbeitsschein')}</b><span>${esc(order.customer_name)} · ${timeText(order.start_time)} – ${timeText(order.end_time)} · ${h(orderHours(order,isManager()?order.employee_id:state.profile.id))}</span></button></article>`).join('')||'<p class="empty">Keine zugänglichen Arbeitsscheine vorhanden.</p>'}</section>`;
+    }
+    function scannerButton(order='') {return `<div class="device-tools"><button type="button" class="secondary" data-device-action="scan" data-order="${esc(order)}">📷 Beleg scannen</button></div>`;}
+    function scansHtml(list) {
+      return list.map(scan=>`<details class="receipt-detail"><summary>${dateText(scan.receipt_date)} · ${esc(scan.title||'Beleg')} · ${scan.gross_total==null?'Brutto offen':Number(scan.gross_total).toLocaleString('de-DE',{style:'currency',currency:'EUR'})}</summary><p>${esc(scan.category==='fuel'?'Tankbeleg':'Quittung')} · Netto: ${scan.net_total==null?'nicht erfasst':money(scan.net_total)+' €'}</p>${(scan.items||[]).map(item=>`<p>${esc(item.name)} · Brutto ${item.gross==null?'offen':money(item.gross)+' €'} · Netto ${item.net==null?'offen':money(item.net)+' €'}</p>`).join('')}<div class="device-tools">${scan.file_path?`<button type="button" class="secondary small" data-device-action="receipt-download" data-id="${esc(scan.id)}">Original herunterladen</button>`:''}<button type="button" class="danger small" data-device-action="receipt-delete" data-id="${esc(scan.id)}">Beleg löschen</button></div></details>`).join('');
+    }
+    function deviceSettings() {
+      const config=settings.find(row=>same(row.business_id,businessId()));
+      return `<section class="panel" data-device-settings><h3>Mitteilungen auf diesem Gerät</h3><p class="device-help">Terminerinnerungen erscheinen auch bei geschlossener App, wenn dieses Gerät Push erlaubt. Auf iPhone/iPad die App zuerst zum Home-Bildschirm hinzufügen. Der Sperrbildschirm zeigt keine Kunden- oder Mitarbeiterdaten.</p><div class="device-tools"><button type="button" class="secondary" data-device-action="push-enable">${pushActive?'Gerätefreigabe prüfen':'Push-Mitteilungen erlauben'}</button>${pushActive?'<button type="button" class="secondary" data-device-action="push-test">Testnachricht</button><button type="button" class="secondary" data-device-action="push-disable">Auf diesem Gerät ausschalten</button>':''}</div><p class="device-status" role="status">${pushActive?'Auf diesem Gerät erlaubt.':'Noch nicht auf diesem Gerät aktiviert.'}</p>${isAdmin()&&businessId()?`<h3>Terminerinnerungen dieser Firma</h3><form data-form="notification-settings" class="entry-form"><label class="wide"><input type="checkbox" name="enabled" ${config?.enabled?'checked':''}> Erinnerungen aktivieren</label><label>Minuten vor Termin<input name="reminder_minutes" type="number" min="0" max="10080" step="1" required value="${Number(config?.reminder_minutes??30)}"></label><label>Oder feste Uhrzeit am Termin-Tag<input name="notification_time" type="time" value="${esc(config?.notification_time?.slice(0,5)||'')}"></label><p class="wide device-help">Eine feste Uhrzeit ersetzt den Minuten-Vorlauf und muss vor dem Termin liegen. Änderungen gelten für noch nicht versendete Erinnerungen. Zeitzone: Europe/Berlin.</p><button class="primary wide">Erinnerungszeit speichern</button></form>`:config?.enabled?`<p class="device-help">Administrator-Einstellung: ${config.notification_time?esc(config.notification_time.slice(0,5))+' Uhr am Termin-Tag':Number(config.reminder_minutes)+' Minuten vorher'}.</p>`:'<p class="device-help">Die Firma hat noch keine Terminerinnerungen aktiviert.</p>'}</section>`;
+    }
+    function afterRender() {
+      for(const form of root.querySelectorAll('form')){
+        for(const field of form.querySelectorAll('[name="start"],[data-team-time="start"]'))field.required=true;
+        if(['self','employee-credentials','business-update'].includes(form.dataset.form)){
+          if(form.elements.username)form.elements.username.required=true;
+          if(form.elements.company)form.elements.company.required=true;
+        }
+      }
+      if(!state.profile)return;
+      if(new URL(location.href).searchParams.get('open')==='planning'){const url=new URL(location.href);url.searchParams.delete('open');history.replaceState(null,'',url);state.view='planning';render();return;}
+      if(watchId!=null&&!same(state.orderId,watchOrder))stopGps();
+      if(state.view==='customers'&&state.customerId){const customer=state.rows.customers.find(row=>same(row.id,state.customerId));if(customer)root.querySelector('#customer-profile')?.insertAdjacentHTML('beforeend',customerOrdersHtml(customer));}
+      for(const form of root.querySelectorAll('form[data-form="order"],form[data-form="order-edit"]')){
+        const order=form.elements.id?.value||'';form.insertAdjacentHTML('beforebegin',scannerButton(order));
+        if(order)form.insertAdjacentHTML('afterend',scansHtml(scans.filter(scan=>same(scan.work_order_id,order))));
+        if(order)form.insertAdjacentHTML('afterend',gpsHtml(state.rows.orders.find(row=>same(row.id,order))));
+      }
+      if(state.view==='receipts'){
+        const panel=root.querySelector('.content .panel');if(panel){panel.insertAdjacentHTML('beforeend',scannerButton());
+          if(!['vacations','sick','training'].includes(state.receiptSection)){const list=scans.filter(scan=>same(scan.employee_id,workerId())&&scan.category==='fuel');if(list.length){panel.querySelector('.empty')?.remove();panel.insertAdjacentHTML('beforeend',scansHtml(list));}}
+          panel.insertAdjacentHTML('beforeend',`<h3>Weitere gescannte Belege</h3>${scansHtml(scans.filter(scan=>same(scan.employee_id,workerId())&&scan.category!=='fuel'))||'<p class="empty">Noch keine weiteren Belege.</p>'}`);
+        }
+      }
+      if(state.view==='settings')root.querySelector('.content')?.insertAdjacentHTML('beforeend',deviceSettings());
+      if(state.view==='customers'&&state.customerId&&isManager())root.querySelector('#customer-profile')?.insertAdjacentHTML('beforeend',locationHtml(state.customerId));
+      if(!root.querySelector('.device-status')&&['receipts','orders','order-detail'].includes(state.view))root.querySelector('.content')?.insertAdjacentHTML('beforeend','<p class="device-status" role="status"></p>');
+    }
+    function lineHtml(item={}) {return `<div class="scan-line"><label>Artikel<input name="scan_name" maxlength="300" required value="${esc(item.name||'')}"></label><label>Brutto (€)<input name="scan_gross" inputmode="decimal" value="${money(item.gross)}"></label><label>Netto (€)<input name="scan_net" inputmode="decimal" value="${money(item.net)}"></label><button type="button" class="danger small" data-device-action="scan-remove-line" aria-label="Position entfernen">×</button></div>`;}
+    function openScanner(button) {
+      if(dialog)return;scanForm=button.parentElement.nextElementSibling?.matches('form')?button.parentElement.nextElementSibling:null;
+      const order=button.dataset.order||'';scanFile=null;scanPath='';savedScan=null;scanId=crypto.randomUUID();
+      dialog=document.createElement('dialog');dialog.className='device-dialog';dialog.dataset.order=order;
+      dialog.innerHTML=`<header><h2>Beleg scannen</h2><button type="button" class="secondary small" data-device-action="scan-close">Schließen</button></header><p class="device-help">Fotografiere den Beleg gerade und gut beleuchtet. Die Texterkennung läuft auf deinem Gerät. Alle Vorschläge bitte prüfen; nichts wird in die Materialliste übernommen.</p><form data-form="receipt-scan"><label>Foto aufnehmen oder auswählen<input name="scan_photo" type="file" accept="image/*" capture="environment"></label><img class="scan-preview" hidden alt="Ausgewählter Beleg"><div class="device-tools"><button type="button" class="secondary" data-device-action="scan-recognize">Text erkennen</button></div><p class="scan-status" role="status"></p><label>Bezeichnung<input name="title" maxlength="160" required placeholder="z. B. Tankbeleg"></label><label>Datum<input name="receipt_date" type="date" required value="${esc(state.date)}"></label><label>Kategorie<select name="category"><option value="fuel">Tankbeleg</option><option value="receipt" ${order?'selected':''}>Quittung</option><option value="training">Schulung</option></select></label><div data-scan-lines>${lineHtml()}</div><button type="button" class="secondary" data-device-action="scan-add-line">Position hinzufügen</button><div class="scan-totals"><label>Brutto gesamt (€)<input name="gross_total" inputmode="decimal"></label><label>Netto gesamt (€)<input name="net_total" inputmode="decimal"></label></div><details><summary>Erkannten Text prüfen</summary><label>Text<textarea name="ocr_text" rows="6" maxlength="30000"></textarea></label></details><p class="device-help">Beim Speichern wird das Foto als privater Beleg hochgeladen. Artikel und Beträge bleiben ausschließlich bei diesem Beleg.${order?' Zugeordnet zum geöffneten Arbeitsschein.':' Neue Arbeitsscheine: Der Beleg wird beim Abschließen mit diesem Formular verbunden.'}</p><button class="primary" type="submit">Geprüften Beleg speichern</button></form>`;
+      document.body.append(dialog);dialog.showModal();
+      dialog.addEventListener('click',handleClick);dialog.addEventListener('submit',handleSubmit);
+      dialog.addEventListener('cancel',()=>closeScanner());dialog.addEventListener('change',handlePhoto);
+      initValidation(dialog);
+    }
+    function closeScanner(){if(deviceBusy)return;const img=dialog?.querySelector('img');if(img?.dataset.blob)URL.revokeObjectURL(img.dataset.blob);dialog?.close();dialog?.remove();dialog=null;scanFile=null;scanForm=null;}
+    function handlePhoto(event){if(event.target.name!=='scan_photo')return;const file=event.target.files?.[0];if(!file)return;scanFile=file;scanPath='';const img=dialog.querySelector('img');if(img.dataset.blob)URL.revokeObjectURL(img.dataset.blob);img.src=URL.createObjectURL(file);img.dataset.blob=img.src;img.hidden=false;}
+    async function recognize() {
+      if(!scanFile)throw Error('Bitte zuerst ein Foto aufnehmen oder auswählen.');
+      if(scanFile.size>12*1024*1024)throw Error('Das Foto darf höchstens 12 MB groß sein.');
+      const status=dialog.querySelector('.scan-status');announce(status,'Texterkennung wird geladen …');
+      if(!window.Tesseract){await new Promise((resolve,reject)=>{const script=document.createElement('script');script.src='./vendor/ocr/tesseract-6.0.1.min.js';script.onload=resolve;script.onerror=()=>{script.remove();reject(Error('Die Texterkennung konnte nicht geladen werden. Bitte die Verbindung prüfen.'));};document.head.append(script);});}
+      if(!ocr)ocr=await window.Tesseract.createWorker(['deu','eng'],1,{workerPath:new URL('./vendor/ocr/worker-6.0.1.min.js',location.href).href,corePath:new URL('./vendor/ocr/core/',location.href).href,langPath:new URL('./vendor/ocr/languages/',location.href).href,logger:message=>{if(message.progress!=null)announce(status,'Text erkennen: '+Math.round(message.progress*100)+' %');}});
+      const {data}=await ocr.recognize(scanFile),parsed=parseReceipt(data.text);
+      const form=dialog.querySelector('form');form.elements.ocr_text.value=parsed.raw.slice(0,30000);form.elements.gross_total.value=money(parsed.gross);form.elements.net_total.value=money(parsed.net);
+      form.querySelector('[data-scan-lines]').innerHTML=(parsed.items.length?parsed.items:[{}]).map(lineHtml).join('');
+      announce(status,parsed.items.length?`${parsed.items.length} Positionsvorschläge gefunden. Bitte Namen und Netto-/Bruttobeträge prüfen${parsed.vatRate!=null?' (Netto teilweise aus gedruckten '+parsed.vatRate+' % berechnet)':''}.`:'Keine sicheren Positionen gefunden. Du kannst die Angaben unten manuell ergänzen.');
+    }
+    async function saveScan(form) {
+      const items=[...form.querySelectorAll('.scan-line')].map(line=>({name:line.querySelector('[name="scan_name"]').value.trim(),gross:amount(line.querySelector('[name="scan_gross"]').value),net:amount(line.querySelector('[name="scan_net"]').value)}));
+      const numeric=[...form.querySelectorAll('[name="scan_gross"],[name="scan_net"],[name="gross_total"],[name="net_total"]')];
+      for(const field of numeric)if(field.value.trim()&&amount(field.value)==null){markField(field,'Bitte einen gültigen Betrag eingeben.');throw Error('Bitte die rot markierten Beträge korrigieren.');}
+      const actor=state.profile.id,employee=workerId(),order=dialog.dataset.order||null;
+      if(!scanPath&&scanFile){const path=`${actor}/receipt-${scanId}-${scanFile.name.replace(/[^a-z0-9._-]/gi,'_')}`;await upload('work-order-documents',path,scanFile);scanPath=path;}
+      const payload={id:scanId,business_id:businessId(),employee_id:employee,work_order_id:order,title:form.elements.title.value.trim(),receipt_date:form.elements.receipt_date.value,category:form.elements.category.value,items,gross_total:amount(form.elements.gross_total.value),net_total:amount(form.elements.net_total.value),ocr_text:form.elements.ocr_text.value.slice(0,30000),file_path:scanPath||null,file_name:scanFile?.name||null};
+      let record;
+      try{record=(await write('receipt_scans',payload))?.[0];}
+      catch(error){if(error.code!=='23505')throw error;record=(await allRows('receipt_scans',`select=*&id=eq.${scanId}`))[0];}
+      if(!record?.id)throw Error('Der Beleg konnte nicht bestätigt werden. Bitte nochmals speichern.');
+      savedScan=record;scans=[record,...scans.filter(row=>!same(row.id,record.id))];
+      if(scanForm&&!order)scanForm.dataset.receiptScans=JSON.stringify([...(JSON.parse(scanForm.dataset.receiptScans||'[]')),record.id]);
+      const status=dialog.querySelector('.scan-status');announce(status,'Beleg gespeichert. Keine Materialien wurden angelegt.');
+      form.querySelectorAll('input,select,textarea,button').forEach(field=>field.disabled=true);
+      dialog.querySelector('[data-device-action="scan-close"]').disabled=false;
+    }
+    async function attachReceipts(form,order) {
+      const ids=JSON.parse(form?.dataset.receiptScans||'[]');
+      for(const id of ids)await write('receipt_scans',{work_order_id:order.id},'PATCH',`id=eq.${encodeURIComponent(id)}`);
+      if(form)form.dataset.receiptScans='[]';
+    }
+    const publicKeyBytes=value=>Uint8Array.from(atob(value.replace(/-/g,'+').replace(/_/g,'/').padEnd(Math.ceil(value.length/4)*4,'=')),char=>char.charCodeAt(0));
+    async function enablePush() {
+      if(!('serviceWorker' in navigator)||!('PushManager' in window)||!('Notification' in window))throw Error('Dieses Gerät unterstützt hier kein Web-Push. Auf iPhone/iPad bitte über Safari zum Home-Bildschirm hinzufügen und dort öffnen.');
+      // requestPermission must happen directly after a user's click.
+      const permission=await Notification.requestPermission();if(permission!=='granted')throw Error('Mitteilungen wurden nicht erlaubt. Du kannst dies in den Geräte-/Browsereinstellungen ändern.');
+      const data=await api('/functions/v1/appointment-reminders?action=public-key');
+      if(!data?.publicKey)throw Error('Push ist auf dem Server noch nicht eingerichtet.');
+      const registration=await navigator.serviceWorker.ready;
+      let subscription=await registration.pushManager.getSubscription();
+      if(!subscription)subscription=await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:publicKeyBytes(data.publicKey)});
+      const existing=await allRows('push_subscriptions',`select=*&endpoint=eq.${encodeURIComponent(subscription.endpoint)}`),json=subscription.toJSON();
+      const row={user_id:state.profile.id,endpoint:json.endpoint,p256dh:json.keys.p256dh,auth:json.keys.auth,enabled:true};
+      if(existing[0])await write('push_subscriptions',row,'PATCH',`id=eq.${existing[0].id}`);
+      else await write('push_subscriptions',row);
+      pushActive=true;
+    }
+    async function disablePush() {
+      try{const registration=await navigator.serviceWorker?.getRegistration(),subscription=await registration?.pushManager.getSubscription();if(subscription){await subscription.unsubscribe();await remove('push_subscriptions',`user_id=eq.${state.profile.id}&endpoint=eq.${encodeURIComponent(subscription.endpoint)}`);}}
+      finally{pushActive=false;}
+    }
+    async function saveSettings(form) {
+      if(!isAdmin())throw Error('Nur der Administrator darf die Erinnerungszeit festlegen.');
+      const old=settings.find(row=>same(row.business_id,businessId())),payload={business_id:businessId(),enabled:form.elements.enabled.checked,reminder_minutes:Number(form.elements.reminder_minutes.value),notification_time:form.elements.notification_time.value||null};
+      if(old)await write('company_notification_settings',payload,'PATCH',`business_id=eq.${businessId()}`);else await write('company_notification_settings',payload);
+      await load();
+    }
+    async function run(button,task,target) {
+      if(deviceBusy)return;deviceBusy=true;button.disabled=true;
+      try{await task();if(target&&!target.closest('dialog'))announce(target,'Gespeichert.');}
+      catch(error){if(target)announce(target,error.message||'Die Aktion konnte nicht ausgeführt werden.');}
+      finally{deviceBusy=false;if(button.isConnected&&!(savedScan&&button.closest('form[data-form="receipt-scan"]')))button.disabled=false;}
+    }
+    function handleClick(event) {
+      const button=event.target.closest('[data-device-action]');if(!button)return;
+      event.preventDefault();const action=button.dataset.deviceAction;
+      if(action==='scan'){openScanner(button);return;}
+      if(action==='scan-close'){const refresh=savedScan&&!scanForm;closeScanner();if(refresh)render();return;}
+      if(action==='scan-add-line'){dialog.querySelector('[data-scan-lines]').insertAdjacentHTML('beforeend',lineHtml());return;}
+      if(action==='scan-remove-line'){button.closest('.scan-line').remove();return;}
+      const status=dialog?.querySelector('.scan-status')||root.querySelector('.device-status');
+      if(action==='scan-recognize')return run(button,recognize,status);
+      if(action==='push-enable')return run(button,async()=>{await enablePush();render();},status);
+      if(action==='push-disable')return run(button,async()=>{await disablePush();render();},status);
+      if(action==='push-test')return run(button,async()=>{const result=await api('/functions/v1/appointment-reminders?action=test',{method:'POST',body:{}});if(!result?.sent)throw Error('Die Testmitteilung konnte noch nicht zugestellt werden. Bitte die Gerätefreigabe prüfen.');},status);
+      if(action==='gps-watch')return startGps(button);
+      if(action==='gps-stop'){stopGps();announce(root.querySelector('.gps-status'),'Ankunftserkennung beendet.');return;}
+      if(action==='gps-manual')return run(button,()=>captureArrival(button.dataset.order,'manual'),root.querySelector('.gps-status'));
+      if(action==='customer-location-here')return run(button,async()=>{const position=await positionOnce(),form=button.closest('form');form.elements.latitude.value=position.coords.latitude.toFixed(7);form.elements.longitude.value=position.coords.longitude.toFixed(7);announce(root.querySelector('.location-status'),'Position übernommen. Bitte als Kundenstandort speichern.');},root.querySelector('.location-status'));
+      const scan=scans.find(row=>same(row.id,button.dataset.id));
+      if(action==='receipt-download'&&scan?.file_path)return run(button,()=>download('work-order-documents',scan.file_path,scan.file_name||'Beleg'),status);
+      if(action==='receipt-delete'&&scan&&confirm('Diesen Beleg wirklich löschen?'))return run(button,async()=>{await remove('receipt_scans',`id=eq.${scan.id}`);scans=scans.filter(row=>!same(row.id,scan.id));render();},status);
+    }
+    function handleSubmit(event) {
+      const form=event.target,name=form.dataset.form;
+      if(!['receipt-scan','notification-settings','customer-location'].includes(name))return;
+      event.preventDefault();event.stopImmediatePropagation();if(!validateForm(form))return;
+      const button=event.submitter||form.querySelector('button[type="submit"],button.primary');
+      run(button,()=>name==='receipt-scan'?saveScan(form):name==='customer-location'?saveLocation(form):saveSettings(form),dialog?.querySelector('.scan-status')||root.querySelector(name==='customer-location'?'.location-status':'.device-status'));
+    }
+    root.addEventListener('click',handleClick);
+    root.addEventListener('submit',handleSubmit,true);
+    root.addEventListener('click',event=>{
+      if(event.target.closest('[data-action="logout"]')){
+        event.preventDefault();event.stopImmediatePropagation();if(deviceBusy)return;
+        stopGps();deviceBusy=true;Promise.race([Promise.resolve(disablePush()).catch(()=>{}),new Promise(resolve=>setTimeout(resolve,1500))]).finally(()=>{deviceBusy=false;scans=[];settings=[];locations=[];arrivals=[];loadedUser='';closeScanner();logout();});
+      }
+    },true);
+    function locationHtml(customerId){const loc=locations.find(row=>same(row.customer_id,customerId));return `<section class="customer-order-list"><h3>Standort für Ankunftserkennung</h3><p class="device-help">Dieser Standort muss tatsächlich zur Kundenadresse gehören. Nach einer Adressänderung bitte prüfen. Keine Adresse wird an einen externen Kartendienst gesendet.</p><form data-form="customer-location" class="entry-form"><input type="hidden" name="customer_id" value="${esc(customerId)}"><label>Breitengrad<input name="latitude" type="number" step="any" min="-90" max="90" required value="${loc?.latitude??''}"></label><label>Längengrad<input name="longitude" type="number" step="any" min="-180" max="180" required value="${loc?.longitude??''}"></label><label>Umkreis (Meter)<input name="radius_m" type="number" min="50" max="500" required value="${loc?.radius_m??150}"></label><button type="button" class="secondary" data-device-action="customer-location-here">Meine aktuelle Position übernehmen</button><button class="primary">Kundenstandort speichern</button></form><p class="location-status" role="status"></p></section>`;}
+    async function saveLocation(form){const customer=form.elements.customer_id.value,payload={customer_id:customer,business_id:businessId(),latitude:Number(form.elements.latitude.value),longitude:Number(form.elements.longitude.value),radius_m:Number(form.elements.radius_m.value)},old=locations.find(row=>same(row.customer_id,customer));const saved=(old?await write('customer_locations',payload,'PATCH',`customer_id=eq.${customer}`):await write('customer_locations',payload))?.[0];if(!saved)throw Error('Der Standort konnte nicht bestätigt werden.');locations=[saved,...locations.filter(row=>!same(row.customer_id,customer))];}
+    const gpsError=error=>Error(error.code===1?'Standortfreigabe wurde nicht erteilt.':error.code===3?'Standort konnte nicht rechtzeitig bestimmt werden. Bitte nochmals versuchen.':'Standort ist auf diesem Gerät gerade nicht verfügbar.');
+    function positionOnce(){if(!navigator.geolocation)throw Error('Dieses Gerät stellt hier keinen Standort bereit.');return new Promise((resolve,reject)=>navigator.geolocation.getCurrentPosition(resolve,error=>reject(gpsError(error)),{enableHighAccuracy:true,timeout:20000,maximumAge:0}));}
+    function gpsHtml(order){if(!order)return '';const rows=arrivals.filter(row=>same(row.work_order_id,order.id)),own=rows.find(row=>same(row.employee_id,state.profile.id));const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Berlin',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());const allowed=orderForEmployee(order,state.profile.id)&&order.work_date===today&&!own;return `<section class="customer-order-list"><h3>Ankunft beim Kunden</h3>${rows.map(row=>`<p>${esc(state.rows.people.find(person=>same(person.id,row.employee_id))?.display_name||state.rows.people.find(person=>same(person.id,row.employee_id))?.username||'Mitarbeiter')}: ${new Intl.DateTimeFormat('de-DE',{timeZone:'Europe/Berlin',dateStyle:'short',timeStyle:'short'}).format(new Date(row.arrived_at))} · GPS-Genauigkeit ±${Math.round(row.accuracy_m)} m</p>`).join('')||'<p>Noch keine Ankunft erfasst.</p>'}${allowed?`<p class="device-help">Freiwillig: Die Ankunftserkennung prüft deinen Standort nur bei geöffnetem Auftrag und sichtbarer App. Gespeichert wird nur die erste Ankunft, kein Bewegungsverlauf. Arbeitszeiten werden dadurch nicht automatisch gebucht. Browser-GPS ist kein manipulationssicherer Anwesenheitsnachweis.</p><div class="device-tools"><button type="button" class="secondary" data-device-action="gps-watch" data-order="${esc(order.id)}">GPS-Ankunftserkennung starten</button><button type="button" class="secondary" data-device-action="gps-manual" data-order="${esc(order.id)}">Ankunft jetzt mit GPS erfassen</button><button type="button" class="secondary" data-device-action="gps-stop">Erkennung stoppen</button></div>`:''}<p class="gps-status" role="status">${watchId==null?'Standortprüfung ist aus.':'Standortprüfung läuft nur bei sichtbarer App.'}</p></section>`;}
+    async function captureArrival(orderId,source,position){const user=state.profile.id;position=position||await positionOnce();if(!same(user,state.profile?.id))throw Error('Die Anmeldung wurde geändert.');const coord=position.coords,payload={work_order_id:orderId,employee_id:user,business_id:businessId(),latitude:coord.latitude,longitude:coord.longitude,accuracy_m:coord.accuracy,source};let saved;try{saved=(await write('order_arrivals',payload))?.[0];}catch(error){if(error.code!=='23505')throw error;saved=(await allRows('order_arrivals',`select=*&work_order_id=eq.${orderId}&employee_id=eq.${user}`))[0];}if(!saved)throw Error('Die Ankunft konnte nicht bestätigt werden.');arrivals=[saved,...arrivals.filter(row=>!(same(row.work_order_id,orderId)&&same(row.employee_id,user)))];stopGps();const status=root.querySelector('.gps-status');if(status)announce(status,'Ankunft gespeichert: '+new Intl.DateTimeFormat('de-DE',{timeStyle:'short'}).format(new Date(saved.arrived_at))+' Uhr. Arbeitsstunden unverändert.');}
+    function startGps(button){const status=root.querySelector('.gps-status'),order=state.rows.orders.find(row=>same(row.id,button.dataset.order)),target=locations.find(row=>same(row.customer_id,order?.customer_id));if(!target){announce(status,'Der Kundenstandort fehlt. Bitte die Geschäftsverwaltung bitten, ihn beim Kunden festzulegen.');return;}if(!navigator.geolocation){announce(status,'Standort ist hier nicht verfügbar.');return;}stopGps();watchOrder=order.id;announce(status,'Standortfreigabe angefragt. Erkennung läuft nur bei sichtbarer App.');watchId=navigator.geolocation.watchPosition(async position=>{if(document.visibilityState!=='visible'||!same(state.orderId,order.id)){stopGps();return;}const distance=metres(position.coords,target);if(position.coords.accuracy>100||distance>target.radius_m){announce(status,`Noch keine sichere Ankunft: ${Math.round(distance)} m zum Kunden; Genauigkeit ±${Math.round(position.coords.accuracy)} m.`);return;}if(gpsSaving)return;gpsSaving=true;try{await captureArrival(order.id,'proximity',position);}catch(error){stopGps();announce(status,error.message);}finally{gpsSaving=false;}},error=>{stopGps();announce(status,gpsError(error).message);},{enableHighAccuracy:true,timeout:20000,maximumAge:10000});}
+    document.addEventListener('visibilitychange',()=>{if(document.visibilityState!=='visible'){stopGps();const status=root.querySelector('.gps-status');if(status)announce(status,'Standortprüfung beendet: App wurde in den Hintergrund gelegt.');}});
+    navigator.serviceWorker?.addEventListener('message',event=>{if(event.data?.type==='WORKTIME_OPEN_PLANNING'&&state.profile){state.view='planning';state.menu=false;render();}});
+    return {load,afterRender,attachReceipts,customerOrders,customerOrdersHtml};
+  }
+  window.WorktimeDeviceFeatures={create,parseReceipt,validateForm};
+})();

@@ -16,24 +16,27 @@
   /* BEGIN SESSION AUTH V859
    * Keep auth in the app bundle so previously cached index pages also work.
    * Only a definite JWT-expiry rejection may replay a write, once. */
-  function createSessionAuth({base,key,storage,getSession,setSession}){
+  function createSessionAuth({base,key,storage,getSession,setSession,transientStore=null}){
     let refreshing=null;
     const failure=(message,code='SESSION_EXPIRED')=>Object.assign(new Error(message),{code});
     const changed=()=>failure('Die Anmeldung wurde geändert. Bitte erneut anmelden.','SESSION_CHANGED');
     const expired=()=>failure('Deine Anmeldung ist abgelaufen. Bitte erneut anmelden und danach nochmals speichern.');
-    const read=()=>{try{return JSON.parse(localStorage.getItem(storage)||'null');}catch{return null;}};
+    const activeStore=()=>getSession()?.remember_device===false&&transientStore?transientStore:localStorage;
+    const read=()=>{try{return JSON.parse(activeStore().getItem(storage)||'null');}catch{return null;}};
     const sameUser=(a,b)=>!!a?.user?.id&&a.user.id===b?.user?.id;
     function expiresAt(session){
       if(Number(session?.expires_at)>0)return Number(session.expires_at);
       try{const payload=session.access_token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/');return Number(JSON.parse(atob(payload)).exp)||0;}catch{return 0;}
     }
     const due=session=>{const expires=expiresAt(session);return !!expires&&expires<=Date.now()/1000+90;};
-    function install(session){
-      const result={...session};
+    function install(session,remember=session?.remember_device??getSession()?.remember_device??true){
+      const result={...session,remember_device:remember};
       if(!expiresAt(result)&&Number(result.expires_in)>0)result.expires_at=Math.floor(Date.now()/1000)+Number(result.expires_in);
-      setSession(result);localStorage.setItem(storage,JSON.stringify(result));return result;
+      setSession(result);activeStore().setItem(storage,JSON.stringify(result));
+      if(transientStore)(remember?transientStore:localStorage).removeItem(storage);
+      localStorage.removeItem('zeiterfassung-session-v700');return result;
     }
-    function clear(){setSession(null);localStorage.removeItem(storage);localStorage.removeItem('zeiterfassung-session-v700');}
+    function clear(){setSession(null);localStorage.removeItem(storage);transientStore?.removeItem(storage);localStorage.removeItem('zeiterfassung-session-v700');}
     async function refresh(rejectedToken=null){
       const original=getSession();if(!original?.access_token)throw expired();
       if(refreshing){await refreshing;const current=getSession();if(!sameUser(original,current))throw changed();return current;}
@@ -47,7 +50,7 @@
         if(stored?.access_token&&stored.access_token!==original.access_token){setSession(stored);current=stored;}
         if((!rejectedToken||current.access_token!==rejectedToken)&&!due(current))return current;
         if(!current.refresh_token)throw expired();
-        const storedBefore=localStorage.getItem(storage);
+        const storedBefore=activeStore().getItem(storage);
         let response;
         try{response=await fetch(base+'/auth/v1/token?grant_type=refresh_token',{method:'POST',headers:{apikey:key,'Content-Type':'application/json'},body:JSON.stringify({refresh_token:current.refresh_token})});}
         catch{throw failure('Die Anmeldung konnte gerade nicht erneuert werden. Bitte die Verbindung prüfen und nochmals speichern.','SESSION_REFRESH_UNAVAILABLE');}
@@ -55,7 +58,7 @@
         if(!response.ok){if(response.status===400||response.status===401||response.status===403)throw expired();throw failure('Die Anmeldung konnte gerade nicht erneuert werden. Bitte später nochmals speichern.','SESSION_REFRESH_UNAVAILABLE');}
         if(!data?.access_token||!data.refresh_token||!sameUser(data,current))throw failure('Die Anmeldung konnte nicht sicher erneuert werden. Bitte erneut anmelden.');
         // A late response must never undo logout or replace a newer login.
-        if(getSession()!==current||localStorage.getItem(storage)!==storedBefore)throw changed();
+        if(getSession()!==current||activeStore().getItem(storage)!==storedBefore)throw changed();
         return install(data);
       };
       const pending=(navigator.locks?.request?navigator.locks.request(storage+'-refresh',run):run());
@@ -90,7 +93,7 @@
     return {request,ensure,install,clear};
   }
   /* END SESSION AUTH V859 */
-  const auth = createSessionAuth({base,key,storage,getSession:()=>state.session,setSession:session=>{state.session=session;}});
+  const auth = createSessionAuth({base,key,storage,transientStore:sessionStorage,getSession:()=>state.session,setSession:session=>{state.session=session;}});
 
   const escape = value => String(value ?? '').replace(/[&<>'"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[ch]);
   const n = value => Number(value || 0);
@@ -146,7 +149,7 @@
     const key = loginCompanyKey(company || ''), names = [...new Set([loginUsernameKey(username), legacyLoginUsernameKey(username)].filter(Boolean))];
     return administratorLogin ? names.map(name => `${name}@arbeitszeit.local`) : key ? names.map(name => `${name}--${key}@arbeitszeit.local`) : [];
   }
-  async function login(username, password, company, administratorLogin = false) {
+  async function login(username, password, company, administratorLogin = false, rememberDevice = false) {
     const name = String(username || '').trim();
     if (name.length < 3 || name.length > 80 || /[\u0000-\u001F\u007F]/.test(name)) throw new Error('Bitte einen gültigen Benutzernamen eingeben. Leerzeichen innerhalb des Namens sind erlaubt.');
     if (!administratorLogin && !loginCompanyKey(company || '')) throw new Error('Bitte die Firma eingeben. Nur das Administratorkonto meldet sich ohne Firma an.');
@@ -156,7 +159,7 @@
       catch (error) { lastError = error; }
     }
     if (!data) throw lastError || new Error('Firma, Benutzername oder Passwort sind nicht korrekt.');
-    auth.install(data);
+    auth.install(data,rememberDevice);
     const own = await rows('profiles', `select=role&id=eq.${encodeURIComponent(data.user.id)}`), role = own?.[0]?.role;
     if ((administratorLogin && role !== 'administrator') || (!administratorLogin && role === 'administrator')) {
       try { await api('/auth/v1/logout', { method: 'POST' }); } catch { /* Session wird anschließend lokal verworfen. */ }
@@ -277,7 +280,7 @@
     return [...days].reduce((sum, [date, value]) => sum + value - dueHours(date), 0);
   }
 
-  function loginView() { return `<main class="login-page"><section class="login-card"><div class="brand-mark">ZE</div><h1>Zeiterfassung</h1><p>Arbeitszeiten einfach und sicher erfassen.</p><form data-form="login"><label>Firma<input name="company" autocomplete="organization" placeholder="Firmenname" required></label><label>Benutzername<input name="username" autocomplete="username" required></label><label>Passwort<input name="password" type="password" autocomplete="current-password" required></label><label class="login-admin"><input name="administrator_login" type="checkbox"> Anmeldung als Administrator (nur dann ohne Firma)</label><button class="primary" ${state.busy ? 'disabled' : ''}>Anmelden</button></form><button class="link-button" type="button" data-action="forgot">Passwort vergessen?</button>${noticeHtml()}</section></main>`; }
+  function loginView() { return `<main class="login-page"><section class="login-card"><div class="brand-mark">ZE</div><h1>Zeiterfassung</h1><p>Arbeitszeiten einfach und sicher erfassen.</p><form data-form="login"><label>Firma<input name="company" autocomplete="organization" placeholder="Firmenname" required></label><label>Benutzername<input name="username" autocomplete="username" required></label><label>Passwort<input name="password" type="password" autocomplete="current-password" required></label><label class="login-admin"><input name="administrator_login" type="checkbox"> Anmeldung als Administrator (nur dann ohne Firma)</label><label>Beim nächsten Mal auf diesem Gerät angemeldet bleiben?<select name="remember_device" required><option value="">Bitte auswählen</option><option value="yes">Ja, auf diesem Gerät</option><option value="no">Nein, nur für diese Sitzung</option></select></label><p class="device-help">Nur auf einem eigenen, geschützten Gerät wählen. Dein Passwort wird nicht gespeichert. Abmelden beendet die Geräteanmeldung.</p><button class="primary" ${state.busy ? 'disabled' : ''}>Anmelden</button></form><button class="link-button" type="button" data-action="forgot">Passwort vergessen?</button>${noticeHtml()}</section></main>`; }
   function menuItems() { return [['home','Übersicht',true],['time','Zeiterfassung',canUse('time')],['orders','Arbeitsscheine',canUse('orders')],['calendar','Kalender',canUse('calendar')],['customers','Kunden',canUse('customers')],['mailbox','Postfach',true],['materials','Materialliste',isManager()],['invoices','Abrechnungen Kunden',isManager()],['invoices-paid','Abgerechnete Arbeitsscheine',isManager()],['settings','Einstellungen',true]].filter(([, , yes]) => yes); }
   function selector() {
     if (!isManager()) return '';
@@ -622,6 +625,7 @@
     state.materialId = '';
   }
   async function saveDocuments(form, order, employee) {
+    await deviceFeatures?.attachReceipts(form,order);
     for (const file of [...(form.elements.documents?.files || [])]) { const safe = file.name.replace(/[^A-Za-z0-9._-]/g, '_'); const path = `${employee}/${order.id}-${Date.now()}-${safe}`; await upload('work-order-documents', path, file); await write('work_order_documents', { work_order_id: order.id, employee_id: employee, file_path: path, file_name: file.name, mime_type: file.type || null }); }
   }
   async function deleteWorkOrderCompletely(orderId) {
@@ -647,7 +651,8 @@
   function syncSignatureSubmit(form) {
     if (!form) return;
     const button = form.querySelector('[data-signature-submit]'), signedBy = String(form.elements.signed_by?.value || '').trim(), signatureData = String(form.elements.signature_data?.value || '');
-    if (button) button.disabled = !signedBy || !signatureData.startsWith('data:image/png;base64,') || signatureData.length < 200;
+    if (button) { button.disabled = state.busy; button.dataset.signatureReady=String(!!signedBy && signatureData.startsWith('data:image/png;base64,') && signatureData.length >= 200); }
+    if(signatureData.startsWith('data:image/png;base64,') && signatureData.length>=200){const canvas=form.querySelector('.signature-pad');canvas?.classList.remove('field-error');canvas?.removeAttribute('aria-invalid');canvas?.parentElement.querySelector(':scope > .field-error-note')?.remove();}
   }
   function clearSignaturePad(canvas) {
     if (!canvas) return;
@@ -833,7 +838,7 @@
     if (action === 'pick-day') { state.date = button.dataset.date; state.month = state.date.slice(0, 7); state.timeEntryId = ''; state.vacationForm = false; render(); return; }
     if (action === 'month') { const date = new Date(`${state.month}-01T12:00:00`); date.setMonth(date.getMonth() + n(button.dataset.value)); state.month = date.toISOString().slice(0, 7); render(); return; }
     if (action === 'vacation-form') { state.vacationForm = true; render(); return; }
-    if (action === 'open-order') { const order = state.rows.orders.find(row => same(row.id, button.dataset.id)); if (!order) return; const person = state.rows.people.find(row => same(row.id, order.employee_id)); if (isAdmin() && person?.business_id) state.businessId = person.business_id; state.employeeId = order.employee_id; state.date = order.work_date; state.month = state.date.slice(0, 7); state.orderId = order.id; state.timeEntryId = ''; state.orderOrigin = ['invoices', 'invoices-paid', 'billing-detail', 'planning'].includes(state.view) ? state.view : 'orders'; state.view = 'order-detail'; state.menu = false; render(); return; }
+    if (action === 'open-order') { const order = state.rows.orders.find(row => same(row.id, button.dataset.id)); if (!order) return; const person = state.rows.people.find(row => same(row.id, order.employee_id)); if (isAdmin() && person?.business_id) state.businessId = person.business_id; state.employeeId = order.employee_id; state.date = order.work_date; state.month = state.date.slice(0, 7); state.orderId = order.id; state.timeEntryId = ''; state.orderOrigin = ['invoices', 'invoices-paid', 'billing-detail', 'planning', 'customers'].includes(state.view) ? state.view : 'orders'; state.view = 'order-detail'; state.menu = false; render(); return; }
     if (action === 'open-time') {
       const entry = state.rows.entries.find(row => same(row.id, button.dataset.id));
       if (!entry) return;
@@ -941,7 +946,7 @@
     const form = event.target; if (!(form instanceof HTMLFormElement)) return;
     event.preventDefault(); const name = form.dataset.form;
     const submitters = {
-      login: () => login(form.elements.username.value, form.elements.password.value, form.elements.company.value, form.elements.administrator_login?.checked === true),
+      login: () => login(form.elements.username.value, form.elements.password.value, form.elements.company.value, form.elements.administrator_login?.checked === true, form.elements.remember_device?.value === 'yes'),
       time: () => saveTime(form), order: () => saveOrder(form), 'order-edit': () => updateOrder(form), customer: () => saveCustomer(form),
       material: () => { if (isHourlyMaterial(form.elements.name.value)) throw new Error('Diese geschützte Stundenposition ist bereits vorhanden.'); return write('materials', { business_id: businessId(), name: String(form.elements.name.value || '').trim(), unit_price: n(form.elements.price.value), unit: normalizeUnit(form.elements.unit?.value), active: true }); },
       'hourly-price': () => updateHourlyPrice(form),
@@ -1034,9 +1039,10 @@
     const windowRef = window.open('', '_blank'); if (!windowRef) throw new Error('Bitte Pop-ups erlauben, um die PDF zu erstellen.');
     windowRef.document.write(`<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Zeiterfassungsnachweis</title><style>${pdfStyles()}</style></head><body><main class="pdf-page">${pdfBrandHeader('Zeiterfassungsnachweis', state.date.slice(0, 4))}<section class="pdf-grid"><article class="pdf-card"><span class="pdf-card-label">Mitarbeiter</span><b>${escape(person?.display_name || person?.username || '')}</b></article><article class="pdf-card"><span class="pdf-card-label">Jahresübersicht</span>${h(totalHours)} Arbeitsstunden<br>${h(overtime(id))} Überstunden<br>${vacationLeft(id)} Urlaubstage übrig · ${annualSick(id)} Krankheitstage</article></section><section class="pdf-section"><h2>Erfasste Zeiten</h2><table class="pdf-table"><thead><tr><th>Datum</th><th>Kunde</th><th>Von</th><th>Bis</th><th class="number">Pause</th><th class="number">Stunden</th></tr></thead><tbody>${lines || '<tr><td colspan="6" class="pdf-empty">Keine Zeiterfassungen vorhanden.</td></tr>'}</tbody></table></section><p class="pdf-note">Automatisch aus der Arbeitszeiterfassung erstellt.</p></main><script>window.onload=()=>window.print()<\/script></body></html>`); windowRef.document.close(); addPdfReturnBar(windowRef);
   }
-  function render() { if (!root) return; if (!base || !key) { root.innerHTML = '<main class="login-page"><section class="login-card"><h1>Zeiterfassung</h1><p>Die App-Konfiguration fehlt.</p></section></main>'; return; } root.innerHTML = state.session && state.profile ? appView() : loginView(); setupCustomerSearch(); setupSignaturePads(); setupPlanningCustomerLookup(); updatePlanningWarnings(root.querySelector('form[data-form="planning"]')); updateAssignmentHint(root.querySelector('form[data-form="time"], form[data-form="order"]')); }
+  const deviceFeatures=window.WorktimeDeviceFeatures?.create({root,state,api,write,allRows,upload,remove,download,render,businessId,workerId,isManager,isAdmin,orderForEmployee,orderHours,dateText,timeText,h,planningMeta,planEmployeeIds,logout});
+  function render() { if (!root) return; if (!base || !key) { root.innerHTML = '<main class="login-page"><section class="login-card"><h1>Zeiterfassung</h1><p>Die App-Konfiguration fehlt.</p></section></main>'; return; } root.innerHTML = state.session && state.profile ? appView() : loginView(); setupCustomerSearch(); setupSignaturePads(); setupPlanningCustomerLookup(); updatePlanningWarnings(root.querySelector('form[data-form="planning"]')); updateAssignmentHint(root.querySelector('form[data-form="time"], form[data-form="order"]')); deviceFeatures?.afterRender(); }
   window.addEventListener('unhandledrejection', event => { event.preventDefault(); notice('Die Aktion konnte nicht ausgeführt werden. Bitte erneut versuchen.', true); render(); });
-  state.session = parse(localStorage.getItem(storage) || localStorage.getItem('zeiterfassung-session-v700'));
+  state.session = parse(sessionStorage.getItem(storage) || localStorage.getItem(storage) || localStorage.getItem('zeiterfassung-session-v700'));
   if (state.session?.access_token) loadApp(); else render();
 
   // Safety net: always load every available result page and never clear a verified history after a temporary connection error.
@@ -1068,6 +1074,7 @@
     if (isAdmin() && !businesses().some(person => same(person.id, state.businessId))) state.businessId = businesses()[0]?.id || '';
     if (!workers().some(person => same(person.id, state.employeeId))) state.employeeId = workers()[0]?.id || state.profile.id;
     await loadTeamContext();
+    await deviceFeatures?.load();
     if (issues.length) notice('Ein Teil der Daten konnte gerade nicht erneut synchronisiert werden. Bereits geladene Aufträge bleiben sichtbar.', true);
   }
   function recordedPeriods(id = workerId(), date = '') {

@@ -93,11 +93,13 @@
         let customer=customers().find(row=>lower(row.name)===lower(data.customer_name));
         if(!customer&&lower(data.resolved_customer_name)!==lower(data.customer_name))customer=chooseSimilar(data.customer_name,customers(),'Kunden');
         if(customer&&!same(data.customer_id,customer.id)){fillCustomer(form,customer);Object.assign(data,{customer_id:customer.id,customer_name:customer.name,customer_snapshot:snapshot(form).customer_snapshot});}
+        if(!customer){data.customer_id=null;form.elements.customer_id.value='';}
         form.dataset.resolvedCustomerName=data.customer_name;update(form);
         data.items=data.items.map((item,index)=>{
           const records=materials(item.kind);let material=records.find(row=>lower(row.name)===lower(item.name));
           if(!material&&lower(item.resolved_name)!==lower(item.name))material=chooseSimilar(item.name,records,'Artikel');
           if(material&&!same(item.material_id,material.id)){const row=form.querySelectorAll('[data-offer-line]')[index];row.querySelector('[data-offer-name]').value=material.name;row.querySelector('[data-offer-price]').value=n(material.unit_price);row.dataset.materialId=material.id;row.dataset.matchedName=material.name;if(!item.unit_explicit)row.querySelector('[data-offer-unit]').value=materialUnit(material);item={...item,name:material.name,unit_price:n(material.unit_price),material_id:material.id,unit:row.querySelector('[data-offer-unit]').value};}
+          if(!material){form.querySelectorAll('[data-offer-line]')[index].dataset.materialId='';item={...item,material_id:null};}
           form.querySelectorAll('[data-offer-line]')[index].dataset.resolvedName=item.name;update(form);
           return {kind:item.kind,material_id:item.material_id,name:item.name.trim(),quantity:n(item.quantity),unit_price:n(item.unit_price),unit:normalizeUnit(item.unit,item.kind==='labor')};
         });

@@ -519,13 +519,19 @@
     if (index === 0) return null;
     throw new Error('Bitte eine der vorgeschlagenen Nummern oder 0 auswählen.');
   }
-  async function ensureCustomer(value, employee, candidates = state.rows.customers) {
+  function rememberCatalogRow(table, result, label) {
+    const row = result?.[0];
+    if (!row?.id) throw new Error(`${label} konnte nicht im Firmenstamm gespeichert werden. Bitte erneut versuchen.`);
+    state.rows[table] = [row, ...state.rows[table].filter(existing => !same(existing.id, row.id))];
+    return row;
+  }
+  async function ensureCustomer(value, employee, candidates = planningCustomers(employee)) {
     const name = String(value || '').trim(); if (!name) throw new Error('Bitte einen Kunden eingeben.');
     const current = candidates.find(row => lower(row.name) === lower(name));
     if (current) return current;
     const selected = chooseSimilar(name, candidates, 'Kunden'); if (selected) return selected;
     const created = await write('customers', { employee_id: employee, name, custom_fields: {} });
-    return created?.[0] || { id: null, name };
+    return rememberCatalogRow('customers', created, 'Der Kunde');
   }
   const HOURLY_MATERIALS = ['Monteurstunde', 'Meisterstunde', 'Aushilfsstunde'];
   const LABOR_TYPES = { monteur: 'Monteurstunde', meister: 'Meisterstunde', aushilfe: 'Aushilfsstunde' };
@@ -547,7 +553,7 @@
     const current = state.rows.materials.find(row => same(row.business_id, targetBusinessId) && lower(row.name) === lower(name));
     if (current) return current;
     const created = await write('materials', { business_id: targetBusinessId, name, unit_price: 0, active: true });
-    return created?.[0] || null;
+    return rememberCatalogRow('materials', created, 'Die Stundenposition');
   }
   async function ensureMaterial(value, targetBusinessId = businessId(), unit = 'Stk') {
     const name = String(value || '').trim(); if (!name) return null;
@@ -555,7 +561,7 @@
     if (current) return current;
     const selected = chooseSimilar(name, state.rows.materials.filter(row => same(row.business_id, targetBusinessId) && row.active !== false), 'Artikel'); if (selected) return selected;
     const created = await write('materials', { business_id: targetBusinessId, name, unit_price: 0, unit: normalizeUnit(unit), active: true });
-    return created?.[0] || null;
+    return rememberCatalogRow('materials', created, 'Der Artikel');
   }
   async function saveMaterials(form, order, replace = false) {
     const targetBusinessId = materialBusinessId(order.employee_id);
@@ -1255,14 +1261,14 @@
   function updatePlanningCustomer(form) {
     const input = form?.elements.customer, target = form?.querySelector('[data-plan-customer-details]'), matches = form?.querySelector('[data-plan-customer-matches]');
     if (!input || !target || !matches) return;
-    const candidates = planningCustomers(form.elements.employee.value), query = normalized(input.value), selectedId = form.elements.plan_customer_id.value;
-    const customer = candidates.find(row => same(row.id, selectedId) && query && normalized(row.name) === query) || candidates.find(row => query && normalized(row.name) === query);
+    const candidates = planningCustomers(form.elements.employee.value), query = lower(input.value), selectedId = form.elements.plan_customer_id.value;
+    const customer = candidates.find(row => same(row.id, selectedId) && query && lower(row.name) === query) || candidates.find(row => query && lower(row.name) === query);
     form.elements.plan_customer_id.value = customer?.id || '';
     const appointment = planningRows().find(row => same(row.id, form.elements.id.value));
-    const snapshot = appointment && same(appointment.employee_id, form.elements.employee.value) && normalized(appointment.customer_name) === query ? planningMeta(appointment).customerDetails : null;
+    const snapshot = appointment && same(appointment.employee_id, form.elements.employee.value) && lower(appointment.customer_name) === query ? planningMeta(appointment).customerDetails : null;
     const info = planningCustomerSnapshot(customer) || planningCustomerSnapshot(snapshot), detailsHtml = planningCustomerDetailsHtml(info);
     if (target.innerHTML !== detailsHtml) target.innerHTML = detailsHtml;
-    const suggestions = !customer && query ? candidates.map(row => ({ row, score: normalized(row.name).includes(query) ? 1 : query.length >= 3 ? similarityScore(query, row.name) : 0 })).filter(item => item.score >= 0.6).sort((a, b) => b.score - a.score || String(a.row.name).localeCompare(String(b.row.name), 'de')).slice(0, 6) : [];
+    const suggestions = !customer && query ? candidates.map(row => ({ row, score: normalized(row.name).includes(normalized(query)) ? 1 : query.length >= 3 ? similarityScore(query, row.name) : 0 })).filter(item => item.score >= 0.6).sort((a, b) => b.score - a.score || String(a.row.name).localeCompare(String(b.row.name), 'de')).slice(0, 6) : [];
     const matchesKey = JSON.stringify(suggestions.map(({ row }) => [row.id, row.name, row.custom_fields?.street, row.custom_fields?.house_no, row.custom_fields?.postal_code, row.custom_fields?.city]));
     if (matches.dataset.matchesKey !== matchesKey) {
       matches.innerHTML = suggestions.map(({ row }) => `<button type="button" class="secondary small" data-action="plan-customer-select" data-id="${escape(row.id)}"><b>${escape(row.name)}</b><small>${escape([row.custom_fields?.street, row.custom_fields?.house_no, row.custom_fields?.postal_code, row.custom_fields?.city].filter(Boolean).join(' '))}</small></button>`).join('');
@@ -1537,7 +1543,7 @@
     const issues = [employeeId,...participantIds].flatMap(member => planConflicts({ employeeId:member, eventDate, start, end }, id).map(issue => ({...issue,text:personName(teamPerson(member))+': '+issue.text})));
     const blocked = form.elements.status.value === 'cancelled' ? null : issues.find(issue => issue.kind === 'blocked');
     if (blocked) throw new Error(blocked.text);
-    const candidates = planningCustomers(employeeId), selectedCustomer = candidates.find(row => same(row.id, form.elements.plan_customer_id?.value) && normalized(row.name) === normalized(customerName));
+    const candidates = planningCustomers(employeeId), selectedCustomer = candidates.find(row => same(row.id, form.elements.plan_customer_id?.value) && lower(row.name) === lower(customerName));
     const customer = selectedCustomer || await ensureCustomer(customerName, employeeId, candidates);
     if (!customer?.id) throw new Error('Der Kunde konnte nicht gespeichert werden.');
     if (proposal) {
@@ -1576,7 +1582,7 @@
       if (['completed', 'cancelled'].includes(planningMeta(appointment).status)) throw new Error('Dieser geplante Auftrag ist bereits abgeschlossen oder abgesagt.');
     }
     if (locked(id)) throw new Error(lockedText(id));
-    const customer = await ensureCustomer(form.elements.customer.value, id, planId ? planningCustomers(id) : state.rows.customers), value = timeValues(form), signature = signatureValues(form);
+    const customer = await ensureCustomer(form.elements.customer.value, id, planningCustomers(id)), value = timeValues(form), signature = signatureValues(form);
     // The appointment UUID is also the order UUID for a converted assignment.
     // The database primary key therefore prevents duplicate work orders even
     // if two devices submit the same assignment concurrently.

@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { PGlite } = require(process.env.PGLITE_TEST_MODULE || '@electric-sql/pglite');
 const ids = Object.fromEntries(['admin','business','otherBusiness','anna','max','felix','customer','otherCustomer','monteur','meister','aushilfe','material','plan','order'].map((name,index) => [name,`00000000-0000-4000-8000-${String(index+1).padStart(12,'0')}`]));
-async function fixture({legacyRecords=false,offers=false,units=false}={}) {
+async function fixture({legacyRecords=false,offers=false,units=false,catalog=false}={}) {
   const db = new PGlite();
   await db.exec(`
     create role authenticated; create role anon;
@@ -78,6 +78,21 @@ async function fixture({legacyRecords=false,offers=false,units=false}={}) {
     await db.exec(fs.readFileSync(path.resolve(__dirname,'../../supabase/migrations/20261006133602_material_unit_kg_v861.sql'),'utf8'));
     // Mirror the already installed catalog write policies for UI unit tests.
     await db.exec(`create policy material_insert on materials for insert to authenticated with check(app_private.fixture_manager(business_id) or business_id=app_private.fixture_company(auth.uid())); create policy material_manage on materials for update to authenticated using(app_private.fixture_manager(business_id)) with check(app_private.fixture_manager(business_id));`);
+  }
+  if(catalog){
+    // Mirror the live pre-v862 customer policies, including business-owned
+    // rows hidden by same_business, so the migration is tested against the bug.
+    await db.exec(`
+      create function app_private.current_business_id() returns uuid language sql stable as $$select app_private.fixture_company(auth.uid())$$;
+      create function app_private.is_manager() returns boolean language sql stable as $$select app_private.fixture_chief()$$;
+      create function app_private.same_business(p_profile_id uuid) returns boolean language sql stable security definer set search_path=public,pg_temp as $$select exists(select 1 from profiles where id=auth.uid() and role='administrator') or exists(select 1 from profiles target where target.id=p_profile_id and target.business_id=app_private.fixture_company(auth.uid()))$$;
+      drop policy customers_read on customers; drop policy customers_write on customers;
+      create policy "Business customers are visible to team" on customers for select to authenticated using(app_private.same_business(employee_id));
+      create policy "Business customers can be changed" on customers for update to authenticated using(app_private.same_business(employee_id)) with check(app_private.same_business(employee_id));
+      create policy "Business customers can be created" on customers for insert to authenticated with check(employee_id=auth.uid() or app_private.fixture_manager(employee_id));
+      create policy "Business customers can be removed" on customers for delete to authenticated using(app_private.fixture_chief() and app_private.same_business(employee_id));
+    `);
+    await db.exec(fs.readFileSync(path.resolve(__dirname,'../../supabase/migrations/20261006135926_offer_catalog_registration_v862.sql'),'utf8'));
   }
   const actor = async name => { await db.exec('reset role'); await db.query("select set_config('request.jwt.claim.sub',$1,false)",[ids[name]]); await db.exec('set role authenticated'); };
   const admin = async () => db.exec('reset role');

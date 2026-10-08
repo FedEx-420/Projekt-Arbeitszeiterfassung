@@ -2,7 +2,7 @@
 const assert=require('node:assert/strict');
 const {fixture}=require('./team-db-fixture.cjs');
 async function main(){
-  const {db,ids,actor,admin}=await fixture({legacyRecords:true,offers:true});let passed=0;
+  const {db,ids,actor,admin}=await fixture({legacyRecords:true,offers:true,units:true,catalog:true});let passed=0;
   const test=async(name,fn)=>{await fn();passed++;console.log('PASS '+name);};
   const save=async(data,revision=null)=>(await db.query('select to_jsonb(save_offer_v857($1::jsonb,$2)) result',[JSON.stringify(data),revision])).rows[0].result;
   const remove=async(row,revision=row.revision)=>db.query('select delete_offer_v857($1,$2)',[row.id,revision]);

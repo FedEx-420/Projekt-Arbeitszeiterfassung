@@ -66,17 +66,18 @@
   }
   function create(ctx) {
     const {root,state,api,write,allRows,upload,remove,download,render,businessId,workerId,isManager,isAdmin,orderForEmployee,orderHours,dateText,timeText,h,planningMeta,planEmployeeIds,logout}=ctx;
-    let scans=[],settings=[],loading=null,loadedUser='',ocr=null,dialog=null,scanForm=null,scanFile=null,scanPath='',scanId='',savedScan=null;
+    let scans=[],settings=[],reminders=[],remindersReady=false,loading=null,loadedUser='',ocr=null,dialog=null,scanForm=null,scanFile=null,scanPath='',scanId='',savedScan=null;
     let pushActive=false,pushDeviceId='',pushSubscription=null,pushRegistration=null,pushKey='',pushReadyUser='',pushIssue='',deviceBusy=false,ocrPrefix='';
     let locations=[],arrivals=[],watchId=null,watchOrder='',gpsSaving=false,gpsPausedOrder='',locationAllowed=false,locationPermission='prompt',locationPermissionHandle=null;
     const metres=(a,b)=>{const rad=value=>value*Math.PI/180;const q=Math.sin(rad(a.latitude-b.latitude)/2)**2+Math.cos(rad(a.latitude))*Math.cos(rad(b.latitude))*Math.sin(rad(a.longitude-b.longitude)/2)**2;return 6371000*2*Math.asin(Math.min(1,Math.sqrt(q)));};
+    const arrivalTimer=window.WorktimeArrivalTimer?.create({...ctx,metres,locations:()=>locations,locationAllowed:()=>locationAllowed,pushDevice:()=>pushActive?pushDeviceId:''});
     function stopGps(){if(watchId!=null)navigator.geolocation?.clearWatch(watchId);watchId=null;watchOrder='';}
     initValidation(root);
     const same=(a,b)=>String(a||'')===String(b||'');
     const announce=(target,text)=>{if(target){target.textContent=text;target.setAttribute('role','status');}};
     const locationConsentKey=user=>'worktime-v864-location.'+user;
     function readLocationConsent(user){try{return localStorage.getItem(locationConsentKey(user))==='allowed';}catch{return false;}}
-    function setLocationConsent(allowed){if(!allowed){locationAllowed=false;stopGps();}try{if(allowed)localStorage.setItem(locationConsentKey(state.profile.id),'allowed');else localStorage.removeItem(locationConsentKey(state.profile.id));}catch{if(allowed)throw Error('Die Freigabe kann auf diesem Gerät nicht gespeichert werden. Bitte den Browser-Speicher erlauben.');}locationAllowed=allowed;}
+    function setLocationConsent(allowed){if(!allowed){locationAllowed=false;stopGps();}try{if(allowed)localStorage.setItem(locationConsentKey(state.profile.id),'allowed');else localStorage.removeItem(locationConsentKey(state.profile.id));}catch{if(allowed)throw Error('Die Freigabe kann auf diesem Gerät nicht gespeichert werden. Bitte den Browser-Speicher erlauben.');}locationAllowed=allowed;arrivalTimer?.refresh();}
     async function loadLocationPermission(user){
       locationAllowed=readLocationConsent(user);locationPermission='prompt';
       if(locationPermissionHandle)locationPermissionHandle.onchange=null;locationPermissionHandle=null;
@@ -98,19 +99,20 @@
         if(!pushKey)pushIssue='Push ist auf dem Server noch nicht eingerichtet.';
       }catch{if(same(state.profile?.id,user))pushIssue='Die Gerätefreigabe konnte nicht geprüft werden. Bitte Verbindung prüfen und erneut versuchen.';}
     }
-    function refreshDeviceSettings(preserve=true){const panel=root.querySelector('[data-device-settings]');if(!panel)return;const form=panel.querySelector('[data-form="notification-settings"]'),draft=preserve&&form?{enabled:form.elements.enabled.checked,minutes:form.elements.reminder_minutes.value,time:form.elements.notification_time.value}:null;panel.outerHTML=deviceSettings();const next=root.querySelector('[data-form="notification-settings"]');if(draft&&next){next.elements.enabled.checked=draft.enabled;next.elements.reminder_minutes.value=draft.minutes;next.elements.notification_time.value=draft.time;}}
+    function refreshDeviceSettings(){const panel=root.querySelector('[data-device-settings]');if(panel)panel.outerHTML=deviceSettings();}
     async function load() {
-      const user=state.profile?.id;if(!user){scans=[];settings=[];locations=[];arrivals=[];stopGps();locationAllowed=false;pushActive=false;pushDeviceId='';pushReadyUser='';loadedUser='';return;}
+      const user=state.profile?.id;if(!user){scans=[];settings=[];reminders=[];remindersReady=false;locations=[];arrivals=[];stopGps();arrivalTimer?.reset();locationAllowed=false;pushActive=false;pushDeviceId='';pushReadyUser='';loadedUser='';return;}
       if(loading)return loading;
       const task=(async()=>{
-        const results=await Promise.allSettled([allRows('receipt_scans','select=*&order=receipt_date.desc,id.asc'),allRows('company_notification_settings'),allRows('customer_locations'),allRows('order_arrivals')]);
+        const results=await Promise.allSettled([allRows('receipt_scans','select=*&order=receipt_date.desc,id.asc'),allRows('company_notification_settings'),allRows('customer_locations'),allRows('order_arrivals'),allRows('appointment_reminders')]);
         if(!same(state.profile?.id,user))return;
-        if(!same(loadedUser,user)){scans=[];settings=[];locations=[];arrivals=[];stopGps();gpsPausedOrder='';pushSubscription=null;pushRegistration=null;}loadedUser=user;
+        if(!same(loadedUser,user)){scans=[];settings=[];reminders=[];remindersReady=false;locations=[];arrivals=[];stopGps();gpsPausedOrder='';pushSubscription=null;pushRegistration=null;}loadedUser=user;
         if(results[0].status==='fulfilled')scans=results[0].value;
         if(results[1].status==='fulfilled')settings=results[1].value;
         if(results[2].status==='fulfilled')locations=results[2].value;
         if(results[3].status==='fulfilled')arrivals=results[3].value;
-        await Promise.all([preparePush(user),loadLocationPermission(user)]);
+        remindersReady=results[4].status==='fulfilled';reminders=remindersReady?results[4].value:[];
+        await Promise.all([preparePush(user),loadLocationPermission(user),arrivalTimer?.load()]);
       })();loading=task;try{await task;}finally{if(loading===task)loading=null;}
     }
     function customerOrders(customer) {
@@ -131,14 +133,13 @@
       return list.map(scan=>`<details class="receipt-detail"><summary>${dateText(scan.receipt_date)} · ${esc(scan.title||'Beleg')} · ${scan.gross_total==null?'Brutto offen':Number(scan.gross_total).toLocaleString('de-DE',{style:'currency',currency:'EUR'})}</summary><p>${esc(scan.category==='fuel'?'Tankbeleg':'Quittung')} · Netto: ${scan.net_total==null?'nicht erfasst':money(scan.net_total)+' €'}</p>${(scan.items||[]).map(item=>`<p>${esc(item.name)} · Brutto ${item.gross==null?'offen':money(item.gross)+' €'} · Netto ${item.net==null?'offen':money(item.net)+' €'}</p>`).join('')}<div class="device-tools">${scan.file_path?`<button type="button" class="secondary small" data-device-action="receipt-download" data-id="${esc(scan.id)}">Original herunterladen</button>`:''}<button type="button" class="danger small" data-device-action="receipt-delete" data-id="${esc(scan.id)}">Beleg löschen</button></div></details>`).join('');
     }
     function deviceSettings() {
-      const config=settings.find(row=>same(row.business_id,businessId()));
       const supported=!!(navigator.serviceWorker&&window.PushManager&&window.Notification),permission=window.Notification?.permission;
       const pushText=!supported?'Hier nicht verfügbar. Auf iPhone/iPad die App zum Home-Bildschirm hinzufügen und von dort öffnen.':permission==='denied'?'Im Gerät/Browser blockiert. Bitte Mitteilungen in den System- oder Website-Einstellungen erlauben.':pushActive?'Erlaubt und für dieses Konto auf dem Server registriert.':permission==='granted'?'Vom Gerät erlaubt; bitte die Registrierung für dieses Konto aktivieren.':'Noch nicht erlaubt. Die Freigabe wird auf diesem Gerät gespeichert.';
       return `<section class="panel" data-device-settings><h3>Gerätefreigaben · mein Konto</h3><p class="device-help">Diese Freigaben betreffen nur dein eigenes angemeldetes Konto und dieses Gerät, nicht den ausgewählten Mitarbeiter.</p>
         <div class="device-permission-card"><h4>Push-Mitteilungen</h4><p class="device-help">Einmal erlauben: Terminerinnerungen können danach auch bei geschlossener App erscheinen. Auf iPhone/iPad ab iOS 16.4: in Safari „Zum Home-Bildschirm“ hinzufügen und die App über dieses Symbol öffnen. Fokus-/Stumm-Einstellungen können die Anzeige unterdrücken. Keine Kundendaten auf dem Sperrbildschirm.</p>
         <p class="device-badge ${pushActive?'is-enabled':''}">${esc(pushText)}</p><div class="device-tools"><button type="button" class="secondary" data-device-action="push-enable">${pushActive?'Gerätefreigabe prüfen':'Push-Mitteilungen erlauben'}</button>${pushActive?'<button type="button" class="secondary" data-device-action="push-test">Testnachricht an dieses Gerät</button>':''}${pushSubscription?'<button type="button" class="secondary" data-device-action="push-disable">Push ausschalten</button>':''}</div><p class="device-status" role="status">${esc(pushIssue)}</p>
-        ${isAdmin()&&businessId()?`<h4>Terminerinnerungen dieser Firma</h4><form data-form="notification-settings" class="entry-form"><label class="wide"><input type="checkbox" name="enabled" ${config?.enabled?'checked':''}> Erinnerungen aktivieren</label><label>Minuten vor Termin<input name="reminder_minutes" type="number" min="0" max="10080" step="1" required value="${Number(config?.reminder_minutes??30)}"></label><label>Oder feste Uhrzeit am Termin-Tag<input name="notification_time" type="time" value="${esc(config?.notification_time?.slice(0,5)||'')}"></label><p class="wide device-help">Eine feste Uhrzeit ersetzt den Minuten-Vorlauf und muss vor dem Termin liegen. Änderungen gelten für noch nicht versendete Erinnerungen. Zeitzone: Europe/Berlin.</p><button class="primary wide">Erinnerungszeit speichern</button></form>`:config?.enabled?`<p class="device-help">Erinnerungen: ${config.notification_time?esc(config.notification_time.slice(0,5))+' Uhr am Termin-Tag':Number(config.reminder_minutes)+' Minuten vorher'}.</p>`:'<p class="device-help">Die Firma hat noch keine Terminerinnerungen aktiviert; die Testnachricht ist trotzdem möglich.</p>'}</div>
-        <div class="device-permission-card"><h4>Standort / Ankunftserkennung</h4><p class="device-help">Einmal freiwillig erlauben. Die Freigabeprüfung hier speichert keinen Standort. Bei deinem geöffneten Arbeitsschein von heute wird die erste Ankunft am hinterlegten Kundenstandort erkannt. Nur bei sichtbarer App, keine dauerhafte Hintergrundverfolgung, kein Bewegungsverlauf und keine automatische Stundenbuchung. Mit „Standort ausschalten“ sofort beenden.</p><p class="device-badge ${locationAllowed?'is-enabled':''}">${locationAllowed?'Für mein Konto auf diesem Gerät erlaubt.':locationPermission==='denied'?'Im Gerät/Browser blockiert. Bitte dort die Standortfreigabe ändern.':'Standortprüfung ist ausgeschaltet.'}</p><div class="device-tools"><button type="button" class="secondary" data-device-action="location-enable">${locationAllowed?'Standortfreigabe prüfen':'Standort erlauben'}</button>${locationAllowed?'<button type="button" class="secondary" data-device-action="location-disable">Standort ausschalten</button>':''}</div><p class="location-permission-status" role="status"></p></div></section>`;
+        <p class="device-help">Die Geschäftsleitung legt die Erinnerungszeit für jeden Termin direkt in der Planungsübersicht fest.</p></div>
+        <div class="device-permission-card"><h4>Standort / Ankunftserkennung</h4><p class="device-help">Einmal freiwillig erlauben. Die Freigabeprüfung hier speichert keinen Standort. Bei zugeordneten heutigen Planungen oder einem geöffneten Kunden startet am hinterlegten Kundenstandort dein Baustellen-Timer. Bei vorhandenen heutigen Arbeitsscheinen kann außerdem die Ankunft erfasst werden. Nur bei sichtbarer App, keine dauerhafte Hintergrundverfolgung, kein Bewegungsverlauf und keine automatische Stundenbuchung. Mit „Standort ausschalten“ sofort beenden.</p><p class="device-badge ${locationAllowed?'is-enabled':''}">${locationAllowed?'Für mein Konto auf diesem Gerät erlaubt.':locationPermission==='denied'?'Im Gerät/Browser blockiert. Bitte dort die Standortfreigabe ändern.':'Standortprüfung ist ausgeschaltet.'}</p><div class="device-tools"><button type="button" class="secondary" data-device-action="location-enable">${locationAllowed?'Standortfreigabe prüfen':'Standort erlauben'}</button>${locationAllowed?'<button type="button" class="secondary" data-device-action="location-disable">Standort ausschalten</button>':''}</div><p class="location-permission-status" role="status"></p></div></section>`;
     }
     function afterRender() {
       for(const form of root.querySelectorAll('form')){
@@ -149,7 +150,7 @@
         }
       }
       if(!state.profile)return;
-      if(new URL(location.href).searchParams.get('open')==='planning'){const url=new URL(location.href);url.searchParams.delete('open');history.replaceState(null,'',url);state.view='planning';render();return;}
+      if(['planning','home'].includes(new URL(location.href).searchParams.get('open'))){const url=new URL(location.href),view=url.searchParams.get('open');url.searchParams.delete('open');history.replaceState(null,'',url);state.view=view;render();return;}
       if(watchId!=null&&!same(state.orderId,watchOrder))stopGps();
       if(state.view==='customers'&&state.customerId){const customer=state.rows.customers.find(row=>same(row.id,state.customerId));if(customer)root.querySelector('#customer-profile')?.insertAdjacentHTML('beforeend',customerOrdersHtml(customer));}
       for(const form of root.querySelectorAll('form[data-form="order"],form[data-form="order-edit"]')){
@@ -164,8 +165,15 @@
         }
       }
       if(state.view==='settings')root.querySelector('.content')?.insertAdjacentHTML('beforeend',deviceSettings());
+      if(state.view==='planning'){
+        const plan=state.rows.appointments?.find(row=>same(row.id,state.planId));
+        if(plan&&isManager())root.querySelector('#planning-detail')?.insertAdjacentHTML('beforeend',reminderHtml(plan));
+        else if(root.querySelector('form[data-form="planning"]')&&isManager())root.querySelector('form[data-form="planning"]')?.insertAdjacentHTML('afterend','<p class="device-help">Nach dem Anlegen den Termin anklicken, um seine Push-Erinnerung in Minuten, Stunden oder als Uhrzeit einzustellen.</p>');
+      }
       if(state.view==='customers'&&state.customerId&&isManager())root.querySelector('#customer-profile')?.insertAdjacentHTML('beforeend',locationHtml(state.customerId));
       if(!root.querySelector('.device-status')&&['receipts','orders','order-detail'].includes(state.view))root.querySelector('.content')?.insertAdjacentHTML('beforeend','<p class="device-status" role="status"></p>');
+      root.querySelectorAll('form[data-form="appointment-reminder"]').forEach(updateReminderForm);
+      arrivalTimer?.afterRender();
     }
     function lineHtml(item={}) {return `<div class="scan-line"><label>Artikel<input name="scan_name" maxlength="300" required value="${esc(item.name||'')}"></label><label>Brutto (€)<input name="scan_gross" inputmode="decimal" value="${money(item.gross)}"></label><label>Netto (€)<input name="scan_net" inputmode="decimal" value="${money(item.net)}"></label><button type="button" class="danger small" data-device-action="scan-remove-line" aria-label="Position entfernen">×</button></div>`;}
     function openScanner(button) {
@@ -285,12 +293,22 @@
       if(['device_expired','device_not_registered'].includes(result?.code)){pushActive=false;pushDeviceId='';if(result.code==='device_expired'){await pushSubscription?.unsubscribe();pushSubscription=null;}refreshDeviceSettings();throw Error('Die Gerätefreigabe ist abgelaufen. Bitte „Push-Mitteilungen erlauben“ erneut wählen.');}
       throw Error(result?.code==='push_auth_rejected'?'Der Push-Dienst lehnt den Serverversand ab. Bitte der Verwaltung melden.':result?.code==='push_rate_limited'?'Der Push-Dienst ist ausgelastet. Bitte später erneut testen.':'Die Testnachricht konnte gerade nicht versendet werden. Bitte Verbindung prüfen und erneut versuchen.');
     }
-    async function enableLocation(){const user=state.profile.id;try{await positionOnce();}catch(error){if(error.code===1&&same(user,state.profile?.id)){locationPermission='denied';setLocationConsent(false);refreshDeviceSettings();}throw error;}if(!same(user,state.profile?.id))throw Error('Die Anmeldung wurde geändert.');locationPermission='granted';setLocationConsent(true);gpsPausedOrder='';refreshDeviceSettings();return 'Standortfreigabe gespeichert. Bei deinem geöffneten Auftrag von heute ist die Ankunftserkennung möglich. Hier wurde kein Standort hochgeladen.';}
-    async function saveSettings(form) {
-      if(!isAdmin())throw Error('Nur der Administrator darf die Erinnerungszeit festlegen.');
-      const old=settings.find(row=>same(row.business_id,businessId())),payload={business_id:businessId(),enabled:form.elements.enabled.checked,reminder_minutes:Number(form.elements.reminder_minutes.value),notification_time:form.elements.notification_time.value||null};
-      if(old)await write('company_notification_settings',payload,'PATCH',`business_id=eq.${businessId()}`);else await write('company_notification_settings',payload);
-      await load();refreshDeviceSettings(false);
+    async function enableLocation(){const user=state.profile.id;try{await positionOnce();}catch(error){if(error.code===1&&same(user,state.profile?.id)){locationPermission='denied';setLocationConsent(false);refreshDeviceSettings();}throw error;}if(!same(user,state.profile?.id))throw Error('Die Anmeldung wurde geändert.');locationPermission='granted';setLocationConsent(true);gpsPausedOrder='';refreshDeviceSettings();return 'Standortfreigabe gespeichert. Bei heutiger Planung oder geöffnetem Kunden ist die Ankunftserkennung möglich. Hier wurde kein Standort hochgeladen.';}
+    function reminderConfig(plan){return reminders.find(row=>same(row.appointment_id,plan.id))||settings.find(row=>same(row.business_id,businessId()))||{enabled:false,reminder_minutes:30,notification_time:null};}
+    function reminderHtml(plan){
+      if(!remindersReady)return '<p class="device-help">Die Terminerinnerung konnte nicht geladen werden. Bitte erneut aktualisieren.</p>';
+      const config=reminderConfig(plan),meta=planningMeta(plan),unit=config.reminder_minutes>=60&&config.reminder_minutes%15===0?'hours':'minutes',value=unit==='hours'?config.reminder_minutes/60:config.reminder_minutes;
+      return `<section class="customer-order-list" data-plan-reminder><h3>Push-Erinnerung für diesen Termin</h3><p class="device-help">${dateText(plan.event_date)} · ${esc(meta.start)} Uhr · ${esc(plan.customer_name)}. Gilt für den zugeordneten Mitarbeiter und alle Mitwirkenden mit Push-Freigabe. Geänderte Termindaten bitte zuerst oben speichern.</p><form data-form="appointment-reminder" class="entry-form"><input name="appointment_id" type="hidden" value="${esc(plan.id)}"><label class="wide device-check"><input type="checkbox" name="enabled" ${config.enabled?'checked':''}> Mitarbeiter an diesen Termin erinnern</label><label>Erinnerungsart<select name="reminder_mode"><option value="before" ${!config.notification_time?'selected':''}>Vor dem Termin</option><option value="clock" ${config.notification_time?'selected':''}>Uhrzeit am Termintag</option></select></label><div data-reminder-before class="reminder-before"><label>Vorlauf<input name="reminder_amount" type="number" min="0" max="${unit==='hours'?168:10080}" step="${unit==='hours'?0.25:1}" required value="${value}"></label><label>Einheit<select name="reminder_unit"><option value="minutes" ${unit==='minutes'?'selected':''}>Minuten</option><option value="hours" ${unit==='hours'?'selected':''}>Stunden</option></select></label></div><label data-reminder-clock>Uhrzeit<input name="notification_time" type="time" step="60" required value="${esc(config.notification_time?.slice(0,5)||'')}"></label><p class="wide device-help">Zeitzone: Europe/Berlin. Die Uhrzeit muss vor oder zum Beginn liegen. Erledigte und abgesagte Termine senden keine Erinnerung. Änderungen gelten nur für diese Planung.</p><button class="primary wide">Erinnerung speichern</button></form><p class="reminder-status" role="status"></p></section>`;
+    }
+    function updateReminderForm(form){const enabled=form.elements.enabled.checked,clock=form.elements.reminder_mode.value==='clock',hours=form.elements.reminder_unit.value==='hours';form.querySelector('[data-reminder-before]').hidden=clock;form.querySelector('[data-reminder-clock]').hidden=!clock;form.elements.reminder_amount.disabled=!enabled||clock;form.elements.reminder_unit.disabled=!enabled||clock;form.elements.notification_time.disabled=!enabled||!clock;form.elements.reminder_amount.max=hours?168:10080;form.elements.reminder_amount.step=hours?'any':1;}
+    async function saveReminder(form){
+      if(!isManager())throw Error('Nur die Geschäftsleitung darf eine Terminerinnerung festlegen.');
+      const id=form.elements.appointment_id.value,plan=state.rows.appointments.find(row=>same(row.id,id));if(!plan)throw Error('Die Planung wurde gelöscht. Bitte aktualisieren.');
+      const clock=form.elements.reminder_mode.value==='clock',enabled=form.elements.enabled.checked,minutes=clock?30:Number(form.elements.reminder_amount.value)*(form.elements.reminder_unit.value==='hours'?60:1),time=clock?form.elements.notification_time.value:null;
+      if(enabled&&(!clock&&(!Number.isInteger(minutes)||minutes<0||minutes>10080)||clock&&(!time||time>planningMeta(plan).start))){const field=clock?form.elements.notification_time:form.elements.reminder_amount;markField(field,clock?'Bitte eine Uhrzeit vor oder zum Terminbeginn wählen.':'Bitte einen Vorlauf zwischen 0 Minuten und 7 Tagen eingeben.');throw Error('Bitte die rot markierte Erinnerungszeit korrigieren.');}
+      const old=reminders.find(row=>same(row.appointment_id,id)),payload={appointment_id:id,business_id:businessId(),enabled,reminder_minutes:Number.isInteger(minutes)&&minutes>=0&&minutes<=10080?minutes:30,notification_time:time||null};
+      const saved=(old?await write('appointment_reminders',payload,'PATCH',`appointment_id=eq.${encodeURIComponent(id)}`):await write('appointment_reminders',payload))?.[0];if(!saved?.appointment_id)throw Error('Die Erinnerung wurde nicht bestätigt. Bitte erneut speichern.');
+      reminders=[saved,...reminders.filter(row=>!same(row.appointment_id,id))];return enabled?'Erinnerung für diesen Termin gespeichert.':'Erinnerung für diesen Termin ausgeschaltet.';
     }
     async function run(button,task,target) {
       if(deviceBusy)return;deviceBusy=true;button.disabled=true;
@@ -325,17 +343,18 @@
     }
     function handleSubmit(event) {
       const form=event.target,name=form.dataset.form;
-      if(!['receipt-scan','notification-settings','customer-location'].includes(name))return;
+      if(!['receipt-scan','appointment-reminder','customer-location'].includes(name))return;
       event.preventDefault();event.stopImmediatePropagation();if(!validateForm(form))return;
       const button=event.submitter||form.querySelector('button[type="submit"],button.primary');
-      run(button,()=>name==='receipt-scan'?saveScan(form):name==='customer-location'?saveLocation(form):saveSettings(form),dialog?.querySelector('.scan-status')||root.querySelector(name==='customer-location'?'.location-status':'.device-status'));
+      run(button,()=>name==='receipt-scan'?saveScan(form):name==='customer-location'?saveLocation(form):saveReminder(form),dialog?.querySelector('.scan-status')||form.parentElement.querySelector(name==='customer-location'?'.location-status':name==='appointment-reminder'?'.reminder-status':'.device-status'));
     }
     root.addEventListener('click',handleClick);
     root.addEventListener('submit',handleSubmit,true);
+    root.addEventListener('change',event=>{const form=event.target.closest('form[data-form="appointment-reminder"]');if(form){if(event.target.name==='reminder_unit'){const amount=form.elements.reminder_amount;amount.value=Number(amount.value)*(event.target.value==='hours'?1/60:60);}updateReminderForm(form);}});
     root.addEventListener('click',event=>{
       if(event.target.closest('[data-action="logout"]')){
         event.preventDefault();event.stopImmediatePropagation();if(deviceBusy)return;
-        stopGps();locationAllowed=false;deviceBusy=true;Promise.race([Promise.resolve(disablePush(true)).catch(()=>{}),new Promise(resolve=>setTimeout(resolve,1500))]).finally(()=>{deviceBusy=false;scans=[];settings=[];locations=[];arrivals=[];loadedUser='';pushActive=false;pushDeviceId='';pushReadyUser='';closeScanner();logout();});
+        stopGps();arrivalTimer?.reset();locationAllowed=false;deviceBusy=true;Promise.race([Promise.resolve(disablePush(true)).catch(()=>{}),new Promise(resolve=>setTimeout(resolve,1500))]).finally(()=>{deviceBusy=false;scans=[];settings=[];reminders=[];remindersReady=false;locations=[];arrivals=[];loadedUser='';pushActive=false;pushDeviceId='';pushReadyUser='';closeScanner();logout();});
       }
     },true);
     function locationHtml(customerId){const loc=locations.find(row=>same(row.customer_id,customerId));return `<section class="customer-order-list"><h3>Standort für Ankunftserkennung</h3><p class="device-help">Dieser Standort muss tatsächlich zur Kundenadresse gehören. Nach einer Adressänderung bitte prüfen. Keine Adresse wird an einen externen Kartendienst gesendet.</p><form data-form="customer-location" class="entry-form"><input type="hidden" name="customer_id" value="${esc(customerId)}"><label>Breitengrad<input name="latitude" type="number" step="any" min="-90" max="90" required value="${loc?.latitude??''}"></label><label>Längengrad<input name="longitude" type="number" step="any" min="-180" max="180" required value="${loc?.longitude??''}"></label><label>Umkreis (Meter)<input name="radius_m" type="number" min="50" max="500" required value="${loc?.radius_m??150}"></label><button type="button" class="secondary" data-device-action="customer-location-here">Meine aktuelle Position übernehmen</button><button class="primary">Kundenstandort speichern</button></form><p class="location-status" role="status"></p></section>`;}
@@ -372,8 +391,8 @@
       },error=>{if(!same(state.profile?.id,user))return;stopGps();if(error.code===1){locationPermission='denied';setLocationConsent(false);}announce(root.querySelector('.gps-status'),gpsError(error).message);},{enableHighAccuracy:true,timeout:20000,maximumAge:10000});
     }
     document.addEventListener('visibilitychange',()=>{if(document.visibilityState!=='visible'){stopGps();const status=root.querySelector('.gps-status');if(status)announce(status,'Standortprüfung beendet: App wurde in den Hintergrund gelegt.');}});
-    navigator.serviceWorker?.addEventListener('message',event=>{if(event.data?.type==='WORKTIME_OPEN_PLANNING'&&state.profile){state.view='planning';state.menu=false;render();}});
-    return {load,afterRender,attachReceipts,customerOrders,customerOrdersHtml};
+    navigator.serviceWorker?.addEventListener('message',event=>{if(state.profile&&(event.data?.type==='WORKTIME_OPEN_PLANNING'||event.data?.type==='WORKTIME_OPEN_VIEW')){state.view=event.data.view==='home'?'home':'planning';state.menu=false;render();}});
+    return {load,afterRender,attachReceipts,customerOrders,customerOrdersHtml,timerSaved:id=>arrivalTimer?.saved(id)};
   }
   window.WorktimeDeviceFeatures={create,parseReceipt,validateForm};
 })();

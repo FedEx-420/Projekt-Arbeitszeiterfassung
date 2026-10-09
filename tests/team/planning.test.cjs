@@ -37,7 +37,7 @@ const database = {
   time_entries: [], work_orders: [], work_order_items: [],
   materials: [{ id: 'labor', business_id: 'company-one', name: 'Monteurstunde', unit_price: 55, active: true }],
   mailbox_messages: [], mailbox_attachments: [], employee_payslips: [], work_order_documents: [], planning_requests: [], offers: [],
-  receipt_scans: [], company_notification_settings: [], customer_locations: [], order_arrivals: []
+  receipt_scans: [], company_notification_settings: [], customer_locations: [], order_arrivals: [], appointment_reminders: [], job_timers: []
 };
 const notifications = [], writes = [], pageErrors = [], tests = [];
 let failPlanningGet = false;

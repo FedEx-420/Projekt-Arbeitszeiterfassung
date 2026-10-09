@@ -37,12 +37,13 @@ async function currentUser(req:Request){
   const profiles=await rest('profiles?select=id&id=eq.'+encodeURIComponent(user.id));
   return profiles?.length===1?user:null;
 }
-async function send(subscription:Subscription,test=false){
+async function send(subscription:Subscription,test=false,timerId=''){
   if(!allowedEndpoint(subscription.endpoint))return {status:'invalid',code:'invalid_endpoint',providerStatus:0};
-  const payload={title:'Zeiterfassung',body:test?'Push-Mitteilungen auf diesem Gerät funktionieren.':'Ein geplanter Kundentermin steht an. Bitte die Planung in der App öffnen.',tag:test?'worktime-test':'worktime-plan-'+subscription.appointment_id,data:{view:'planning'},icon:origin+'/Projekt-Arbeitszeiterfassung/icon.svg'};
+  const payload={title:'Zeiterfassung',body:timerId?'Dein Baustellen-Timer wurde gestartet. Du findest ihn in der Übersicht.':test?'Push-Mitteilungen auf diesem Gerät funktionieren.':'Ein geplanter Kundentermin steht an. Bitte die Planung in der App öffnen.',tag:timerId?'worktime-timer-'+timerId:test?'worktime-test':'worktime-plan-'+subscription.appointment_id,data:{view:timerId?'home':'planning'},icon:origin+'/Projekt-Arbeitszeiterfassung/icon.svg'};
   try{
     const accepted=await webpush.sendNotification({endpoint:subscription.endpoint,keys:{p256dh:subscription.p256dh,auth:subscription.auth}},JSON.stringify(payload),{TTL:900,urgency:'normal',timeout:15000,vapidDetails:{subject:origin+'/Projekt-Arbeitszeiterfassung/',publicKey,privateKey:canonicalPrivateKey(privateKey)}});
-    if(!test)await rest(`push_deliveries?appointment_id=eq.${subscription.appointment_id}&subscription_id=eq.${subscription.subscription_id}&scheduled_at=eq.${encodeURIComponent(subscription.scheduled_at!)}`,'PATCH',{sent_at:new Date().toISOString()});
+    if(timerId)await rest('job_timers?id=eq.'+timerId,'PATCH',{notification_sent_at:new Date().toISOString()});
+    else if(!test)await rest(`push_deliveries?appointment_id=eq.${subscription.appointment_id}&subscription_id=eq.${subscription.subscription_id}&scheduled_at=eq.${encodeURIComponent(subscription.scheduled_at!)}`,'PATCH',{sent_at:new Date().toISOString()});
     return {status:'sent',code:'accepted',providerStatus:Number(accepted.statusCode)||201};
   }catch(error){
     if([404,410].includes(Number((error as {statusCode?:number}).statusCode))){await rest('push_subscriptions?id=eq.'+(subscription.subscription_id||subscription.id),'PATCH',{enabled:false});return {status:'expired',code:'device_expired',providerStatus:Number((error as {statusCode?:number}).statusCode)};}
@@ -55,6 +56,21 @@ Deno.serve(async(req:Request)=>{
   if(req.method==='OPTIONS')return new Response(null,{status:204,headers:cors});
   try{
     const action=new URL(req.url).searchParams.get('action');
+    if(action==='timer-start'){
+      if(req.method!=='POST')return response({error:'Method not allowed'},405);
+      const user=await currentUser(req);if(!user)return response({error:'Bitte anmelden.'},401);
+      let input:{timer_id?:string;subscription_id?:string}={};try{input=await req.json();}catch{}
+      if(!input.timer_id||!input.subscription_id||![input.timer_id,input.subscription_id].every(id=>/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)))return response({error:'Timer und Gerät erforderlich.'},400);
+      const subscriptions=await rest('push_subscriptions?select=*&enabled=eq.true&user_id=eq.'+encodeURIComponent(user.id)+'&id=eq.'+input.subscription_id);
+      if(subscriptions.length!==1)return response({sent:0,code:'device_not_registered'});
+      // Compare-and-set lease prevents duplicate clicks/devices. Only a fresh,
+      // active timer of the live authenticated user can trigger its own device.
+      const now=new Date(),cutoff=new Date(now.getTime()-10*60000).toISOString();
+      const claimed=await rest('job_timers?id=eq.'+input.timer_id+'&employee_id=eq.'+encodeURIComponent(user.id)+'&finished_at=is.null&notification_sent_at=is.null&started_at=gte.'+encodeURIComponent(cutoff)+'&or='+encodeURIComponent('(notification_lease_until.is.null,notification_lease_until.lt.'+now.toISOString()+')'),'PATCH',{notification_lease_until:new Date(now.getTime()+3*60000).toISOString()});
+      if(claimed.length!==1)return response({sent:0,code:'timer_unavailable_or_notified'});
+      const result=await send(subscriptions[0],false,input.timer_id);
+      return response({sent:result.status==='sent'?1:0,code:result.code});
+    }
     if(action==='diagnostic-test'){
       // Operator-only one-device probe; never callable with a normal user JWT.
       if(req.method!=='POST'||!cronSecret||req.headers.get('x-worktime-cron')!==cronSecret)return response({error:'Unauthorized'},401);

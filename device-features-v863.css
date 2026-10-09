@@ -16,4 +16,7 @@
 .customer-order-list{margin-top:22px;border-top:1px solid #dce9e5;padding-top:18px}
 .customer-order-list .row-card{margin:8px 0}.customer-order-list .row-main{text-align:left;width:100%}
 .gps-status{white-space:pre-wrap}.device-dialog button{min-height:42px}
+.device-permission-card{border:1px solid #dce9e5;border-radius:14px;padding:16px;margin-top:16px;min-width:0}
+.device-permission-card h4{margin:0 0 10px;font-size:1.05rem}.device-badge{padding:10px 12px;border-radius:10px;background:#f3f5f4;color:#435951;font-size:.9rem;overflow-wrap:anywhere}
+.device-badge.is-enabled{background:#e4f4eb;color:#185739}.device-status,.location-permission-status{white-space:pre-wrap;overflow-wrap:anywhere}
 @media(max-width:520px){.device-dialog{padding:16px}.scan-line{grid-template-columns:minmax(0,1fr) minmax(0,1fr) 38px}.scan-line label:first-child{grid-column:1/-1}.scan-line input{min-width:0}.device-tools>button{flex:1 1 150px}}

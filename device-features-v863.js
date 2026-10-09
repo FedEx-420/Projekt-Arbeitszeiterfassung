@@ -67,25 +67,50 @@
   function create(ctx) {
     const {root,state,api,write,allRows,upload,remove,download,render,businessId,workerId,isManager,isAdmin,orderForEmployee,orderHours,dateText,timeText,h,planningMeta,planEmployeeIds,logout}=ctx;
     let scans=[],settings=[],loading=null,loadedUser='',ocr=null,dialog=null,scanForm=null,scanFile=null,scanPath='',scanId='',savedScan=null;
-    let pushActive=false,deviceBusy=false,ocrPrefix='';
-    let locations=[],arrivals=[],watchId=null,watchOrder='',gpsSaving=false;
+    let pushActive=false,pushDeviceId='',pushSubscription=null,pushRegistration=null,pushKey='',pushReadyUser='',pushIssue='',deviceBusy=false,ocrPrefix='';
+    let locations=[],arrivals=[],watchId=null,watchOrder='',gpsSaving=false,gpsPausedOrder='',locationAllowed=false,locationPermission='prompt',locationPermissionHandle=null;
     const metres=(a,b)=>{const rad=value=>value*Math.PI/180;const q=Math.sin(rad(a.latitude-b.latitude)/2)**2+Math.cos(rad(a.latitude))*Math.cos(rad(b.latitude))*Math.sin(rad(a.longitude-b.longitude)/2)**2;return 6371000*2*Math.asin(Math.min(1,Math.sqrt(q)));};
     function stopGps(){if(watchId!=null)navigator.geolocation?.clearWatch(watchId);watchId=null;watchOrder='';}
     initValidation(root);
     const same=(a,b)=>String(a||'')===String(b||'');
-    const announce=(target,text)=>{target.textContent=text;target.setAttribute('role','status');};
+    const announce=(target,text)=>{if(target){target.textContent=text;target.setAttribute('role','status');}};
+    const locationConsentKey=user=>'worktime-v864-location.'+user;
+    function readLocationConsent(user){try{return localStorage.getItem(locationConsentKey(user))==='allowed';}catch{return false;}}
+    function setLocationConsent(allowed){if(!allowed){locationAllowed=false;stopGps();}try{if(allowed)localStorage.setItem(locationConsentKey(state.profile.id),'allowed');else localStorage.removeItem(locationConsentKey(state.profile.id));}catch{if(allowed)throw Error('Die Freigabe kann auf diesem Gerät nicht gespeichert werden. Bitte den Browser-Speicher erlauben.');}locationAllowed=allowed;}
+    async function loadLocationPermission(user){
+      locationAllowed=readLocationConsent(user);locationPermission='prompt';
+      if(locationPermissionHandle)locationPermissionHandle.onchange=null;locationPermissionHandle=null;
+      try{const handle=await navigator.permissions?.query({name:'geolocation'});if(!same(state.profile?.id,user))return;
+        if(handle){locationPermissionHandle=handle;locationPermission=handle.state;const changed=()=>{if(!same(state.profile?.id,user))return;locationPermission=handle.state;if(handle.state==='denied')setLocationConsent(false);refreshDeviceSettings();};handle.onchange=changed;if(handle.state==='denied')setLocationConsent(false);}
+      }catch{} // Safari may not expose geolocation through the Permissions API.
+    }
+    async function preparePush(user=state.profile?.id){
+      pushActive=false;pushDeviceId='';pushIssue='';
+      if(!user||!navigator.serviceWorker||!window.PushManager||!window.Notification)return;
+      try{
+        const registration=await navigator.serviceWorker.getRegistration();
+        if(!registration?.active){pushRegistration=null;pushSubscription=null;return;}
+        const data=pushReadyUser===user&&pushKey?{publicKey:pushKey}:await api('/functions/v1/appointment-reminders?action=public-key');
+        if(!same(state.profile?.id,user))return;
+        pushKey=data?.publicKey||'';pushReadyUser=user;pushRegistration=registration?.active?registration:null;
+        pushSubscription=await pushRegistration?.pushManager.getSubscription()||null;
+        if(pushSubscription){const rows=await allRows('push_subscriptions',`select=*&user_id=eq.${user}&endpoint=eq.${encodeURIComponent(pushSubscription.endpoint)}`);if(!same(state.profile?.id,user))return;const registered=rows.find(row=>same(row.user_id,user));if(registered&&!registered.enabled){await pushSubscription.unsubscribe();pushSubscription=null;}else{pushDeviceId=registered?.id||'';pushActive=!!pushDeviceId&&Notification.permission==='granted';}}
+        if(!pushKey)pushIssue='Push ist auf dem Server noch nicht eingerichtet.';
+      }catch{if(same(state.profile?.id,user))pushIssue='Die Gerätefreigabe konnte nicht geprüft werden. Bitte Verbindung prüfen und erneut versuchen.';}
+    }
+    function refreshDeviceSettings(preserve=true){const panel=root.querySelector('[data-device-settings]');if(!panel)return;const form=panel.querySelector('[data-form="notification-settings"]'),draft=preserve&&form?{enabled:form.elements.enabled.checked,minutes:form.elements.reminder_minutes.value,time:form.elements.notification_time.value}:null;panel.outerHTML=deviceSettings();const next=root.querySelector('[data-form="notification-settings"]');if(draft&&next){next.elements.enabled.checked=draft.enabled;next.elements.reminder_minutes.value=draft.minutes;next.elements.notification_time.value=draft.time;}}
     async function load() {
-      const user=state.profile?.id;if(!user){scans=[];settings=[];locations=[];arrivals=[];stopGps();loadedUser='';return;}
+      const user=state.profile?.id;if(!user){scans=[];settings=[];locations=[];arrivals=[];stopGps();locationAllowed=false;pushActive=false;pushDeviceId='';pushReadyUser='';loadedUser='';return;}
       if(loading)return loading;
       const task=(async()=>{
         const results=await Promise.allSettled([allRows('receipt_scans','select=*&order=receipt_date.desc,id.asc'),allRows('company_notification_settings'),allRows('customer_locations'),allRows('order_arrivals')]);
         if(!same(state.profile?.id,user))return;
-        if(!same(loadedUser,user)){scans=[];settings=[];locations=[];arrivals=[];stopGps();}loadedUser=user;
+        if(!same(loadedUser,user)){scans=[];settings=[];locations=[];arrivals=[];stopGps();gpsPausedOrder='';pushSubscription=null;pushRegistration=null;}loadedUser=user;
         if(results[0].status==='fulfilled')scans=results[0].value;
         if(results[1].status==='fulfilled')settings=results[1].value;
         if(results[2].status==='fulfilled')locations=results[2].value;
         if(results[3].status==='fulfilled')arrivals=results[3].value;
-        if(navigator.serviceWorker&&window.PushManager){try{const registration=await navigator.serviceWorker.getRegistration();pushActive=!!await registration?.pushManager.getSubscription();}catch{pushActive=false;}}
+        await Promise.all([preparePush(user),loadLocationPermission(user)]);
       })();loading=task;try{await task;}finally{if(loading===task)loading=null;}
     }
     function customerOrders(customer) {
@@ -107,7 +132,13 @@
     }
     function deviceSettings() {
       const config=settings.find(row=>same(row.business_id,businessId()));
-      return `<section class="panel" data-device-settings><h3>Mitteilungen auf diesem Gerät</h3><p class="device-help">Terminerinnerungen erscheinen auch bei geschlossener App, wenn dieses Gerät Push erlaubt. Auf iPhone/iPad die App zuerst zum Home-Bildschirm hinzufügen. Der Sperrbildschirm zeigt keine Kunden- oder Mitarbeiterdaten.</p><div class="device-tools"><button type="button" class="secondary" data-device-action="push-enable">${pushActive?'Gerätefreigabe prüfen':'Push-Mitteilungen erlauben'}</button>${pushActive?'<button type="button" class="secondary" data-device-action="push-test">Testnachricht</button><button type="button" class="secondary" data-device-action="push-disable">Auf diesem Gerät ausschalten</button>':''}</div><p class="device-status" role="status">${pushActive?'Auf diesem Gerät erlaubt.':'Noch nicht auf diesem Gerät aktiviert.'}</p>${isAdmin()&&businessId()?`<h3>Terminerinnerungen dieser Firma</h3><form data-form="notification-settings" class="entry-form"><label class="wide"><input type="checkbox" name="enabled" ${config?.enabled?'checked':''}> Erinnerungen aktivieren</label><label>Minuten vor Termin<input name="reminder_minutes" type="number" min="0" max="10080" step="1" required value="${Number(config?.reminder_minutes??30)}"></label><label>Oder feste Uhrzeit am Termin-Tag<input name="notification_time" type="time" value="${esc(config?.notification_time?.slice(0,5)||'')}"></label><p class="wide device-help">Eine feste Uhrzeit ersetzt den Minuten-Vorlauf und muss vor dem Termin liegen. Änderungen gelten für noch nicht versendete Erinnerungen. Zeitzone: Europe/Berlin.</p><button class="primary wide">Erinnerungszeit speichern</button></form>`:config?.enabled?`<p class="device-help">Administrator-Einstellung: ${config.notification_time?esc(config.notification_time.slice(0,5))+' Uhr am Termin-Tag':Number(config.reminder_minutes)+' Minuten vorher'}.</p>`:'<p class="device-help">Die Firma hat noch keine Terminerinnerungen aktiviert.</p>'}</section>`;
+      const supported=!!(navigator.serviceWorker&&window.PushManager&&window.Notification),permission=window.Notification?.permission;
+      const pushText=!supported?'Hier nicht verfügbar. Auf iPhone/iPad die App zum Home-Bildschirm hinzufügen und von dort öffnen.':permission==='denied'?'Im Gerät/Browser blockiert. Bitte Mitteilungen in den System- oder Website-Einstellungen erlauben.':pushActive?'Erlaubt und für dieses Konto auf dem Server registriert.':permission==='granted'?'Vom Gerät erlaubt; bitte die Registrierung für dieses Konto aktivieren.':'Noch nicht erlaubt. Die Freigabe wird auf diesem Gerät gespeichert.';
+      return `<section class="panel" data-device-settings><h3>Gerätefreigaben · mein Konto</h3><p class="device-help">Diese Freigaben betreffen nur dein eigenes angemeldetes Konto und dieses Gerät, nicht den ausgewählten Mitarbeiter.</p>
+        <div class="device-permission-card"><h4>Push-Mitteilungen</h4><p class="device-help">Einmal erlauben: Terminerinnerungen können danach auch bei geschlossener App erscheinen. Auf iPhone/iPad ab iOS 16.4: in Safari „Zum Home-Bildschirm“ hinzufügen und die App über dieses Symbol öffnen. Fokus-/Stumm-Einstellungen können die Anzeige unterdrücken. Keine Kundendaten auf dem Sperrbildschirm.</p>
+        <p class="device-badge ${pushActive?'is-enabled':''}">${esc(pushText)}</p><div class="device-tools"><button type="button" class="secondary" data-device-action="push-enable">${pushActive?'Gerätefreigabe prüfen':'Push-Mitteilungen erlauben'}</button>${pushActive?'<button type="button" class="secondary" data-device-action="push-test">Testnachricht an dieses Gerät</button>':''}${pushSubscription?'<button type="button" class="secondary" data-device-action="push-disable">Push ausschalten</button>':''}</div><p class="device-status" role="status">${esc(pushIssue)}</p>
+        ${isAdmin()&&businessId()?`<h4>Terminerinnerungen dieser Firma</h4><form data-form="notification-settings" class="entry-form"><label class="wide"><input type="checkbox" name="enabled" ${config?.enabled?'checked':''}> Erinnerungen aktivieren</label><label>Minuten vor Termin<input name="reminder_minutes" type="number" min="0" max="10080" step="1" required value="${Number(config?.reminder_minutes??30)}"></label><label>Oder feste Uhrzeit am Termin-Tag<input name="notification_time" type="time" value="${esc(config?.notification_time?.slice(0,5)||'')}"></label><p class="wide device-help">Eine feste Uhrzeit ersetzt den Minuten-Vorlauf und muss vor dem Termin liegen. Änderungen gelten für noch nicht versendete Erinnerungen. Zeitzone: Europe/Berlin.</p><button class="primary wide">Erinnerungszeit speichern</button></form>`:config?.enabled?`<p class="device-help">Erinnerungen: ${config.notification_time?esc(config.notification_time.slice(0,5))+' Uhr am Termin-Tag':Number(config.reminder_minutes)+' Minuten vorher'}.</p>`:'<p class="device-help">Die Firma hat noch keine Terminerinnerungen aktiviert; die Testnachricht ist trotzdem möglich.</p>'}</div>
+        <div class="device-permission-card"><h4>Standort / Ankunftserkennung</h4><p class="device-help">Einmal freiwillig erlauben. Die Freigabeprüfung hier speichert keinen Standort. Bei deinem geöffneten Arbeitsschein von heute wird die erste Ankunft am hinterlegten Kundenstandort erkannt. Nur bei sichtbarer App, keine dauerhafte Hintergrundverfolgung, kein Bewegungsverlauf und keine automatische Stundenbuchung. Mit „Standort ausschalten“ sofort beenden.</p><p class="device-badge ${locationAllowed?'is-enabled':''}">${locationAllowed?'Für mein Konto auf diesem Gerät erlaubt.':locationPermission==='denied'?'Im Gerät/Browser blockiert. Bitte dort die Standortfreigabe ändern.':'Standortprüfung ist ausgeschaltet.'}</p><div class="device-tools"><button type="button" class="secondary" data-device-action="location-enable">${locationAllowed?'Standortfreigabe prüfen':'Standort erlauben'}</button>${locationAllowed?'<button type="button" class="secondary" data-device-action="location-disable">Standort ausschalten</button>':''}</div><p class="location-permission-status" role="status"></p></div></section>`;
     }
     function afterRender() {
       for(const form of root.querySelectorAll('form')){
@@ -124,7 +155,7 @@
       for(const form of root.querySelectorAll('form[data-form="order"],form[data-form="order-edit"]')){
         const order=form.elements.id?.value||'';form.insertAdjacentHTML('beforebegin',scannerButton(order));
         if(order)form.insertAdjacentHTML('afterend',scansHtml(scans.filter(scan=>same(scan.work_order_id,order))));
-        if(order)form.insertAdjacentHTML('afterend',gpsHtml(state.rows.orders.find(row=>same(row.id,order))));
+        if(order){const current=state.rows.orders.find(row=>same(row.id,order));form.insertAdjacentHTML('afterend',gpsHtml(current));if(locationAllowed&&gpsEligible(current)&&!same(gpsPausedOrder,order)&&!same(watchOrder,order)&&document.visibilityState==='visible')startGps(root.querySelector(`[data-device-action="gps-watch"][data-order="${order}"]`));}
       }
       if(state.view==='receipts'){
         const panel=root.querySelector('.content .panel');if(panel){panel.insertAdjacentHTML('beforeend',scannerButton());
@@ -222,34 +253,51 @@
     const publicKeyBytes=value=>Uint8Array.from(atob(value.replace(/-/g,'+').replace(/_/g,'/').padEnd(Math.ceil(value.length/4)*4,'=')),char=>char.charCodeAt(0));
     async function enablePush() {
       if(!('serviceWorker' in navigator)||!('PushManager' in window)||!('Notification' in window))throw Error('Dieses Gerät unterstützt hier kein Web-Push. Auf iPhone/iPad bitte über Safari zum Home-Bildschirm hinzufügen und dort öffnen.');
-      // requestPermission must happen directly after a user's click.
-      const permission=await Notification.requestPermission();if(permission!=='granted')throw Error('Mitteilungen wurden nicht erlaubt. Du kannst dies in den Geräte-/Browsereinstellungen ändern.');
-      const data=await api('/functions/v1/appointment-reminders?action=public-key');
-      if(!data?.publicKey)throw Error('Push ist auf dem Server noch nicht eingerichtet.');
-      const registration=await navigator.serviceWorker.ready;
-      let subscription=await registration.pushManager.getSubscription();
-      if(!subscription)subscription=await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:publicKeyBytes(data.publicKey)});
-      const existing=await allRows('push_subscriptions',`select=*&endpoint=eq.${encodeURIComponent(subscription.endpoint)}`),json=subscription.toJSON();
-      const row={user_id:state.profile.id,endpoint:json.endpoint,p256dh:json.keys.p256dh,auth:json.keys.auth,enabled:true};
-      if(existing[0])await write('push_subscriptions',row,'PATCH',`id=eq.${existing[0].id}`);
-      else await write('push_subscriptions',row);
-      pushActive=true;
+      const user=state.profile.id;
+      // Fetch the public key/worker BEFORE the permission click, not between
+      // the gesture and subscribe (important for installed iOS web apps).
+      if(pushReadyUser!==user||!pushKey||!pushRegistration){await preparePush(user);refreshDeviceSettings();if(!pushKey||!pushRegistration)throw Error(pushIssue||'Die App wird noch vorbereitet. Bitte kurz warten und die Gerätefreigabe erneut wählen.');return 'Vorbereitung abgeschlossen. Bitte nochmals auf „Push-Mitteilungen erlauben“ tippen.';}
+      if(Notification.permission==='denied')throw Error('Mitteilungen sind im Gerät/Browser blockiert. Bitte dort erlauben und danach erneut prüfen.');
+      const permission=Notification.permission==='granted'?'granted':await Notification.requestPermission();
+      if(permission!=='granted')throw Error('Mitteilungen wurden nicht erlaubt. Du kannst dies in den Geräte-/Browsereinstellungen ändern.');
+      if(!same(user,state.profile?.id))throw Error('Die Anmeldung wurde geändert.');
+      const subscription=pushSubscription||await pushRegistration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:publicKeyBytes(pushKey)});
+      pushSubscription=subscription;
+      const existing=await allRows('push_subscriptions',`select=*&user_id=eq.${user}&endpoint=eq.${encodeURIComponent(subscription.endpoint)}`),json=subscription.toJSON();
+      if(!same(user,state.profile?.id))throw Error('Die Anmeldung wurde geändert.');
+      const row={user_id:user,endpoint:json.endpoint,p256dh:json.keys.p256dh,auth:json.keys.auth,enabled:true};
+      const saved=(existing[0]?await write('push_subscriptions',row,'PATCH',`id=eq.${existing[0].id}`):await write('push_subscriptions',row))?.[0];
+      if(!saved?.id||!saved.enabled||!same(saved.user_id,user))throw Error('Die Serverregistrierung konnte nicht bestätigt werden. Bitte erneut versuchen.');
+      pushDeviceId=saved.id;pushActive=true;refreshDeviceSettings();
+      return 'Push ist für dieses Konto auf diesem Gerät aktiviert. Du kannst jetzt eine Testnachricht senden.';
     }
-    async function disablePush() {
-      try{const registration=await navigator.serviceWorker?.getRegistration(),subscription=await registration?.pushManager.getSubscription();if(subscription){await subscription.unsubscribe();await remove('push_subscriptions',`user_id=eq.${state.profile.id}&endpoint=eq.${encodeURIComponent(subscription.endpoint)}`);}}
-      finally{pushActive=false;}
+    async function disablePush(onLogout=false) {
+      const user=state.profile?.id,registration=await navigator.serviceWorker?.getRegistration(),subscription=await registration?.pushManager.getSubscription();
+      // Disable the server first. If it is offline, never falsely claim all
+      // devices are switched off; a retry will retain the current endpoint.
+      if(subscription&&user){if(onLogout)await subscription.unsubscribe();await remove('push_subscriptions',`user_id=eq.${user}&endpoint=eq.${encodeURIComponent(subscription.endpoint)}`);if(!onLogout)await subscription.unsubscribe();}
+      if(same(state.profile?.id,user)){pushActive=false;pushDeviceId='';pushSubscription=null;refreshDeviceSettings();}return 'Push-Mitteilungen auf diesem Gerät ausgeschaltet.';
     }
+    async function testPush(){
+      if(!pushActive||!pushDeviceId)throw Error('Bitte zuerst die Gerätefreigabe aktivieren.');
+      const result=await api('/functions/v1/appointment-reminders?action=test',{method:'POST',body:{subscription_id:pushDeviceId}});
+      if(result?.sent)return 'Der Push-Dienst hat die Testnachricht angenommen. Prüfe die Mitteilungszentrale dieses Geräts. Bei fehlender Anzeige bitte Fokus-/Stumm-Einstellungen prüfen.';
+      if(['device_expired','device_not_registered'].includes(result?.code)){pushActive=false;pushDeviceId='';if(result.code==='device_expired'){await pushSubscription?.unsubscribe();pushSubscription=null;}refreshDeviceSettings();throw Error('Die Gerätefreigabe ist abgelaufen. Bitte „Push-Mitteilungen erlauben“ erneut wählen.');}
+      throw Error(result?.code==='push_auth_rejected'?'Der Push-Dienst lehnt den Serverversand ab. Bitte der Verwaltung melden.':result?.code==='push_rate_limited'?'Der Push-Dienst ist ausgelastet. Bitte später erneut testen.':'Die Testnachricht konnte gerade nicht versendet werden. Bitte Verbindung prüfen und erneut versuchen.');
+    }
+    async function enableLocation(){const user=state.profile.id;try{await positionOnce();}catch(error){if(error.code===1&&same(user,state.profile?.id)){locationPermission='denied';setLocationConsent(false);refreshDeviceSettings();}throw error;}if(!same(user,state.profile?.id))throw Error('Die Anmeldung wurde geändert.');locationPermission='granted';setLocationConsent(true);gpsPausedOrder='';refreshDeviceSettings();return 'Standortfreigabe gespeichert. Bei deinem geöffneten Auftrag von heute ist die Ankunftserkennung möglich. Hier wurde kein Standort hochgeladen.';}
     async function saveSettings(form) {
       if(!isAdmin())throw Error('Nur der Administrator darf die Erinnerungszeit festlegen.');
       const old=settings.find(row=>same(row.business_id,businessId())),payload={business_id:businessId(),enabled:form.elements.enabled.checked,reminder_minutes:Number(form.elements.reminder_minutes.value),notification_time:form.elements.notification_time.value||null};
       if(old)await write('company_notification_settings',payload,'PATCH',`business_id=eq.${businessId()}`);else await write('company_notification_settings',payload);
-      await load();
+      await load();refreshDeviceSettings(false);
     }
     async function run(button,task,target) {
       if(deviceBusy)return;deviceBusy=true;button.disabled=true;
       const fileInputs=dialog?[...dialog.querySelectorAll('[name="scan_photo"],[name="scan_pdf"],[name="scan_force_ocr"]')]:[];fileInputs.forEach(field=>field.disabled=true);
-      try{await task();if(target&&!target.closest('dialog'))announce(target,'Gespeichert.');}
-      catch(error){if(target)announce(target,error.message||'Die Aktion konnte nicht ausgeführt werden.');}
+      const selector=target?.classList.contains('location-permission-status')?'.location-permission-status':target?.classList.contains('device-status')?'.device-status':null;
+      try{const message=await task();if(target&&!target.closest('dialog'))announce(selector?root.querySelector(selector):target,typeof message==='string'?message:'Gespeichert.');}
+      catch(error){announce(selector?root.querySelector(selector):target,error.message||'Die Aktion konnte nicht ausgeführt werden.');}
       finally{deviceBusy=false;if(!savedScan)fileInputs.forEach(field=>field.disabled=false);if(button.isConnected&&!(savedScan&&button.closest('form[data-form="receipt-scan"]')))button.disabled=false;}
     }
     function handleClick(event) {
@@ -261,13 +309,16 @@
       if(action==='scan-remove-line'){button.closest('.scan-line').remove();return;}
       const status=dialog?.querySelector('.scan-status')||root.querySelector('.device-status');
       if(action==='scan-recognize')return run(button,recognize,status);
-      if(action==='push-enable')return run(button,async()=>{await enablePush();render();},status);
-      if(action==='push-disable')return run(button,async()=>{await disablePush();render();},status);
-      if(action==='push-test')return run(button,async()=>{const result=await api('/functions/v1/appointment-reminders?action=test',{method:'POST',body:{}});if(!result?.sent)throw Error('Die Testmitteilung konnte noch nicht zugestellt werden. Bitte die Gerätefreigabe prüfen.');},status);
+      if(action==='push-enable')return run(button,enablePush,status);
+      if(action==='push-disable')return run(button,disablePush,status);
+      if(action==='push-test')return run(button,testPush,status);
+      if(action==='location-enable')return run(button,enableLocation,root.querySelector('.location-permission-status'));
+      if(action==='location-disable'){setLocationConsent(false);refreshDeviceSettings();announce(root.querySelector('.location-permission-status'),'Standortprüfung ausgeschaltet. Es werden keine weiteren Ankünfte erfasst.');return;}
+      if(action==='location-settings'){state.view='settings';state.menu=false;render();root.querySelector('[data-device-settings]')?.scrollIntoView({block:'start'});return;}
       if(action==='gps-watch')return startGps(button);
-      if(action==='gps-stop'){stopGps();announce(root.querySelector('.gps-status'),'Ankunftserkennung beendet.');return;}
-      if(action==='gps-manual')return run(button,()=>captureArrival(button.dataset.order,'manual'),root.querySelector('.gps-status'));
-      if(action==='customer-location-here')return run(button,async()=>{const position=await positionOnce(),form=button.closest('form');form.elements.latitude.value=position.coords.latitude.toFixed(7);form.elements.longitude.value=position.coords.longitude.toFixed(7);announce(root.querySelector('.location-status'),'Position übernommen. Bitte als Kundenstandort speichern.');},root.querySelector('.location-status'));
+      if(action==='gps-stop'){gpsPausedOrder=watchOrder||state.orderId;stopGps();announce(root.querySelector('.gps-status'),'Ankunftserkennung beendet.');return;}
+      if(action==='gps-manual')return run(button,async()=>{await captureArrival(button.dataset.order,'manual');return root.querySelector('.gps-status')?.textContent;},root.querySelector('.gps-status'));
+      if(action==='customer-location-here')return run(button,async()=>{const position=await positionOnce(),form=button.closest('form');form.elements.latitude.value=position.coords.latitude.toFixed(7);form.elements.longitude.value=position.coords.longitude.toFixed(7);return 'Position übernommen. Bitte als Kundenstandort speichern.';},root.querySelector('.location-status'));
       const scan=scans.find(row=>same(row.id,button.dataset.id));
       if(action==='receipt-download'&&scan?.file_path)return run(button,()=>download('work-order-documents',scan.file_path,scan.file_name||'Beleg'),status);
       if(action==='receipt-delete'&&scan&&confirm('Diesen Beleg wirklich löschen?'))return run(button,async()=>{await remove('receipt_scans',`id=eq.${scan.id}`);scans=scans.filter(row=>!same(row.id,scan.id));render();},status);
@@ -284,16 +335,42 @@
     root.addEventListener('click',event=>{
       if(event.target.closest('[data-action="logout"]')){
         event.preventDefault();event.stopImmediatePropagation();if(deviceBusy)return;
-        stopGps();deviceBusy=true;Promise.race([Promise.resolve(disablePush()).catch(()=>{}),new Promise(resolve=>setTimeout(resolve,1500))]).finally(()=>{deviceBusy=false;scans=[];settings=[];locations=[];arrivals=[];loadedUser='';closeScanner();logout();});
+        stopGps();locationAllowed=false;deviceBusy=true;Promise.race([Promise.resolve(disablePush(true)).catch(()=>{}),new Promise(resolve=>setTimeout(resolve,1500))]).finally(()=>{deviceBusy=false;scans=[];settings=[];locations=[];arrivals=[];loadedUser='';pushActive=false;pushDeviceId='';pushReadyUser='';closeScanner();logout();});
       }
     },true);
     function locationHtml(customerId){const loc=locations.find(row=>same(row.customer_id,customerId));return `<section class="customer-order-list"><h3>Standort für Ankunftserkennung</h3><p class="device-help">Dieser Standort muss tatsächlich zur Kundenadresse gehören. Nach einer Adressänderung bitte prüfen. Keine Adresse wird an einen externen Kartendienst gesendet.</p><form data-form="customer-location" class="entry-form"><input type="hidden" name="customer_id" value="${esc(customerId)}"><label>Breitengrad<input name="latitude" type="number" step="any" min="-90" max="90" required value="${loc?.latitude??''}"></label><label>Längengrad<input name="longitude" type="number" step="any" min="-180" max="180" required value="${loc?.longitude??''}"></label><label>Umkreis (Meter)<input name="radius_m" type="number" min="50" max="500" required value="${loc?.radius_m??150}"></label><button type="button" class="secondary" data-device-action="customer-location-here">Meine aktuelle Position übernehmen</button><button class="primary">Kundenstandort speichern</button></form><p class="location-status" role="status"></p></section>`;}
     async function saveLocation(form){const customer=form.elements.customer_id.value,payload={customer_id:customer,business_id:businessId(),latitude:Number(form.elements.latitude.value),longitude:Number(form.elements.longitude.value),radius_m:Number(form.elements.radius_m.value)},old=locations.find(row=>same(row.customer_id,customer));const saved=(old?await write('customer_locations',payload,'PATCH',`customer_id=eq.${customer}`):await write('customer_locations',payload))?.[0];if(!saved)throw Error('Der Standort konnte nicht bestätigt werden.');locations=[saved,...locations.filter(row=>!same(row.customer_id,customer))];}
-    const gpsError=error=>Error(error.code===1?'Standortfreigabe wurde nicht erteilt.':error.code===3?'Standort konnte nicht rechtzeitig bestimmt werden. Bitte nochmals versuchen.':'Standort ist auf diesem Gerät gerade nicht verfügbar.');
+    const gpsError=error=>Object.assign(Error(error.code===1?'Standortfreigabe wurde nicht erteilt.':error.code===3?'Standort konnte nicht rechtzeitig bestimmt werden. Bitte nochmals versuchen.':'Standort ist auf diesem Gerät gerade nicht verfügbar.'),{code:error.code});
     function positionOnce(){if(!navigator.geolocation)throw Error('Dieses Gerät stellt hier keinen Standort bereit.');return new Promise((resolve,reject)=>navigator.geolocation.getCurrentPosition(resolve,error=>reject(gpsError(error)),{enableHighAccuracy:true,timeout:20000,maximumAge:0}));}
-    function gpsHtml(order){if(!order)return '';const rows=arrivals.filter(row=>same(row.work_order_id,order.id)),own=rows.find(row=>same(row.employee_id,state.profile.id));const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Berlin',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());const allowed=orderForEmployee(order,state.profile.id)&&order.work_date===today&&!own;return `<section class="customer-order-list"><h3>Ankunft beim Kunden</h3>${rows.map(row=>`<p>${esc(state.rows.people.find(person=>same(person.id,row.employee_id))?.display_name||state.rows.people.find(person=>same(person.id,row.employee_id))?.username||'Mitarbeiter')}: ${new Intl.DateTimeFormat('de-DE',{timeZone:'Europe/Berlin',dateStyle:'short',timeStyle:'short'}).format(new Date(row.arrived_at))} · GPS-Genauigkeit ±${Math.round(row.accuracy_m)} m</p>`).join('')||'<p>Noch keine Ankunft erfasst.</p>'}${allowed?`<p class="device-help">Freiwillig: Die Ankunftserkennung prüft deinen Standort nur bei geöffnetem Auftrag und sichtbarer App. Gespeichert wird nur die erste Ankunft, kein Bewegungsverlauf. Arbeitszeiten werden dadurch nicht automatisch gebucht. Browser-GPS ist kein manipulationssicherer Anwesenheitsnachweis.</p><div class="device-tools"><button type="button" class="secondary" data-device-action="gps-watch" data-order="${esc(order.id)}">GPS-Ankunftserkennung starten</button><button type="button" class="secondary" data-device-action="gps-manual" data-order="${esc(order.id)}">Ankunft jetzt mit GPS erfassen</button><button type="button" class="secondary" data-device-action="gps-stop">Erkennung stoppen</button></div>`:''}<p class="gps-status" role="status">${watchId==null?'Standortprüfung ist aus.':'Standortprüfung läuft nur bei sichtbarer App.'}</p></section>`;}
-    async function captureArrival(orderId,source,position){const user=state.profile.id;position=position||await positionOnce();if(!same(user,state.profile?.id))throw Error('Die Anmeldung wurde geändert.');const coord=position.coords,payload={work_order_id:orderId,employee_id:user,business_id:businessId(),latitude:coord.latitude,longitude:coord.longitude,accuracy_m:coord.accuracy,source};let saved;try{saved=(await write('order_arrivals',payload))?.[0];}catch(error){if(error.code!=='23505')throw error;saved=(await allRows('order_arrivals',`select=*&work_order_id=eq.${orderId}&employee_id=eq.${user}`))[0];}if(!saved)throw Error('Die Ankunft konnte nicht bestätigt werden.');arrivals=[saved,...arrivals.filter(row=>!(same(row.work_order_id,orderId)&&same(row.employee_id,user)))];stopGps();const status=root.querySelector('.gps-status');if(status)announce(status,'Ankunft gespeichert: '+new Intl.DateTimeFormat('de-DE',{timeStyle:'short'}).format(new Date(saved.arrived_at))+' Uhr. Arbeitsstunden unverändert.');}
-    function startGps(button){const status=root.querySelector('.gps-status'),order=state.rows.orders.find(row=>same(row.id,button.dataset.order)),target=locations.find(row=>same(row.customer_id,order?.customer_id));if(!target){announce(status,'Der Kundenstandort fehlt. Bitte die Geschäftsverwaltung bitten, ihn beim Kunden festzulegen.');return;}if(!navigator.geolocation){announce(status,'Standort ist hier nicht verfügbar.');return;}stopGps();watchOrder=order.id;announce(status,'Standortfreigabe angefragt. Erkennung läuft nur bei sichtbarer App.');watchId=navigator.geolocation.watchPosition(async position=>{if(document.visibilityState!=='visible'||!same(state.orderId,order.id)){stopGps();return;}const distance=metres(position.coords,target);if(position.coords.accuracy>100||distance>target.radius_m){announce(status,`Noch keine sichere Ankunft: ${Math.round(distance)} m zum Kunden; Genauigkeit ±${Math.round(position.coords.accuracy)} m.`);return;}if(gpsSaving)return;gpsSaving=true;try{await captureArrival(order.id,'proximity',position);}catch(error){stopGps();announce(status,error.message);}finally{gpsSaving=false;}},error=>{stopGps();announce(status,gpsError(error).message);},{enableHighAccuracy:true,timeout:20000,maximumAge:10000});}
+    function gpsEligible(order){const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Berlin',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());return !!order&&orderForEmployee(order,state.profile.id)&&order.work_date===today&&!arrivals.some(row=>same(row.work_order_id,order.id)&&same(row.employee_id,state.profile.id));}
+    function gpsHtml(order){if(!order)return '';const rows=arrivals.filter(row=>same(row.work_order_id,order.id));return `<section class="customer-order-list"><h3>Ankunft beim Kunden</h3>${rows.map(row=>`<p>${esc(state.rows.people.find(person=>same(person.id,row.employee_id))?.display_name||state.rows.people.find(person=>same(person.id,row.employee_id))?.username||'Mitarbeiter')}: ${new Intl.DateTimeFormat('de-DE',{timeZone:'Europe/Berlin',dateStyle:'short',timeStyle:'short'}).format(new Date(row.arrived_at))} · GPS-Genauigkeit ±${Math.round(row.accuracy_m)} m</p>`).join('')||'<p>Noch keine Ankunft erfasst.</p>'}${gpsEligible(order)?`<p class="device-help">Freiwillig: Nur bei geöffnetem Auftrag und sichtbarer App. Gespeichert wird nur die erste Ankunft, kein Bewegungsverlauf. Arbeitszeiten bleiben unverändert. Browser-GPS ist kein manipulationssicherer Anwesenheitsnachweis.</p><div class="device-tools">${locationAllowed?`<button type="button" class="secondary" data-device-action="gps-watch" data-order="${esc(order.id)}">GPS-Ankunftserkennung starten</button><button type="button" class="secondary" data-device-action="gps-manual" data-order="${esc(order.id)}">Ankunft jetzt mit GPS erfassen</button><button type="button" class="secondary" data-device-action="gps-stop">Erkennung stoppen</button>`:'<button type="button" class="secondary" data-device-action="location-settings">Standort in meinen Einstellungen erlauben</button>'}</div>`:''}<p class="gps-status" role="status">${watchId==null?'Standortprüfung ist aus.':'Standortprüfung läuft nur bei sichtbarer App.'}</p></section>`;}
+    async function captureArrival(orderId,source,position){
+      const user=state.profile.id,order=state.rows.orders.find(row=>same(row.id,orderId));
+      if(!locationAllowed||!gpsEligible(order)||!same(state.orderId,orderId)||document.visibilityState!=='visible')throw Error('Bitte Standort in den eigenen Einstellungen erlauben und den heutigen eigenen Auftrag öffnen.');
+      position=position||await positionOnce();
+      if(!same(user,state.profile?.id)||!locationAllowed||!same(state.orderId,orderId)||document.visibilityState!=='visible')throw Error('Die Standortprüfung wurde beendet.');
+      const coord=position.coords,payload={work_order_id:orderId,employee_id:user,business_id:businessId(),latitude:coord.latitude,longitude:coord.longitude,accuracy_m:coord.accuracy,source};let saved;
+      try{saved=(await write('order_arrivals',payload))?.[0];}catch(error){if(error.code!=='23505')throw error;saved=(await allRows('order_arrivals',`select=*&work_order_id=eq.${orderId}&employee_id=eq.${user}`))[0];}
+      if(!saved)throw Error('Die Ankunft konnte nicht bestätigt werden.');
+      if(!same(user,state.profile?.id))return;
+      arrivals=[saved,...arrivals.filter(row=>!(same(row.work_order_id,orderId)&&same(row.employee_id,user)))];stopGps();
+      announce(root.querySelector('.gps-status'),'Ankunft gespeichert: '+new Intl.DateTimeFormat('de-DE',{timeStyle:'short'}).format(new Date(saved.arrived_at))+' Uhr. Arbeitsstunden unverändert.');
+    }
+    function startGps(button){
+      if(!button)return;const status=root.querySelector('.gps-status'),order=state.rows.orders.find(row=>same(row.id,button.dataset.order)),target=locations.find(row=>same(row.customer_id,order?.customer_id)),user=state.profile.id;
+      if(!locationAllowed||!gpsEligible(order)||document.visibilityState!=='visible'){announce(status,'Bitte Standort in deinen Einstellungen erlauben. Nur eigene Aufträge von heute sind möglich.');return;}
+      if(!target){announce(status,'Der Kundenstandort fehlt. Bitte die Geschäftsverwaltung bitten, ihn beim Kunden festzulegen.');return;}
+      if(!navigator.geolocation){announce(status,'Standort ist hier nicht verfügbar.');return;}
+      stopGps();gpsPausedOrder='';watchOrder=order.id;announce(status,'Standortprüfung läuft nur bei sichtbarer App.');
+      watchId=navigator.geolocation.watchPosition(async position=>{
+        if(!same(state.profile?.id,user))return;
+        if(document.visibilityState!=='visible'||!locationAllowed||!same(state.orderId,order.id)){stopGps();return;}
+        const currentStatus=root.querySelector('.gps-status'),distance=metres(position.coords,target);
+        if(position.coords.accuracy>100||distance>target.radius_m){announce(currentStatus,`Noch keine sichere Ankunft: ${Math.round(distance)} m zum Kunden; Genauigkeit ±${Math.round(position.coords.accuracy)} m.`);return;}
+        if(gpsSaving)return;gpsSaving=true;
+        try{await captureArrival(order.id,'proximity',position);}catch(error){stopGps();announce(currentStatus,error.message);}finally{gpsSaving=false;}
+      },error=>{if(!same(state.profile?.id,user))return;stopGps();if(error.code===1){locationPermission='denied';setLocationConsent(false);}announce(root.querySelector('.gps-status'),gpsError(error).message);},{enableHighAccuracy:true,timeout:20000,maximumAge:10000});
+    }
     document.addEventListener('visibilitychange',()=>{if(document.visibilityState!=='visible'){stopGps();const status=root.querySelector('.gps-status');if(status)announce(status,'Standortprüfung beendet: App wurde in den Hintergrund gelegt.');}});
     navigator.serviceWorker?.addEventListener('message',event=>{if(event.data?.type==='WORKTIME_OPEN_PLANNING'&&state.profile){state.view='planning';state.menu=false;render();}});
     return {load,afterRender,attachReceipts,customerOrders,customerOrdersHtml};

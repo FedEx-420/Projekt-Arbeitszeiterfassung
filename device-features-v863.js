@@ -67,7 +67,7 @@
   function create(ctx) {
     const {root,state,api,write,allRows,upload,remove,download,render,businessId,workerId,isManager,isAdmin,orderForEmployee,orderHours,dateText,timeText,h,planningMeta,planEmployeeIds,logout}=ctx;
     let scans=[],settings=[],loading=null,loadedUser='',ocr=null,dialog=null,scanForm=null,scanFile=null,scanPath='',scanId='',savedScan=null;
-    let pushActive=false,deviceBusy=false;
+    let pushActive=false,deviceBusy=false,ocrPrefix='';
     let locations=[],arrivals=[],watchId=null,watchOrder='',gpsSaving=false;
     const metres=(a,b)=>{const rad=value=>value*Math.PI/180;const q=Math.sin(rad(a.latitude-b.latitude)/2)**2+Math.cos(rad(a.latitude))*Math.cos(rad(b.latitude))*Math.sin(rad(a.longitude-b.longitude)/2)**2;return 6371000*2*Math.asin(Math.min(1,Math.sqrt(q)));};
     function stopGps(){if(watchId!=null)navigator.geolocation?.clearWatch(watchId);watchId=null;watchOrder='';}
@@ -141,26 +141,63 @@
       if(dialog)return;scanForm=button.parentElement.nextElementSibling?.matches('form')?button.parentElement.nextElementSibling:null;
       const order=button.dataset.order||'';scanFile=null;scanPath='';savedScan=null;scanId=crypto.randomUUID();
       dialog=document.createElement('dialog');dialog.className='device-dialog';dialog.dataset.order=order;
-      dialog.innerHTML=`<header><h2>Beleg scannen</h2><button type="button" class="secondary small" data-device-action="scan-close">Schließen</button></header><p class="device-help">Fotografiere den Beleg gerade und gut beleuchtet. Die Texterkennung läuft auf deinem Gerät. Alle Vorschläge bitte prüfen; nichts wird in die Materialliste übernommen.</p><form data-form="receipt-scan"><label>Foto aufnehmen oder auswählen<input name="scan_photo" type="file" accept="image/*" capture="environment"></label><img class="scan-preview" hidden alt="Ausgewählter Beleg"><div class="device-tools"><button type="button" class="secondary" data-device-action="scan-recognize">Text erkennen</button></div><p class="scan-status" role="status"></p><label>Bezeichnung<input name="title" maxlength="160" required placeholder="z. B. Tankbeleg"></label><label>Datum<input name="receipt_date" type="date" required value="${esc(state.date)}"></label><label>Kategorie<select name="category"><option value="fuel">Tankbeleg</option><option value="receipt" ${order?'selected':''}>Quittung</option><option value="training">Schulung</option></select></label><div data-scan-lines>${lineHtml()}</div><button type="button" class="secondary" data-device-action="scan-add-line">Position hinzufügen</button><div class="scan-totals"><label>Brutto gesamt (€)<input name="gross_total" inputmode="decimal"></label><label>Netto gesamt (€)<input name="net_total" inputmode="decimal"></label></div><details><summary>Erkannten Text prüfen</summary><label>Text<textarea name="ocr_text" rows="6" maxlength="30000"></textarea></label></details><p class="device-help">Beim Speichern wird das Foto als privater Beleg hochgeladen. Artikel und Beträge bleiben ausschließlich bei diesem Beleg.${order?' Zugeordnet zum geöffneten Arbeitsschein.':' Neue Arbeitsscheine: Der Beleg wird beim Abschließen mit diesem Formular verbunden.'}</p><button class="primary" type="submit">Geprüften Beleg speichern</button></form>`;
+      dialog.innerHTML=`<header><h2>Beleg scannen</h2><button type="button" class="secondary small" data-device-action="scan-close">Schließen</button></header><p class="device-help">Fotografiere den Beleg oder füge eine PDF vom Gerät ein. Auch gescannte PDF-Seiten werden auf deinem Gerät gelesen. Alle Vorschläge bitte prüfen; nichts wird in die Materialliste übernommen.</p><form data-form="receipt-scan"><label>Foto aufnehmen oder auswählen<input name="scan_photo" type="file" accept="image/*" capture="environment"></label><label>PDF vom Gerät einfügen<input name="scan_pdf" type="file" accept="application/pdf,.pdf"></label><p class="device-help">Fotos bis 12 MB · PDF bis 20 MB und 20 Seiten. Mehrseitige PDFs werden vollständig geprüft.</p><img class="scan-preview" hidden alt="Vorschau des ausgewählten Belegs"><p class="scan-file-info" role="status"></p><label class="scan-pdf-options" hidden><input name="scan_force_ocr" type="checkbox"> PDF vollständig per Texterkennung prüfen (langsamer)</label><div class="device-tools"><button type="button" class="secondary" data-device-action="scan-recognize">Text erkennen</button></div><p class="scan-status" role="status"></p><label>Bezeichnung<input name="title" maxlength="160" required placeholder="z. B. Tankbeleg"></label><label>Datum<input name="receipt_date" type="date" required value="${esc(state.date)}"></label><label>Kategorie<select name="category"><option value="fuel">Tankbeleg</option><option value="receipt" ${order?'selected':''}>Quittung</option><option value="training">Schulung</option></select></label><div data-scan-lines>${lineHtml()}</div><button type="button" class="secondary" data-device-action="scan-add-line">Position hinzufügen</button><div class="scan-totals"><label>Brutto gesamt (€)<input name="gross_total" inputmode="decimal"></label><label>Netto gesamt (€)<input name="net_total" inputmode="decimal"></label></div><details><summary>Erkannten Text prüfen</summary><label>Text<textarea name="ocr_text" rows="6" maxlength="30000"></textarea></label></details><p class="device-help">Beim Speichern wird das Originalfoto oder die Original-PDF als privater Beleg hochgeladen. Artikel und Beträge bleiben ausschließlich bei diesem Beleg.${order?' Zugeordnet zum geöffneten Arbeitsschein.':' Neue Arbeitsscheine: Der Beleg wird beim Abschließen mit diesem Formular verbunden.'}</p><button class="primary" type="submit">Geprüften Beleg speichern</button></form>`;
       document.body.append(dialog);dialog.showModal();
       dialog.addEventListener('click',handleClick);dialog.addEventListener('submit',handleSubmit);
       dialog.addEventListener('cancel',()=>closeScanner());dialog.addEventListener('change',handlePhoto);
       initValidation(dialog);
     }
     function closeScanner(){if(deviceBusy)return;const img=dialog?.querySelector('img');if(img?.dataset.blob)URL.revokeObjectURL(img.dataset.blob);dialog?.close();dialog?.remove();dialog=null;scanFile=null;scanForm=null;}
-    function handlePhoto(event){if(event.target.name!=='scan_photo')return;const file=event.target.files?.[0];if(!file)return;scanFile=file;scanPath='';const img=dialog.querySelector('img');if(img.dataset.blob)URL.revokeObjectURL(img.dataset.blob);img.src=URL.createObjectURL(file);img.dataset.blob=img.src;img.hidden=false;}
-    async function recognize() {
-      if(!scanFile)throw Error('Bitte zuerst ein Foto aufnehmen oder auswählen.');
-      if(scanFile.size>12*1024*1024)throw Error('Das Foto darf höchstens 12 MB groß sein.');
-      const status=dialog.querySelector('.scan-status');announce(status,'Texterkennung wird geladen …');
+    function scanIsPdf(file){return file?.type==='application/pdf'||/\.pdf$/i.test(file?.name||'');}
+    function checkScanFile(file){
+      if(!file)throw Error('Bitte zuerst ein Foto oder eine PDF-Datei auswählen.');
+      const pdf=scanIsPdf(file);
+      if(!pdf&&!file.type?.startsWith('image/'))throw Error('Bitte ein Foto oder eine PDF-Datei auswählen.');
+      if(file.size>(pdf?20:12)*1024*1024)throw Error(pdf?'Die PDF darf höchstens 20 MB groß sein.':'Das Foto darf höchstens 12 MB groß sein.');
+    }
+    function handlePhoto(event){
+      if(!['scan_photo','scan_pdf'].includes(event.target.name)||deviceBusy)return;
+      const file=event.target.files?.[0];if(!file)return;
+      const img=dialog.querySelector('img'),status=dialog.querySelector('.scan-status'),form=dialog.querySelector('form');
+      if(img.dataset.blob)URL.revokeObjectURL(img.dataset.blob);delete img.dataset.blob;img.removeAttribute('src');img.hidden=true;
+      scanFile=null;scanPath='';form.elements.ocr_text.value='';form.elements.gross_total.value='';form.elements.net_total.value='';form.querySelector('[data-scan-lines]').innerHTML=lineHtml();
+      form.elements[event.target.name==='scan_pdf'?'scan_photo':'scan_pdf'].value='';
+      try{checkScanFile(file);}catch(error){event.target.value='';announce(status,error.message);return;}
+      scanFile=file;scanId=crypto.randomUUID();const pdf=scanIsPdf(file);
+      dialog.querySelector('.scan-file-info').textContent=file.name;
+      dialog.querySelector('.scan-pdf-options').hidden=!pdf;form.elements.scan_force_ocr.checked=false;
+      if(!pdf){img.src=URL.createObjectURL(file);img.dataset.blob=img.src;img.hidden=false;}
+      announce(status,pdf?'PDF ausgewählt. Mit „Text erkennen“ werden alle Seiten geprüft.':'Foto ausgewählt. Mit „Text erkennen“ kannst du die Angaben übernehmen.');
+    }
+    async function getReceiptPdf(){
+      if(!window.WorktimeReceiptPdf)await new Promise((resolve,reject)=>{const script=document.createElement('script');script.src='./receipt-pdf-v863-1.js';script.onload=resolve;script.onerror=()=>{script.remove();reject(Error('Die PDF-Verarbeitung konnte nicht geladen werden. Bitte die Verbindung prüfen.'));};document.head.append(script);});
+      return window.WorktimeReceiptPdf;
+    }
+    async function getOcr(status){
       if(!window.Tesseract){await new Promise((resolve,reject)=>{const script=document.createElement('script');script.src='./vendor/ocr/tesseract-6.0.1.min.js';script.onload=resolve;script.onerror=()=>{script.remove();reject(Error('Die Texterkennung konnte nicht geladen werden. Bitte die Verbindung prüfen.'));};document.head.append(script);});}
-      if(!ocr)ocr=await window.Tesseract.createWorker(['deu','eng'],1,{workerPath:new URL('./vendor/ocr/worker-6.0.1.min.js',location.href).href,corePath:new URL('./vendor/ocr/core/',location.href).href,langPath:new URL('./vendor/ocr/languages/',location.href).href,logger:message=>{if(message.progress!=null)announce(status,'Text erkennen: '+Math.round(message.progress*100)+' %');}});
-      const {data}=await ocr.recognize(scanFile),parsed=parseReceipt(data.text);
+      if(!ocr)ocr=await window.Tesseract.createWorker(['deu','eng'],1,{workerPath:new URL('./vendor/ocr/worker-6.0.1.min.js',location.href).href,corePath:new URL('./vendor/ocr/core/',location.href).href,langPath:new URL('./vendor/ocr/languages/',location.href).href,logger:message=>{if(message.progress!=null)announce(status,ocrPrefix+'Text erkennen: '+Math.round(message.progress*100)+' %');}});
+      return ocr;
+    }
+    async function recognize() {
+      checkScanFile(scanFile);
+      const status=dialog.querySelector('.scan-status');announce(status,'Beleg wird gelesen …');
+      let text='',pdfResult;
+      try{
+        if(scanIsPdf(scanFile)){
+          const reader=await getReceiptPdf();
+          pdfResult=await reader.read(scanFile,{forceOcr:dialog.querySelector('[name="scan_force_ocr"]').checked,onProgress:message=>announce(status,message),onPreview:(canvas,pages)=>{const img=dialog.querySelector('img');img.src=canvas.toDataURL('image/jpeg',.85);img.hidden=false;dialog.querySelector('.scan-file-info').textContent=scanFile.name+' · '+pages+' Seite'+(pages===1?'':'n')+' · Vorschau der ersten Seite';},recognizeImage:async(canvas,page,total)=>{ocrPrefix='PDF '+page+'/'+total+' · ';const worker=await getOcr(status);return (await worker.recognize(canvas)).data.text;}});
+          text=pdfResult.text;
+        }else{const worker=await getOcr(status);text=(await worker.recognize(scanFile)).data.text;}
+      }finally{ocrPrefix='';}
+      const parsed=parseReceipt(text);
+      if(parsed.items.length>150)throw Error('Es wurden zu viele Positionen erkannt. Bitte den Beleg in kleinere PDF-Dateien aufteilen.');
       const form=dialog.querySelector('form');form.elements.ocr_text.value=parsed.raw.slice(0,30000);form.elements.gross_total.value=money(parsed.gross);form.elements.net_total.value=money(parsed.net);
       form.querySelector('[data-scan-lines]').innerHTML=(parsed.items.length?parsed.items:[{}]).map(lineHtml).join('');
-      announce(status,parsed.items.length?`${parsed.items.length} Positionsvorschläge gefunden. Bitte Namen und Netto-/Bruttobeträge prüfen${parsed.vatRate!=null?' (Netto teilweise aus gedruckten '+parsed.vatRate+' % berechnet)':''}.`:'Keine sicheren Positionen gefunden. Du kannst die Angaben unten manuell ergänzen.');
+      const prefix=pdfResult?'PDF: alle '+pdfResult.pages+' Seiten gelesen'+(pdfResult.ocrPages?' ('+pdfResult.ocrPages+' per Texterkennung)':'')+'. ':'';
+      announce(status,prefix+(parsed.items.length?parsed.items.length+' Positionsvorschläge gefunden. Bitte Namen und Netto-/Bruttobeträge prüfen'+(parsed.vatRate!=null?' (Netto teilweise aus gedruckten '+parsed.vatRate+' % berechnet)':'')+'.':'Keine sicheren Positionen gefunden. Du kannst die Angaben unten manuell ergänzen.'));
     }
     async function saveScan(form) {
+      if(scanFile)checkScanFile(scanFile);
       const items=[...form.querySelectorAll('.scan-line')].map(line=>({name:line.querySelector('[name="scan_name"]').value.trim(),gross:amount(line.querySelector('[name="scan_gross"]').value),net:amount(line.querySelector('[name="scan_net"]').value)}));
       const numeric=[...form.querySelectorAll('[name="scan_gross"],[name="scan_net"],[name="gross_total"],[name="net_total"]')];
       for(const field of numeric)if(field.value.trim()&&amount(field.value)==null){markField(field,'Bitte einen gültigen Betrag eingeben.');throw Error('Bitte die rot markierten Beträge korrigieren.');}
@@ -210,9 +247,10 @@
     }
     async function run(button,task,target) {
       if(deviceBusy)return;deviceBusy=true;button.disabled=true;
+      const fileInputs=dialog?[...dialog.querySelectorAll('[name="scan_photo"],[name="scan_pdf"],[name="scan_force_ocr"]')]:[];fileInputs.forEach(field=>field.disabled=true);
       try{await task();if(target&&!target.closest('dialog'))announce(target,'Gespeichert.');}
       catch(error){if(target)announce(target,error.message||'Die Aktion konnte nicht ausgeführt werden.');}
-      finally{deviceBusy=false;if(button.isConnected&&!(savedScan&&button.closest('form[data-form="receipt-scan"]')))button.disabled=false;}
+      finally{deviceBusy=false;if(!savedScan)fileInputs.forEach(field=>field.disabled=false);if(button.isConnected&&!(savedScan&&button.closest('form[data-form="receipt-scan"]')))button.disabled=false;}
     }
     function handleClick(event) {
       const button=event.target.closest('[data-device-action]');if(!button)return;

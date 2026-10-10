@@ -69,13 +69,52 @@
     let scans=[],settings=[],reminders=[],remindersReady=false,loading=null,loadedUser='',ocr=null,dialog=null,scanForm=null,scanFile=null,scanPath='',scanId='',savedScan=null;
     let pushActive=false,pushDeviceId='',pushSubscription=null,pushRegistration=null,pushKey='',pushReadyUser='',pushIssue='',deviceBusy=false,ocrPrefix='';
     let locations=[],arrivals=[],watchId=null,watchOrder='',gpsSaving=false,gpsPausedOrder='',locationAllowed=false,locationPermission='prompt',locationPermissionHandle=null;
+    let workContext=null,workContextReady=false,workDeviceId='';
+    const workAccount=()=>isAdmin()?state.rows.people.find(p=>same(p.id,workContext?.employee_id)&&['employee','business'].includes(p.role)&&same(p.role==='business'?p.id:p.business_id,workContext.business_id)):state.profile;
+    const workCompany=()=>{const p=workAccount();return p?.role==='business'?p.id:p?.business_id||'';};
     const metres=(a,b)=>{const rad=value=>value*Math.PI/180;const q=Math.sin(rad(a.latitude-b.latitude)/2)**2+Math.cos(rad(a.latitude))*Math.cos(rad(b.latitude))*Math.sin(rad(a.longitude-b.longitude)/2)**2;return 6371000*2*Math.asin(Math.min(1,Math.sqrt(q)));};
-    const arrivalTimer=window.WorktimeArrivalTimer?.create({...ctx,metres,locations:()=>locations,locationAllowed:()=>locationAllowed,pushDevice:()=>pushActive?pushDeviceId:''});
+    const arrivalTimer=window.WorktimeArrivalTimer?.create({...ctx,workAccount,workCompany,workDevice:()=>isAdmin()?workContext?.id||'':'',metres,locations:()=>locations,locationAllowed:()=>locationAllowed,pushDevice:()=>pushActive?pushDeviceId:''});
     function stopGps(){if(watchId!=null)navigator.geolocation?.clearWatch(watchId);watchId=null;watchOrder='';}
     initValidation(root);
     const same=(a,b)=>String(a||'')===String(b||'');
     const announce=(target,text)=>{if(target){target.textContent=text;target.setAttribute('role','status');}};
-    const locationConsentKey=user=>'worktime-v864-location.'+user;
+    const locationConsentKey=user=>'worktime-v864-location.'+user+(isAdmin()?'.'+(workContext?.employee_id||'none'):'');
+    async function loadWorkContext(user){
+      workContextReady=false;workContext=null;workDeviceId='';
+      if(!isAdmin()){workContextReady=true;return;}
+      try{
+        const key='worktime-v866-device.'+user;workDeviceId=localStorage.getItem(key)||crypto.randomUUID();localStorage.setItem(key,workDeviceId);
+        const rows=await allRows('work_device_contexts',`select=*&id=eq.${workDeviceId}&owner_id=eq.${user}`);
+        if(!same(state.profile?.id,user))return;
+        workContext=rows.find(row=>same(row.owner_id,user)&&same(row.id,workDeviceId))||null;
+        if(workContext&&!workAccount())workContext=null;
+        workContextReady=true;
+      }catch{workContext=null;}
+    }
+    async function saveWorkContext(form){
+      if(!isAdmin()||!workContextReady||!workDeviceId)throw Error('Die Geräteverknüpfung konnte nicht geladen werden. Bitte aktualisieren.');
+      const actor=state.profile.id,employee=form.elements.work_employee.value||null,previous=workContext?.employee_id;
+      const saved=await api('/rest/v1/rpc/set_work_device_context',{method:'POST',body:{p_device:workDeviceId,p_employee:employee,p_subscription:pushActive?pushDeviceId:null}});
+      if(!same(actor,state.profile?.id))throw Error('Die Anmeldung wurde geändert.');
+      if(employee&&(!saved?.id||!same(saved.employee_id,employee)||!same(saved.owner_id,actor)))throw Error('Die Verknüpfung wurde nicht bestätigt.');
+      stopGps();arrivalTimer?.reset();if(!same(previous,employee))setLocationConsent(false);workContext=saved;
+      if(!same(previous,employee))setLocationConsent(false);
+      await arrivalTimer?.load();render();
+      return employee?'Persönliches Arbeitskonto für dieses Gerät gespeichert. Push bitte erlauben; Standort bei Bedarf separat freigeben.':'Persönliches Arbeitskonto getrennt. Standortprüfung ausgeschaltet; vorhandene Timer bleiben gespeichert.';
+    }
+    async function bindWorkPush(user){
+      if(!isAdmin()||!workAccount()||!pushActive||same(workContext.subscription_id,pushDeviceId))return;
+      const device=workContext.id,employee=workContext.employee_id;
+      const saved=await api('/rest/v1/rpc/set_work_device_context',{method:'POST',body:{p_device:device,p_employee:employee,p_subscription:pushDeviceId}});
+      if(!same(user,state.profile?.id)||!same(device,workContext?.id)||!same(employee,workContext?.employee_id))return;
+      if(!same(saved?.subscription_id,pushDeviceId))throw Error('Die Erinnerungen konnten nicht mit dem persönlichen Arbeitskonto verknüpft werden.');
+      workContext=saved;
+    }
+    function workContextHtml(){
+      if(!isAdmin())return '';
+      const people=state.rows.people.filter(p=>['employee','business'].includes(p.role)),company=p=>state.rows.people.find(b=>same(b.id,p.role==='business'?p.id:p.business_id))?.company_name||state.rows.people.find(b=>same(b.id,p.role==='business'?p.id:p.business_id))?.username||'Firma';
+      return `<div class="device-permission-card"><h4>Mein Arbeitskonto auf diesem Gerät</h4><p class="device-help">Du bleibst Administrator mit allen bisherigen Einsichten. Wähle einmal dein eigenes Arbeitskonto für persönliche Terminerinnerungen und GPS-Timer. Die Mitarbeiterauswahl oben ändert diese Zuordnung nicht. Nur dieses Gerät wird verknüpft. Bei Änderung muss Standort erneut freigegeben werden; vorhandene Timer werden nicht gelöscht.</p>${workContextReady?`<form data-form="work-device-context" class="entry-form"><label class="wide">Persönliches Arbeitskonto<select name="work_employee"><option value="">Kein Arbeitskonto verknüpft</option>${people.sort((a,b)=>(company(a)+a.username).localeCompare(company(b)+b.username,'de')).map(p=>`<option value="${esc(p.id)}" ${same(p.id,workContext?.employee_id)?'selected':''}>${esc(company(p))} · ${esc(p.display_name||p.username)}</option>`).join('')}</select></label><button class="primary wide">Arbeitskonto auf diesem Gerät speichern</button></form>`:'<p role="alert">Verknüpfung konnte nicht geladen werden. Bitte Verbindung und Browser-Speicher prüfen und die App aktualisieren.</p>'}<p class="work-context-status" role="status"></p></div>`;
+    }
     function readLocationConsent(user){try{return localStorage.getItem(locationConsentKey(user))==='allowed';}catch{return false;}}
     function setLocationConsent(allowed){if(!allowed){locationAllowed=false;stopGps();}try{if(allowed)localStorage.setItem(locationConsentKey(state.profile.id),'allowed');else localStorage.removeItem(locationConsentKey(state.profile.id));}catch{if(allowed)throw Error('Die Freigabe kann auf diesem Gerät nicht gespeichert werden. Bitte den Browser-Speicher erlauben.');}locationAllowed=allowed;arrivalTimer?.refresh();}
     async function loadLocationPermission(user){
@@ -95,13 +134,19 @@
         if(!same(state.profile?.id,user))return;
         pushKey=data?.publicKey||'';pushReadyUser=user;pushRegistration=registration?.active?registration:null;
         pushSubscription=await pushRegistration?.pushManager.getSubscription()||null;
-        if(pushSubscription){const rows=await allRows('push_subscriptions',`select=*&user_id=eq.${user}&endpoint=eq.${encodeURIComponent(pushSubscription.endpoint)}`);if(!same(state.profile?.id,user))return;const registered=rows.find(row=>same(row.user_id,user));if(registered&&!registered.enabled){await pushSubscription.unsubscribe();pushSubscription=null;}else{pushDeviceId=registered?.id||'';pushActive=!!pushDeviceId&&Notification.permission==='granted';}}
+        if(pushSubscription){const rows=await allRows('push_subscriptions',`select=*&user_id=eq.${user}&endpoint=eq.${encodeURIComponent(pushSubscription.endpoint)}`);if(!same(state.profile?.id,user))return;const registered=rows.find(row=>same(row.user_id,user));if(!registered||!registered.enabled){await pushSubscription.unsubscribe();pushSubscription=null;}else{pushDeviceId=registered.id;pushActive=Notification.permission==='granted';}}
+        await bindWorkPush(user);
         if(!pushKey)pushIssue='Push ist auf dem Server noch nicht eingerichtet.';
       }catch{if(same(state.profile?.id,user))pushIssue='Die Gerätefreigabe konnte nicht geprüft werden. Bitte Verbindung prüfen und erneut versuchen.';}
     }
     function refreshDeviceSettings(){const panel=root.querySelector('[data-device-settings]');if(panel)panel.outerHTML=deviceSettings();}
+    async function openPersonalDeviceView(view){
+      const user=state.profile?.id,device=workContext?.id,employee=workAccount()?.id;if(!user)return;
+      if(isAdmin()&&workAccount()){state.businessId=workCompany();state.employeeId=employee;await ctx.loadTeamContext?.();if(!same(user,state.profile?.id)||!same(device,workContext?.id)||!same(employee,workAccount()?.id))return;}
+      state.view=view==='home'?'home':'planning';state.menu=false;render();
+    }
     async function load() {
-      const user=state.profile?.id;if(!user){scans=[];settings=[];reminders=[];remindersReady=false;locations=[];arrivals=[];stopGps();arrivalTimer?.reset();locationAllowed=false;pushActive=false;pushDeviceId='';pushReadyUser='';loadedUser='';return;}
+      const user=state.profile?.id;if(!user){scans=[];settings=[];reminders=[];remindersReady=false;locations=[];arrivals=[];stopGps();arrivalTimer?.reset();locationAllowed=false;pushActive=false;pushDeviceId='';pushReadyUser='';loadedUser='';workContext=null;workContextReady=false;workDeviceId='';return;}
       if(loading)return loading;
       const task=(async()=>{
         const results=await Promise.allSettled([allRows('receipt_scans','select=*&order=receipt_date.desc,id.asc'),allRows('company_notification_settings'),allRows('customer_locations'),allRows('order_arrivals'),allRows('appointment_reminders')]);
@@ -112,6 +157,7 @@
         if(results[2].status==='fulfilled')locations=results[2].value;
         if(results[3].status==='fulfilled')arrivals=results[3].value;
         remindersReady=results[4].status==='fulfilled';reminders=remindersReady?results[4].value:[];
+        await loadWorkContext(user);
         await Promise.all([preparePush(user),loadLocationPermission(user),arrivalTimer?.load()]);
       })();loading=task;try{await task;}finally{if(loading===task)loading=null;}
     }
@@ -135,7 +181,7 @@
     function deviceSettings() {
       const supported=!!(navigator.serviceWorker&&window.PushManager&&window.Notification),permission=window.Notification?.permission;
       const pushText=!supported?'Hier nicht verfügbar. Auf iPhone/iPad die App zum Home-Bildschirm hinzufügen und von dort öffnen.':permission==='denied'?'Im Gerät/Browser blockiert. Bitte Mitteilungen in den System- oder Website-Einstellungen erlauben.':pushActive?'Erlaubt und für dieses Konto auf dem Server registriert.':permission==='granted'?'Vom Gerät erlaubt; bitte die Registrierung für dieses Konto aktivieren.':'Noch nicht erlaubt. Die Freigabe wird auf diesem Gerät gespeichert.';
-      return `<section class="panel" data-device-settings><h3>Gerätefreigaben · mein Konto</h3><p class="device-help">Diese Freigaben betreffen nur dein eigenes angemeldetes Konto und dieses Gerät, nicht den ausgewählten Mitarbeiter.</p>
+      return `<section class="panel" data-device-settings><h3>Gerätefreigaben · mein Konto</h3><p class="device-help">${isAdmin()?'Admin-Zugang bleibt bestehen. Persönliche Erinnerungen und Timer gelten für das ausdrücklich verknüpfte Arbeitskonto auf diesem Gerät, nicht für die Mitarbeiterauswahl oben.':'Diese Freigaben betreffen nur dein eigenes angemeldetes Konto und dieses Gerät, nicht den ausgewählten Mitarbeiter.'}</p>${workContextHtml()}
         <div class="device-permission-card"><h4>Push-Mitteilungen</h4><p class="device-help">Einmal erlauben: Terminerinnerungen können danach auch bei geschlossener App erscheinen. Auf iPhone/iPad ab iOS 16.4: in Safari „Zum Home-Bildschirm“ hinzufügen und die App über dieses Symbol öffnen. Fokus-/Stumm-Einstellungen können die Anzeige unterdrücken. Keine Kundendaten auf dem Sperrbildschirm.</p>
         <p class="device-badge ${pushActive?'is-enabled':''}">${esc(pushText)}</p><div class="device-tools"><button type="button" class="secondary" data-device-action="push-enable">${pushActive?'Gerätefreigabe prüfen':'Push-Mitteilungen erlauben'}</button>${pushActive?'<button type="button" class="secondary" data-device-action="push-test">Testnachricht an dieses Gerät</button>':''}${pushSubscription?'<button type="button" class="secondary" data-device-action="push-disable">Push ausschalten</button>':''}</div><p class="device-status" role="status">${esc(pushIssue)}</p>
         <p class="device-help">Die Geschäftsleitung legt die Erinnerungszeit für jeden Termin direkt in der Planungsübersicht fest.</p></div>
@@ -150,7 +196,7 @@
         }
       }
       if(!state.profile)return;
-      if(['planning','home'].includes(new URL(location.href).searchParams.get('open'))){const url=new URL(location.href),view=url.searchParams.get('open');url.searchParams.delete('open');history.replaceState(null,'',url);state.view=view;render();return;}
+      if(['planning','home'].includes(new URL(location.href).searchParams.get('open'))){const url=new URL(location.href),view=url.searchParams.get('open');url.searchParams.delete('open');history.replaceState(null,'',url);openPersonalDeviceView(view).catch(()=>{});return;}
       if(watchId!=null&&!same(state.orderId,watchOrder))stopGps();
       if(state.view==='customers'&&state.customerId){const customer=state.rows.customers.find(row=>same(row.id,state.customerId));if(customer)root.querySelector('#customer-profile')?.insertAdjacentHTML('beforeend',customerOrdersHtml(customer));}
       for(const form of root.querySelectorAll('form[data-form="order"],form[data-form="order-edit"]')){
@@ -276,7 +322,7 @@
       const row={user_id:user,endpoint:json.endpoint,p256dh:json.keys.p256dh,auth:json.keys.auth,enabled:true};
       const saved=(existing[0]?await write('push_subscriptions',row,'PATCH',`id=eq.${existing[0].id}`):await write('push_subscriptions',row))?.[0];
       if(!saved?.id||!saved.enabled||!same(saved.user_id,user))throw Error('Die Serverregistrierung konnte nicht bestätigt werden. Bitte erneut versuchen.');
-      pushDeviceId=saved.id;pushActive=true;refreshDeviceSettings();
+      pushDeviceId=saved.id;pushActive=true;await bindWorkPush(user);refreshDeviceSettings();
       return 'Push ist für dieses Konto auf diesem Gerät aktiviert. Du kannst jetzt eine Testnachricht senden.';
     }
     async function disablePush(onLogout=false) {
@@ -293,7 +339,7 @@
       if(['device_expired','device_not_registered'].includes(result?.code)){pushActive=false;pushDeviceId='';if(result.code==='device_expired'){await pushSubscription?.unsubscribe();pushSubscription=null;}refreshDeviceSettings();throw Error('Die Gerätefreigabe ist abgelaufen. Bitte „Push-Mitteilungen erlauben“ erneut wählen.');}
       throw Error(result?.code==='push_auth_rejected'?'Der Push-Dienst lehnt den Serverversand ab. Bitte der Verwaltung melden.':result?.code==='push_rate_limited'?'Der Push-Dienst ist ausgelastet. Bitte später erneut testen.':'Die Testnachricht konnte gerade nicht versendet werden. Bitte Verbindung prüfen und erneut versuchen.');
     }
-    async function enableLocation(){const user=state.profile.id;try{await positionOnce();}catch(error){if(error.code===1&&same(user,state.profile?.id)){locationPermission='denied';setLocationConsent(false);refreshDeviceSettings();}throw error;}if(!same(user,state.profile?.id))throw Error('Die Anmeldung wurde geändert.');locationPermission='granted';setLocationConsent(true);gpsPausedOrder='';refreshDeviceSettings();return 'Standortfreigabe gespeichert. Bei heutiger Planung oder geöffnetem Kunden ist die Ankunftserkennung möglich. Hier wurde kein Standort hochgeladen.';}
+    async function enableLocation(){if(isAdmin()&&!workAccount())throw Error('Bitte zuerst dein persönliches Arbeitskonto auf diesem Gerät verknüpfen.');const user=state.profile.id;try{await positionOnce();}catch(error){if(error.code===1&&same(user,state.profile?.id)){locationPermission='denied';setLocationConsent(false);refreshDeviceSettings();}throw error;}if(!same(user,state.profile?.id))throw Error('Die Anmeldung wurde geändert.');locationPermission='granted';setLocationConsent(true);gpsPausedOrder='';refreshDeviceSettings();return 'Standortfreigabe gespeichert. Bei heutiger Planung oder geöffnetem Kunden ist die Ankunftserkennung möglich. Hier wurde kein Standort hochgeladen.';}
     function reminderConfig(plan){return reminders.find(row=>same(row.appointment_id,plan.id))||settings.find(row=>same(row.business_id,businessId()))||{enabled:false,reminder_minutes:30,notification_time:null};}
     function reminderHtml(plan){
       if(!remindersReady)return '<p class="device-help">Die Terminerinnerung konnte nicht geladen werden. Bitte erneut aktualisieren.</p>';
@@ -313,7 +359,7 @@
     async function run(button,task,target) {
       if(deviceBusy)return;deviceBusy=true;button.disabled=true;
       const fileInputs=dialog?[...dialog.querySelectorAll('[name="scan_photo"],[name="scan_pdf"],[name="scan_force_ocr"]')]:[];fileInputs.forEach(field=>field.disabled=true);
-      const selector=target?.classList.contains('location-permission-status')?'.location-permission-status':target?.classList.contains('device-status')?'.device-status':null;
+      const selector=target?.classList.contains('work-context-status')?'.work-context-status':target?.classList.contains('location-permission-status')?'.location-permission-status':target?.classList.contains('device-status')?'.device-status':null;
       try{const message=await task();if(target&&!target.closest('dialog'))announce(selector?root.querySelector(selector):target,typeof message==='string'?message:'Gespeichert.');}
       catch(error){announce(selector?root.querySelector(selector):target,error.message||'Die Aktion konnte nicht ausgeführt werden.');}
       finally{deviceBusy=false;if(!savedScan)fileInputs.forEach(field=>field.disabled=false);if(button.isConnected&&!(savedScan&&button.closest('form[data-form="receipt-scan"]')))button.disabled=false;}
@@ -343,10 +389,10 @@
     }
     function handleSubmit(event) {
       const form=event.target,name=form.dataset.form;
-      if(!['receipt-scan','appointment-reminder','customer-location'].includes(name))return;
+      if(!['receipt-scan','appointment-reminder','customer-location','work-device-context'].includes(name))return;
       event.preventDefault();event.stopImmediatePropagation();if(!validateForm(form))return;
       const button=event.submitter||form.querySelector('button[type="submit"],button.primary');
-      run(button,()=>name==='receipt-scan'?saveScan(form):name==='customer-location'?saveLocation(form):saveReminder(form),dialog?.querySelector('.scan-status')||form.parentElement.querySelector(name==='customer-location'?'.location-status':name==='appointment-reminder'?'.reminder-status':'.device-status'));
+      run(button,()=>name==='work-device-context'?saveWorkContext(form):name==='receipt-scan'?saveScan(form):name==='customer-location'?saveLocation(form):saveReminder(form),dialog?.querySelector('.scan-status')||form.parentElement.querySelector(name==='work-device-context'?'.work-context-status':name==='customer-location'?'.location-status':name==='appointment-reminder'?'.reminder-status':'.device-status'));
     }
     root.addEventListener('click',handleClick);
     root.addEventListener('submit',handleSubmit,true);
@@ -361,18 +407,18 @@
     async function saveLocation(form){const customer=form.elements.customer_id.value,payload={customer_id:customer,business_id:businessId(),latitude:Number(form.elements.latitude.value),longitude:Number(form.elements.longitude.value),radius_m:Number(form.elements.radius_m.value)},old=locations.find(row=>same(row.customer_id,customer));const saved=(old?await write('customer_locations',payload,'PATCH',`customer_id=eq.${customer}`):await write('customer_locations',payload))?.[0];if(!saved)throw Error('Der Standort konnte nicht bestätigt werden.');locations=[saved,...locations.filter(row=>!same(row.customer_id,customer))];}
     const gpsError=error=>Object.assign(Error(error.code===1?'Standortfreigabe wurde nicht erteilt.':error.code===3?'Standort konnte nicht rechtzeitig bestimmt werden. Bitte nochmals versuchen.':'Standort ist auf diesem Gerät gerade nicht verfügbar.'),{code:error.code});
     function positionOnce(){if(!navigator.geolocation)throw Error('Dieses Gerät stellt hier keinen Standort bereit.');return new Promise((resolve,reject)=>navigator.geolocation.getCurrentPosition(resolve,error=>reject(gpsError(error)),{enableHighAccuracy:true,timeout:20000,maximumAge:0}));}
-    function gpsEligible(order){const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Berlin',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());return !!order&&orderForEmployee(order,state.profile.id)&&order.work_date===today&&!arrivals.some(row=>same(row.work_order_id,order.id)&&same(row.employee_id,state.profile.id));}
+    function gpsEligible(order){const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Berlin',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());return !!workAccount()&&!!order&&orderForEmployee(order,workAccount().id)&&order.work_date===today&&!arrivals.some(row=>same(row.work_order_id,order.id)&&same(row.employee_id,workAccount().id));}
     function gpsHtml(order){if(!order)return '';const rows=arrivals.filter(row=>same(row.work_order_id,order.id));return `<section class="customer-order-list"><h3>Ankunft beim Kunden</h3>${rows.map(row=>`<p>${esc(state.rows.people.find(person=>same(person.id,row.employee_id))?.display_name||state.rows.people.find(person=>same(person.id,row.employee_id))?.username||'Mitarbeiter')}: ${new Intl.DateTimeFormat('de-DE',{timeZone:'Europe/Berlin',dateStyle:'short',timeStyle:'short'}).format(new Date(row.arrived_at))} · GPS-Genauigkeit ±${Math.round(row.accuracy_m)} m</p>`).join('')||'<p>Noch keine Ankunft erfasst.</p>'}${gpsEligible(order)?`<p class="device-help">Freiwillig: Nur bei geöffnetem Auftrag und sichtbarer App. Gespeichert wird nur die erste Ankunft, kein Bewegungsverlauf. Arbeitszeiten bleiben unverändert. Browser-GPS ist kein manipulationssicherer Anwesenheitsnachweis.</p><div class="device-tools">${locationAllowed?`<button type="button" class="secondary" data-device-action="gps-watch" data-order="${esc(order.id)}">GPS-Ankunftserkennung starten</button><button type="button" class="secondary" data-device-action="gps-manual" data-order="${esc(order.id)}">Ankunft jetzt mit GPS erfassen</button><button type="button" class="secondary" data-device-action="gps-stop">Erkennung stoppen</button>`:'<button type="button" class="secondary" data-device-action="location-settings">Standort in meinen Einstellungen erlauben</button>'}</div>`:''}<p class="gps-status" role="status">${watchId==null?'Standortprüfung ist aus.':'Standortprüfung läuft nur bei sichtbarer App.'}</p></section>`;}
     async function captureArrival(orderId,source,position){
-      const user=state.profile.id,order=state.rows.orders.find(row=>same(row.id,orderId));
+      const user=state.profile.id,employee=workAccount()?.id,device=isAdmin()?workContext?.id:'',order=state.rows.orders.find(row=>same(row.id,orderId));
       if(!locationAllowed||!gpsEligible(order)||!same(state.orderId,orderId)||document.visibilityState!=='visible')throw Error('Bitte Standort in den eigenen Einstellungen erlauben und den heutigen eigenen Auftrag öffnen.');
       position=position||await positionOnce();
-      if(!same(user,state.profile?.id)||!locationAllowed||!same(state.orderId,orderId)||document.visibilityState!=='visible')throw Error('Die Standortprüfung wurde beendet.');
-      const coord=position.coords,payload={work_order_id:orderId,employee_id:user,business_id:businessId(),latitude:coord.latitude,longitude:coord.longitude,accuracy_m:coord.accuracy,source};let saved;
-      try{saved=(await write('order_arrivals',payload))?.[0];}catch(error){if(error.code!=='23505')throw error;saved=(await allRows('order_arrivals',`select=*&work_order_id=eq.${orderId}&employee_id=eq.${user}`))[0];}
+      if(!same(user,state.profile?.id)||!same(employee,workAccount()?.id)||!locationAllowed||!same(state.orderId,orderId)||document.visibilityState!=='visible')throw Error('Die Standortprüfung wurde beendet.');
+      const coord=position.coords,payload={work_order_id:orderId,employee_id:employee,business_id:workCompany(),latitude:coord.latitude,longitude:coord.longitude,accuracy_m:coord.accuracy,source};let saved;
+      try{saved=device?await api('/rest/v1/rpc/record_order_arrival_for_device',{method:'POST',body:{p_device:device,p_order:orderId,p_position:{latitude:coord.latitude,longitude:coord.longitude,accuracy:coord.accuracy},p_source:source}}):(await write('order_arrivals',payload))?.[0];}catch(error){if(error.code!=='23505')throw error;saved=(await allRows('order_arrivals',`select=*&work_order_id=eq.${orderId}&employee_id=eq.${employee}`))[0];}
       if(!saved)throw Error('Die Ankunft konnte nicht bestätigt werden.');
       if(!same(user,state.profile?.id))return;
-      arrivals=[saved,...arrivals.filter(row=>!(same(row.work_order_id,orderId)&&same(row.employee_id,user)))];stopGps();
+      arrivals=[saved,...arrivals.filter(row=>!(same(row.work_order_id,orderId)&&same(row.employee_id,employee)))];stopGps();
       announce(root.querySelector('.gps-status'),'Ankunft gespeichert: '+new Intl.DateTimeFormat('de-DE',{timeStyle:'short'}).format(new Date(saved.arrived_at))+' Uhr. Arbeitsstunden unverändert.');
     }
     function startGps(button){
@@ -391,7 +437,7 @@
       },error=>{if(!same(state.profile?.id,user))return;stopGps();if(error.code===1){locationPermission='denied';setLocationConsent(false);}announce(root.querySelector('.gps-status'),gpsError(error).message);},{enableHighAccuracy:true,timeout:20000,maximumAge:10000});
     }
     document.addEventListener('visibilitychange',()=>{if(document.visibilityState!=='visible'){stopGps();const status=root.querySelector('.gps-status');if(status)announce(status,'Standortprüfung beendet: App wurde in den Hintergrund gelegt.');}});
-    navigator.serviceWorker?.addEventListener('message',event=>{if(state.profile&&(event.data?.type==='WORKTIME_OPEN_PLANNING'||event.data?.type==='WORKTIME_OPEN_VIEW')){state.view=event.data.view==='home'?'home':'planning';state.menu=false;render();}});
+    navigator.serviceWorker?.addEventListener('message',event=>{if(state.profile&&(event.data?.type==='WORKTIME_OPEN_PLANNING'||event.data?.type==='WORKTIME_OPEN_VIEW'))openPersonalDeviceView(event.data.view).catch(()=>{});});
     return {load,afterRender,attachReceipts,customerOrders,customerOrdersHtml,timerSaved:id=>arrivalTimer?.saved(id)};
   }
   window.WorktimeDeviceFeatures={create,parseReceipt,validateForm};

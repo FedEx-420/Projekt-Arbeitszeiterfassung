@@ -34,8 +34,8 @@ async function currentUser(req:Request){
   const user=await result.json();
   // A deleted/deactivated profile cannot register or trigger test delivery,
   // even if an old access token has not yet expired.
-  const profiles=await rest('profiles?select=id&id=eq.'+encodeURIComponent(user.id));
-  return profiles?.length===1?user:null;
+  const profiles=await rest('profiles?select=id,role&id=eq.'+encodeURIComponent(user.id));
+  return profiles?.length===1?{...user,liveRole:profiles[0].role}:null;
 }
 async function send(subscription:Subscription,test=false,timerId=''){
   if(!allowedEndpoint(subscription.endpoint))return {status:'invalid',code:'invalid_endpoint',providerStatus:0};
@@ -59,14 +59,26 @@ Deno.serve(async(req:Request)=>{
     if(action==='timer-start'){
       if(req.method!=='POST')return response({error:'Method not allowed'},405);
       const user=await currentUser(req);if(!user)return response({error:'Bitte anmelden.'},401);
-      let input:{timer_id?:string;subscription_id?:string}={};try{input=await req.json();}catch{}
+      let input:{timer_id?:string;subscription_id?:string;device_id?:string}={};try{input=await req.json();}catch{}
       if(!input.timer_id||!input.subscription_id||![input.timer_id,input.subscription_id].every(id=>/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)))return response({error:'Timer und Gerät erforderlich.'},400);
+      let employee=user.id,employeeCompany='';
+      if(input.device_id){
+        if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.device_id)||user.liveRole!=='administrator')return response({error:'Ungültige persönliche Geräteverknüpfung.'},403);
+        const bindings=await rest('work_device_contexts?select=*&id=eq.'+input.device_id+'&owner_id=eq.'+encodeURIComponent(user.id)+'&subscription_id=eq.'+input.subscription_id);
+        if(bindings.length!==1)return response({sent:0,code:'work_account_not_linked'});
+        const linked=bindings[0],workers=await rest('profiles?select=id,role,business_id&id=eq.'+encodeURIComponent(linked.employee_id));
+        const worker=workers[0];
+        if(workers.length!==1||!['employee','business'].includes(worker.role)||(worker.role==='business'?worker.id:worker.business_id)!==linked.business_id)return response({sent:0,code:'work_account_not_linked'});
+        const companies=await rest('profiles?select=id,role&id=eq.'+encodeURIComponent(linked.business_id));
+        if(companies.length!==1||companies[0].role!=='business')return response({sent:0,code:'work_account_not_linked'});
+        employee=worker.id;employeeCompany=linked.business_id;
+      }
       const subscriptions=await rest('push_subscriptions?select=*&enabled=eq.true&user_id=eq.'+encodeURIComponent(user.id)+'&id=eq.'+input.subscription_id);
       if(subscriptions.length!==1)return response({sent:0,code:'device_not_registered'});
       // Compare-and-set lease prevents duplicate clicks/devices. Only a fresh,
       // active timer of the live authenticated user can trigger its own device.
       const now=new Date(),cutoff=new Date(now.getTime()-10*60000).toISOString();
-      const claimed=await rest('job_timers?id=eq.'+input.timer_id+'&employee_id=eq.'+encodeURIComponent(user.id)+'&finished_at=is.null&notification_sent_at=is.null&started_at=gte.'+encodeURIComponent(cutoff)+'&or='+encodeURIComponent('(notification_lease_until.is.null,notification_lease_until.lt.'+now.toISOString()+')'),'PATCH',{notification_lease_until:new Date(now.getTime()+3*60000).toISOString()});
+      const claimed=await rest('job_timers?id=eq.'+input.timer_id+'&employee_id=eq.'+encodeURIComponent(employee)+(employeeCompany?'&business_id=eq.'+encodeURIComponent(employeeCompany):'')+'&finished_at=is.null&notification_sent_at=is.null&started_at=gte.'+encodeURIComponent(cutoff)+'&or='+encodeURIComponent('(notification_lease_until.is.null,notification_lease_until.lt.'+now.toISOString()+')'),'PATCH',{notification_lease_until:new Date(now.getTime()+3*60000).toISOString()});
       if(claimed.length!==1)return response({sent:0,code:'timer_unavailable_or_notified'});
       const result=await send(subscriptions[0],false,input.timer_id);
       return response({sent:result.status==='sent'?1:0,code:result.code});

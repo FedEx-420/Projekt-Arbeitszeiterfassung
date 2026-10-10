@@ -1,0 +1,41 @@
+/* Disposable PostgreSQL fixture. No production accounts or data. */
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
+const {fixture}=require('./team-db-fixture.cjs');
+async function main(){
+ const {db,ids,actor,admin}=await fixture({legacyRecords:true});let passed=0;
+ const test=async(name,fn)=>{await fn();passed++;console.log('PASS '+name);};
+ const snapshot=async()=>JSON.stringify((await db.query("select jsonb_build_object('profiles',(select jsonb_agg(to_jsonb(p) order by id) from profiles p),'orders',(select jsonb_agg(to_jsonb(w) order by id) from work_orders w),'times',(select jsonb_agg(to_jsonb(t) order by id) from time_entries t),'customers',(select jsonb_agg(to_jsonb(c) order by id) from customers c)) data")).rows[0].data);
+ const before=await snapshot();await db.exec(fs.readFileSync(path.resolve(__dirname,'../../supabase/migrations/20261010190525_planning_sync_v867.sql'),'utf8'));
+ const stamp=async who=>{await actor(who);return (await db.query('select planning_sync_stamp() result')).rows[0].result;};
+ await test('Additive counters preserve existing accounts, customers and complete history',async()=>{await admin();assert.equal(await snapshot(),before);});
+ await test('Live workers and business share only their company revision, admin sees all',async()=>{const a=await stamp('anna'),b=await stamp('business');assert.equal(a.version,1);assert.match(a.stamp,/^[a-f0-9]{32}$/);assert.notEqual(a.stamp,b.stamp);assert.deepEqual(await stamp('anna'),a);});
+ const check=async(name,sql,args=[])=>test(name,async()=>{const own=await stamp('anna'),other=await stamp('felix'),all=await stamp('admin');await admin();await db.query(sql,args);assert.notDeepEqual(await stamp('anna'),own);assert.deepEqual(await stamp('felix'),other);assert.notDeepEqual(await stamp('admin'),all);});
+ await check('Customer editing invalidates own firm and admin, not another firm','update customers set name=name||$1 where id=$2',[' edited',ids.customer]);
+ await check('Customer adding is immediately discoverable',"insert into customers(employee_id,name) values($1,'New customer')",[ids.anna]);
+ await check('Customer deletion is discoverable without tombstones',"delete from customers where name='New customer'");
+ await check('Manual time editing is discoverable retroactively',"update time_entries set custom_fields='{\"notes\":\"changed\"}' where work_order_id is null");
+ await check('Manual time insertion is discoverable',"insert into time_entries(employee_id,work_date,start_time,end_time,executed_hours) values($1,'2026-10-06','08:00','09:00',1)",[ids.anna]);
+ await check('Manual time deletion is discoverable',"delete from time_entries where work_date='2026-10-06'");
+ await check('Work order signature/documentation edits invalidate the snapshot',"update work_orders set documentation='Updated documentation',signature_data=$1 where id=$2",['data:image/png;base64,'+'B'.repeat(220),ids.order]);
+ await check('Work order deletion invalidates history and linked time data','delete from work_orders where id=$1',[ids.order]);
+ await check('Sick-day adding is discoverable',"insert into work_days(employee_id,work_date,sick) values($1,'2026-10-05',1)",[ids.anna]);
+ await check('Sick-day editing is discoverable',"update work_days set sick=0 where employee_id=$1 and work_date='2026-10-05'",[ids.anna]);
+ await check('Sick-day deletion is discoverable','delete from work_days where employee_id=$1',[ids.anna]);
+ await check('Vacation request adding is discoverable',"insert into vacation_requests(employee_id,start_date,end_date,status) values($1,'2026-10-06','2026-10-06','requested')",[ids.anna]);
+ await check('Vacation decision is discoverable',"update vacation_requests set status='approved' where employee_id=$1",[ids.anna]);
+ await check('Vacation deletion is discoverable','delete from vacation_requests where employee_id=$1',[ids.anna]);
+ await check('Confirmed planning adding is discoverable',"insert into appointments(employee_id,event_date,customer_id,title,notes) values($1,'2026-10-07',$2,'Planning','ZE-PLAN-1:{\"start\":\"08:00\",\"end\":\"09:00\",\"status\":\"confirmed\"}')",[ids.anna,ids.customer]);
+ await check('Planning editing is discoverable',"update appointments set title='Changed' where employee_id=$1",[ids.anna]);
+ await check('Planning deletion is discoverable','delete from appointments where employee_id=$1',[ids.anna]);
+ await check('Unpublished employee proposal adding is discoverable',"insert into planning_requests(business_id,submitted_by,employee_id,event_date,customer_name,title,notes) values($1,$2,$2,'2026-10-07','Customer','Proposal','ZE-PLAN-1:{}')",[ids.business,ids.anna]);
+ await check('Proposal decision is discoverable',"update planning_requests set status='rejected' where submitted_by=$1",[ids.anna]);
+ await check('Proposal deletion is discoverable','delete from planning_requests where submitted_by=$1',[ids.anna]);
+ await test('Profile edits invalidate all views without exposing profile details',async()=>{const a=await stamp('anna'),b=await stamp('felix');await admin();await db.query("update profiles set display_name='Updated' where id=$1",[ids.anna]);assert.notDeepEqual(await stamp('anna'),a);assert.notDeepEqual(await stamp('felix'),b);});
+ await test('Moving a customer invalidates old and new company',async()=>{const a=await stamp('anna'),b=await stamp('felix');await admin();await db.query('update customers set employee_id=$1 where id=$2',[ids.business,ids.otherCustomer]);assert.notDeepEqual(await stamp('anna'),a);assert.notDeepEqual(await stamp('felix'),b);});
+ await test('Counter mutations roll back with the failed transaction',async()=>{const a=await stamp('anna');await admin();await db.exec('begin');await db.query("update customers set name='Rollback customer' where id=$1",[ids.customer]);await db.exec('rollback');assert.deepEqual(await stamp('anna'),a);});
+ await test('Workers and managers cannot read or forge private counters',async()=>{for(const who of ['anna','business','admin']){await actor(who);for(const sql of ['select * from app_private.planning_sync_revisions','update app_private.planning_sync_revisions set revision=1','delete from app_private.planning_sync_revisions'])await assert.rejects(()=>db.exec(sql),/permission/);}});
+ await test('Anonymous cannot call public or private change endpoint',async()=>{await admin();await db.exec('set role anon');for(const sql of ['select planning_sync_stamp()','select app_private.planning_sync_stamp_v867()'])await assert.rejects(()=>db.exec(sql),/permission/);});
+ await test('JWT without a live profile is denied',async()=>{await admin();await db.query("select set_config('request.jwt.claim.sub',$1,false)",['ffffffff-ffff-4fff-8fff-ffffffffffff']);await db.exec('set role authenticated');await assert.rejects(()=>db.exec('select planning_sync_stamp()'),/vorhandenen/);});
+ await db.close();console.log(JSON.stringify({passed,productionWrites:0}));
+}
+main().catch(e=>{console.error(e.stack);process.exit(1);});

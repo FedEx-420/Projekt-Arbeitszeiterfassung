@@ -95,6 +95,29 @@
   /* END SESSION AUTH V859 */
   const auth = createSessionAuth({base,key,storage,transientStore:sessionStorage,getSession:()=>state.session,setSession:session=>{state.session=session;}});
 
+  /* BEGIN PLANNING SYNC V867
+   * A revision is acknowledged only after a complete verified download.
+   * Failure/missing server support always falls back to the original full load.
+   * Nothing private is persisted in the shared service-worker/browser cache. */
+  function createPlanningSync({readStamp,identity}) {
+    let verified=null,epoch=0,sequence=0;
+    const changed=()=>new Error('Das Konto oder die Daten wurden inzwischen aktualisiert. Bitte erneut laden.');
+    function reset(){epoch++;verified=null;}
+    function valid(proof){return proof.epoch===epoch && proof.sequence===sequence && proof.scope===identity();}
+    async function begin(ifChanged=false){
+      const proof={scope:identity(),epoch,sequence:++sequence,stamp:null,unchanged:false};
+      try {const value=await readStamp();if(value?.version===1 && /^[a-f0-9]{32}$/.test(value.stamp))proof.stamp=value.stamp;} catch { /* Full download remains available. */ }
+      if(!valid(proof))throw changed();
+      proof.unchanged=!!(ifChanged && proof.stamp && verified?.scope===proof.scope && verified?.stamp===proof.stamp);
+      return proof;
+    }
+    function assertCurrent(proof){if(!valid(proof))throw changed();}
+    function commit(proof){assertCurrent(proof);verified=proof.stamp?{scope:proof.scope,stamp:proof.stamp}:null;}
+    return {begin,commit,assertCurrent,reset};
+  }
+  /* END PLANNING SYNC V867 */
+  const planningSync=createPlanningSync({readStamp:()=>api('/rest/v1/rpc/planning_sync_stamp',{method:'POST',body:{}}),identity:()=>JSON.stringify([state.session?.user?.id,state.profile?.id,businessId()])});
+
   const escape = value => String(value ?? '').replace(/[&<>'"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[ch]);
   const n = value => Number(value || 0);
   const same = (a, b) => String(a || '') === String(b || '');
@@ -169,7 +192,7 @@
     state.view = 'home'; state.menu = false; state.customerId = ''; state.customerSearch = ''; state.orderId = ''; state.timeEntryId = ''; state.billingKey = ''; state.vacationForm = false; state.composeMessage = false;
     await loadApp();
   }
-  function logout() { auth.clear(); state.profile = null; state.businessBrand = null; render(); }
+  function logout() { planningSync.reset(); auth.clear(); state.profile = null; state.businessBrand = null; render(); }
 
   async function loadApp() {
     if (!state.session?.user?.id) return render();
@@ -1060,6 +1083,7 @@
     throw lastError || new Error('Die Daten konnten nicht geladen werden.');
   }
   async function reload() {
+    planningSync.reset();
     const issues = [];
     const load = async (name, table, query = 'select=*') => { try { state.rows[name] = await allRows(table, query); } catch { issues.push(name); } };
     const loadRecipients = async () => { try { state.rows.recipients = (await api('/functions/v1/mailbox-send', { method: 'POST', body: { action: 'recipients' } }))?.recipients || []; } catch { issues.push('recipients'); } };
@@ -1463,16 +1487,22 @@
     state.planPrefill = { id: appointment.id, employeeId: workerId(), ownerId: appointment.employee_id, participants: planEmployeeIds(appointment), date: appointment.event_date, customerName: customerDetails?.name || appointment.customer_name, customerDetails, title: appointment.title, details: meta.details, start: meta.start, end: meta.end, confirmed: meta.status === 'confirmed' };
     state.orderCustomer = state.planPrefill.customerName; state.orderId = ''; state.view = 'orders';
   }
-  async function refreshPlanningData() {
+  async function refreshPlanningData({ifChanged=false}={}) {
     const actor = state.profile?.id;
     if (!actor) throw new Error('Bitte erneut anmelden.');
-    const [appointments, days, vacations, orders, entries, customers] = await Promise.all([
+    const proof=await planningSync.begin(ifChanged);
+    if(proof.unchanged)return false;
+    const [appointments, days, vacations, orders, entries, customers, requests] = await Promise.all([
       allRows('appointments', 'select=*&order=event_date.asc,id.asc'), allRows('work_days', 'select=*&order=employee_id.asc,work_date.asc'),
-      allRows('vacation_requests', 'select=*&order=id.asc'), allRows('work_orders', 'select=*&order=id.asc'), allRows('time_entries', 'select=*&order=id.asc'), allRows('customers', 'select=*&order=name.asc,id.asc')
+      allRows('vacation_requests', 'select=*&order=id.asc'), allRows('work_orders', 'select=*&order=id.asc'), allRows('time_entries', 'select=*&order=id.asc'), allRows('customers', 'select=*&order=name.asc,id.asc'),
+      allRows('planning_requests', 'select=*&order=created_at.desc,id.asc').catch(()=>null)
     ]);
     if (!same(actor, state.profile?.id)) throw new Error('Das Benutzerkonto hat sich geändert. Bitte die Planung erneut öffnen.');
+    planningSync.assertCurrent(proof);
     Object.assign(state.rows, { appointments, days, vacations, orders, entries, customers });
-    await loadPlanningRequests();
+    state.planningRequestsReady=requests!==null;
+    if(requests!==null){state.rows.planningRequests=requests;planningSync.commit(proof);}
+    return true;
   }
   function revealPlanningDetail() {
     const detail = root.querySelector('#planning-detail');
@@ -1721,7 +1751,7 @@
     if (!state.session || !['planning', 'time', 'orders'].includes(state.view) || state.busy || planningSyncBusy || document.visibilityState === 'hidden') return;
     planningSyncBusy = true;
     try {
-      await refreshPlanningData();
+      if(await refreshPlanningData({ifChanged:true})===false)return;
       // Preserve focus and typed values while a manager edits a planning form.
       if (['time', 'orders'].includes(state.view)) updateDayPlanningPanels();
       else if (state.view === 'planning') {

@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
-const { randomUUID } = require('node:crypto');
+const { randomUUID, createHash } = require('node:crypto');
 const { chromium } = require('playwright');
 const directory = path.resolve(__dirname, '../..');
 const source = fs.readFileSync(path.join(directory, 'app-v800.js'), 'utf8').replace(/\}\)\(\);\s*$/, `
@@ -41,6 +41,9 @@ const database = {
 };
 const notifications = [], writes = [], pageErrors = [], tests = [];
 let failPlanningGet = false;
+let revisionEnabled = false, historyReads = 0;
+const revisionTables=['appointments','work_days','vacation_requests','work_orders','time_entries','customers','planning_requests'];
+const revision=()=>createHash('md5').update(JSON.stringify(revisionTables.map(table=>database[table]))).digest('hex');
 const server = http.createServer((req, res) => {
   const name = decodeURIComponent(new URL(req.url, 'http://localhost').pathname).replace(/^\//, '') || 'index.html';
   if (name === 'config.js') { res.setHeader('Content-Type', 'application/javascript'); return res.end('window.WORKTIME_CONFIG={supabaseUrl:"https://test.invalid",supabasePublishableKey:"test"};'); }
@@ -72,10 +75,12 @@ async function main() {
         if (body.action === 'recipients') return send({ recipients: people });
         notifications.push(body); return send({ success: true });
       }
+      if (url.pathname.endsWith('/rpc/planning_sync_stamp')) return send(revisionEnabled ? {version:1,stamp:revision()} : []);
       if (url.pathname.includes('/rpc/')) return send([]);
       const table = url.pathname.split('/').at(-1);
       if (!database[table]) throw new Error('Unexpected endpoint ' + url.pathname);
       if (method === 'GET') {
+        if (revisionTables.includes(table)) historyReads++;
         if (failPlanningGet && table === 'appointments') return send({ message: 'Simulated outage' }, 503);
         const result = database[table].filter(predicate(url));
         const offset = Number(url.searchParams.get('offset') || 0), limit = Number(url.searchParams.get('limit') || result.length);
@@ -389,6 +394,42 @@ async function main() {
       await page.screenshot({ path: path.join(__dirname, 'planning-desktop.png'), fullPage: true });
       await page.setViewportSize({ width: 390, height: 844 });
       await page.screenshot({ path: path.join(__dirname, 'planning-mobile.png'), fullPage: true });
+    });
+    revisionEnabled=true;
+    await setRole('company-one');
+    await test('Unchanged background planning check transfers no history tables',async()=>{
+      const before=historyReads;await page.evaluate(()=>window.__appTest.syncPlanningIfVisible());assert.ok(historyReads>=before+7);
+      const loaded=historyReads;await page.evaluate(()=>window.__appTest.syncPlanningIfVisible());assert.equal(historyReads,loaded);
+    });
+    await test('Explicit planning refresh still reloads every available history page',async()=>{
+      const before=historyReads;await page.evaluate(()=>window.__appTest.refreshPlanningData());assert.ok(historyReads>=before+7);
+    });
+    await test('Remote order signature update remains visible after revision changes',async()=>{
+      database.work_orders[0].signature_data='data:image/png;base64,'+'C'.repeat(220);
+      const before=historyReads;await page.evaluate(()=>window.__appTest.syncPlanningIfVisible());assert.ok(historyReads>=before+7);
+      assert.equal(await page.evaluate(()=>window.__appTest.state.rows.orders[0].signature_data),database.work_orders[0].signature_data);
+    });
+    await test('Failed payload does not acknowledge revision or clear historical data',async()=>{
+      database.appointments[0].title='Remote change after outage';failPlanningGet=true;
+      const before=await page.evaluate(()=>JSON.stringify(window.__appTest.state.rows));
+      await page.evaluate(()=>window.__appTest.syncPlanningIfVisible());assert.equal(await page.evaluate(()=>JSON.stringify(window.__appTest.state.rows)),before);
+      failPlanningGet=false;const reads=historyReads;await page.evaluate(()=>window.__appTest.syncPlanningIfVisible());assert.ok(historyReads>=reads+7);
+      assert.equal(await page.evaluate(()=>window.__appTest.state.rows.appointments[0].title),'Remote change after outage');
+    });
+    await test('Remote deletion removes order and hours from state on the next check',async()=>{
+      const deleted=database.work_orders[0].id;database.work_orders=database.work_orders.filter(row=>row.id!==deleted);database.time_entries=database.time_entries.filter(row=>row.work_order_id!==deleted);
+      await page.evaluate(()=>window.__appTest.syncPlanningIfVisible());
+      assert.equal(await page.evaluate(id=>window.__appTest.state.rows.orders.some(row=>row.id===id),deleted),false);
+      assert.equal(await page.evaluate(id=>window.__appTest.state.rows.entries.some(row=>row.work_order_id===id),deleted),false);
+    });
+    await test('Unchanged check preserves typed text, focus and the same input element',async()=>{
+      await page.locator('[data-action="plan-new"]').click();const input=page.locator('form[data-form="planning"] input[name="title"]');await input.fill('Unfinished planning text');await input.focus();
+      await page.evaluate(()=>{window.__focusedPlanningInput=document.activeElement;});const before=historyReads;
+      await page.evaluate(()=>window.__appTest.syncPlanningIfVisible());assert.equal(historyReads,before);assert.equal(await input.inputValue(),'Unfinished planning text');
+      assert.equal(await page.evaluate(()=>document.activeElement===window.__focusedPlanningInput),true);
+    });
+    await test('Older/missing server endpoint remains compatible with full refresh',async()=>{
+      revisionEnabled=false;const before=historyReads;await page.evaluate(()=>window.__appTest.syncPlanningIfVisible());assert.ok(historyReads>=before+7);
     });
     assert.deepEqual(pageErrors, []);
     console.log(JSON.stringify({ passed: tests.length, productionWrites: 0, runtimeErrors: pageErrors.length, requests: writes.length }));

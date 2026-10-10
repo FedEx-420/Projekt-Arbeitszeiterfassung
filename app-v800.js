@@ -1535,6 +1535,7 @@
     state.customerRatesReady=true;
     state.planningRequestsReady=requests!==null;
     if(requests!==null){state.rows.planningRequests=requests;planningSync.commit(proof);}
+    await deviceFeatures?.refreshLocations();
     return true;
   }
   function revealPlanningDetail() {

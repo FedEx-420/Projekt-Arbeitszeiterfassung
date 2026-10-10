@@ -70,6 +70,7 @@
     let pushActive=false,pushDeviceId='',pushSubscription=null,pushRegistration=null,pushKey='',pushReadyUser='',pushIssue='',deviceBusy=false,ocrPrefix='';
     let locations=[],arrivals=[],watchId=null,watchOrder='',gpsSaving=false,gpsPausedOrder='',locationAllowed=false,locationPermission='prompt',locationPermissionHandle=null;
     let workContext=null,workContextReady=false,workDeviceId='';
+    const geocoding=new Map();
     const workAccount=()=>isAdmin()?state.rows.people.find(p=>same(p.id,workContext?.employee_id)&&['employee','business'].includes(p.role)&&same(p.role==='business'?p.id:p.business_id,workContext.business_id)):state.profile;
     const workCompany=()=>{const p=workAccount();return p?.role==='business'?p.id:p?.business_id||'';};
     const metres=(a,b)=>{const rad=value=>value*Math.PI/180;const q=Math.sin(rad(a.latitude-b.latitude)/2)**2+Math.cos(rad(a.latitude))*Math.cos(rad(b.latitude))*Math.sin(rad(a.longitude-b.longitude)/2)**2;return 6371000*2*Math.asin(Math.min(1,Math.sqrt(q)));};
@@ -151,7 +152,7 @@
       const task=(async()=>{
         const results=await Promise.allSettled([allRows('receipt_scans','select=*&order=receipt_date.desc,id.asc'),allRows('company_notification_settings'),allRows('customer_locations'),allRows('order_arrivals'),allRows('appointment_reminders')]);
         if(!same(state.profile?.id,user))return;
-        if(!same(loadedUser,user)){scans=[];settings=[];reminders=[];remindersReady=false;locations=[];arrivals=[];stopGps();gpsPausedOrder='';pushSubscription=null;pushRegistration=null;}loadedUser=user;
+        if(!same(loadedUser,user)){geocoding.clear();scans=[];settings=[];reminders=[];remindersReady=false;locations=[];arrivals=[];stopGps();gpsPausedOrder='';pushSubscription=null;pushRegistration=null;}loadedUser=user;
         if(results[0].status==='fulfilled')scans=results[0].value;
         if(results[1].status==='fulfilled')settings=results[1].value;
         if(results[2].status==='fulfilled')locations=results[2].value;
@@ -161,6 +162,7 @@
         await Promise.all([preparePush(user),loadLocationPermission(user),arrivalTimer?.load()]);
       })();loading=task;try{await task;}finally{if(loading===task)loading=null;}
     }
+    async function refreshLocations(){const actor=state.profile?.id;if(!actor)return;try{const fresh=await allRows('customer_locations');if(!same(actor,state.profile?.id))return;locations=fresh;}catch{locations=[];}stopGps();arrivalTimer?.refresh();}
     function customerOrders(customer) {
       return state.rows.orders.filter(order=>{
         const matches=order.customer_id?same(order.customer_id,customer.id):String(order.customer_name||'').trim().toLocaleLowerCase('de-DE')===String(customer.name).trim().toLocaleLowerCase('de-DE');
@@ -383,6 +385,8 @@
       if(action==='gps-stop'){gpsPausedOrder=watchOrder||state.orderId;stopGps();announce(root.querySelector('.gps-status'),'Ankunftserkennung beendet.');return;}
       if(action==='gps-manual')return run(button,async()=>{await captureArrival(button.dataset.order,'manual');return root.querySelector('.gps-status')?.textContent;},root.querySelector('.gps-status'));
       if(action==='customer-location-here')return run(button,async()=>{const position=await positionOnce(),form=button.closest('form');form.elements.latitude.value=position.coords.latitude.toFixed(7);form.elements.longitude.value=position.coords.longitude.toFixed(7);return 'Position übernommen. Bitte als Kundenstandort speichern.';},root.querySelector('.location-status'));
+      if(action==='customer-geocode')return run(button,()=>findAddress(button),button.closest('[data-geocoding]')?.querySelector('.geocoding-status'));
+      if(action==='customer-geocode-accept')return run(button,()=>acceptAddress(button),button.closest('[data-geocoding]')?.querySelector('.geocoding-status'));
       const scan=scans.find(row=>same(row.id,button.dataset.id));
       if(action==='receipt-download'&&scan?.file_path)return run(button,()=>download('work-order-documents',scan.file_path,scan.file_name||'Beleg'),status);
       if(action==='receipt-delete'&&scan&&confirm('Diesen Beleg wirklich löschen?'))return run(button,async()=>{await remove('receipt_scans',`id=eq.${scan.id}`);scans=scans.filter(row=>!same(row.id,scan.id));render();},status);
@@ -403,7 +407,41 @@
         stopGps();arrivalTimer?.reset();locationAllowed=false;deviceBusy=true;Promise.race([Promise.resolve(disablePush(true)).catch(()=>{}),new Promise(resolve=>setTimeout(resolve,1500))]).finally(()=>{deviceBusy=false;scans=[];settings=[];reminders=[];remindersReady=false;locations=[];arrivals=[];loadedUser='';pushActive=false;pushDeviceId='';pushReadyUser='';closeScanner();logout();});
       }
     },true);
-    function locationHtml(customerId){const loc=locations.find(row=>same(row.customer_id,customerId));return `<section class="customer-order-list"><h3>Standort für Ankunftserkennung</h3><p class="device-help">Dieser Standort muss tatsächlich zur Kundenadresse gehören. Nach einer Adressänderung bitte prüfen. Keine Adresse wird an einen externen Kartendienst gesendet.</p><form data-form="customer-location" class="entry-form"><input type="hidden" name="customer_id" value="${esc(customerId)}"><label>Breitengrad<input name="latitude" type="number" step="any" min="-90" max="90" required value="${loc?.latitude??''}"></label><label>Längengrad<input name="longitude" type="number" step="any" min="-180" max="180" required value="${loc?.longitude??''}"></label><label>Umkreis (Meter)<input name="radius_m" type="number" min="50" max="500" required value="${loc?.radius_m??150}"></label><button type="button" class="secondary" data-device-action="customer-location-here">Meine aktuelle Position übernehmen</button><button class="primary">Kundenstandort speichern</button></form><p class="location-status" role="status"></p></section>`;}
+    function locationHtml(customerId){const loc=locations.find(row=>same(row.customer_id,customerId));return `<section class="customer-order-list" data-geocoding data-customer="${esc(customerId)}"><h3>Standort für Ankunftserkennung</h3><p class="device-help">Adresse aus der Kundendatenbank automatisch erkennen: Nur Straße, Hausnummer, PLZ und Ort werden über den Server an Geoapify übermittelt. Keine Kundennamen oder Arbeitsdaten. Bitte zuerst die Kundenadresse speichern und den gefundenen Standort prüfen. Manuell gesetzte Baustellenstandorte werden nur nach deiner Bestätigung ersetzt.</p><button type="button" class="secondary" data-device-action="customer-geocode">Adresse automatisch ermitteln</button><p class="geocoding-status" role="status"></p><div class="geocoding-candidates"></div><p class="device-help">Standort: <span data-location-source>${loc?loc.source==='geoapify'?'Aus bestätigter Kundenadresse':'Manuell festgelegt':'Noch nicht festgelegt'}</span>. <a href="https://www.geoapify.com/" target="_blank" rel="noopener noreferrer">Geoapify</a> · <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap-Mitwirkende</a>. Kein Hintergrund-GPS bei geschlossener App.</p><form data-form="customer-location" class="entry-form"><input type="hidden" name="customer_id" value="${esc(customerId)}"><label>Breitengrad<input name="latitude" type="number" step="any" min="-90" max="90" required value="${loc?.latitude??''}"></label><label>Längengrad<input name="longitude" type="number" step="any" min="-180" max="180" required value="${loc?.longitude??''}"></label><label>Umkreis (Meter)<input name="radius_m" type="number" min="50" max="500" required value="${loc?.radius_m??150}"></label><button type="button" class="secondary" data-device-action="customer-location-here">Meine aktuelle Position übernehmen</button><button class="primary">Kundenstandort speichern</button></form><p class="location-status" role="status"></p></section>`;}
+    function savedAddress(panel){
+      const customer=state.rows.customers.find(row=>same(row.id,panel?.dataset.customer));if(!customer||!isManager())throw Error('Bitte einen Kunden dieser Firma wählen.');
+      const form=root.querySelector('form[data-form="customer"]');
+      if(form&&['street','house_no','postal_code','city'].some(name=>String(form.elements[name]?.value||'').trim()!==String(customer.custom_fields?.[name]||'').trim()))throw Error('Bitte die geänderte Kundenadresse zuerst speichern und den Kunden erneut öffnen.');
+      return customer;
+    }
+    async function findAddress(button){
+      const panel=button.closest('[data-geocoding]'),customer=savedAddress(panel),actor=state.profile.id;
+      panel.querySelector('.geocoding-candidates').replaceChildren();geocoding.delete(customer.id);
+      announce(panel.querySelector('.geocoding-status'),'Adresse wird ermittelt …');
+      const result=await api('/functions/v1/customer-geocoding',{method:'POST',body:{customer_id:customer.id}});
+      if(!same(actor,state.profile?.id)||!panel.isConnected||!same(state.customerId,customer.id))return;
+      savedAddress(panel);
+      if(result?.status==='incomplete')throw Error('Bitte Straße sowie Ort oder Postleitzahl in den Kundendaten ergänzen und speichern.');
+      if(result?.status==='pending')throw Error('Die Adresse wird gerade ermittelt. Bitte gleich erneut versuchen.');
+      if(result?.status==='stale')throw Error('Die Kundenadresse wurde zwischenzeitlich geändert. Bitte neu ermitteln.');
+      if(result?.status!=='ready')throw Error('Der Adressdienst ist gerade nicht erreichbar. Dein vorhandener Standort bleibt erhalten.');
+      if(!result.candidates?.length)return 'Keine passende Adresse gefunden. Bitte Kundendaten prüfen oder den Standort manuell setzen.';
+      geocoding.set(customer.id,{...result,actor});
+      panel.querySelector('.geocoding-candidates').innerHTML=result.candidates.map((hit,index)=>`<button type="button" class="secondary geocoding-hit" data-device-action="customer-geocode-accept" data-index="${index}"><b>${esc(hit.formatted)}</b><small>${hit.precision==='building'?'Gebäudetreffer':'Ungefährer Treffer – bitte besonders prüfen'} · Standort übernehmen</small></button>`).join('');
+      return 'Bitte den richtigen Standort auswählen. Erst danach wird er für den GPS-Timer gespeichert.';
+    }
+    async function acceptAddress(button){
+      const panel=button.closest('[data-geocoding]'),customer=savedAddress(panel),result=geocoding.get(customer.id),index=Number(button.dataset.index),actor=state.profile.id;
+      if(!result||!same(result.actor,actor)||!result.candidates[index])throw Error('Bitte die Adresse erneut ermitteln.');
+      const old=locations.find(row=>same(row.customer_id,customer.id)),replace=old&&old.source!=='geoapify';
+      if(replace&&!confirm('Den manuell festgelegten Baustellenstandort durch diesen Adresstreffer ersetzen?'))return 'Manueller Standort bleibt unverändert.';
+      const response=await api('/rest/v1/rpc/accept_customer_geocoding_v869',{method:'POST',body:{p_customer:customer.id,p_address_key:result.address_key,p_index:index,p_replace_manual:!!replace}}),saved=Array.isArray(response)?response[0]:response;
+      if(!saved?.customer_id)throw Error('Der Standort wurde nicht bestätigt.');
+      if(!same(actor,state.profile?.id))return;
+      locations=[saved,...locations.filter(row=>!same(row.customer_id,customer.id))];stopGps();arrivalTimer?.refresh();
+      if(panel.isConnected){const form=panel.querySelector('form[data-form="customer-location"]');form.elements.latitude.value=saved.latitude;form.elements.longitude.value=saved.longitude;form.elements.radius_m.value=saved.radius_m;panel.querySelector('[data-location-source]').textContent='Aus bestätigter Kundenadresse';panel.querySelector('.geocoding-candidates').replaceChildren();}
+      geocoding.delete(customer.id);return 'Kundenstandort gespeichert. Für die Ankunftserkennung bitte Standort in den eigenen Einstellungen erlauben.';
+    }
     async function saveLocation(form){const customer=form.elements.customer_id.value,payload={customer_id:customer,business_id:businessId(),latitude:Number(form.elements.latitude.value),longitude:Number(form.elements.longitude.value),radius_m:Number(form.elements.radius_m.value)},old=locations.find(row=>same(row.customer_id,customer));const saved=(old?await write('customer_locations',payload,'PATCH',`customer_id=eq.${customer}`):await write('customer_locations',payload))?.[0];if(!saved)throw Error('Der Standort konnte nicht bestätigt werden.');locations=[saved,...locations.filter(row=>!same(row.customer_id,customer))];}
     const gpsError=error=>Object.assign(Error(error.code===1?'Standortfreigabe wurde nicht erteilt.':error.code===3?'Standort konnte nicht rechtzeitig bestimmt werden. Bitte nochmals versuchen.':'Standort ist auf diesem Gerät gerade nicht verfügbar.'),{code:error.code});
     function positionOnce(){if(!navigator.geolocation)throw Error('Dieses Gerät stellt hier keinen Standort bereit.');return new Promise((resolve,reject)=>navigator.geolocation.getCurrentPosition(resolve,error=>reject(gpsError(error)),{enableHighAccuracy:true,timeout:20000,maximumAge:0}));}
@@ -438,7 +476,7 @@
     }
     document.addEventListener('visibilitychange',()=>{if(document.visibilityState!=='visible'){stopGps();const status=root.querySelector('.gps-status');if(status)announce(status,'Standortprüfung beendet: App wurde in den Hintergrund gelegt.');}});
     navigator.serviceWorker?.addEventListener('message',event=>{if(state.profile&&(event.data?.type==='WORKTIME_OPEN_PLANNING'||event.data?.type==='WORKTIME_OPEN_VIEW'))openPersonalDeviceView(event.data.view).catch(()=>{});});
-    return {load,afterRender,attachReceipts,customerOrders,customerOrdersHtml,timerSaved:id=>arrivalTimer?.saved(id)};
+    return {load,refreshLocations,afterRender,attachReceipts,customerOrders,customerOrdersHtml,timerSaved:id=>arrivalTimer?.saved(id)};
   }
   window.WorktimeDeviceFeatures={create,parseReceipt,validateForm};
 })();

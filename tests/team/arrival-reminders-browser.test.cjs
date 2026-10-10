@@ -3,6 +3,9 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
 const dir=path.resolve(__dirname,'../..'),source=fs.readFileSync(path.join(dir,'app-v800.js'),'utf8').replace(/\}\)\(\);\s*$/,'window.__timerTest={state,render,reload};})();');
 const server=http.createServer((req,res)=>{const name=new URL(req.url,'http://localhost').pathname.slice(1)||'index.html';if(name==='config.js')return res.end('window.WORKTIME_CONFIG={supabaseUrl:"https://test.invalid",supabasePublishableKey:"test"}');if(name==='app-v800.js'){res.setHeader('Content-Type','application/javascript');return res.end(source);}if(name==='service-worker.js'){res.statusCode=404;return res.end();}const file=path.resolve(dir,name);if(!file.startsWith(dir+path.sep)||!fs.existsSync(file)){res.statusCode=404;return res.end();}res.setHeader('Content-Type',name.endsWith('.js')?'application/javascript':name.endsWith('.css')?'text/css':'text/html');res.end(fs.readFileSync(file));});
 async function main(){const f=await fixture({offers:true,units:true}),{db,ids,actor,admin}=f;let current='business',queue=Promise.resolve(),passed=0,writes=0;const errors=[];
+ // Only this disposable PostgreSQL instance gets a deterministic clock.
+ // Never run this test clock definition against a production database.
+ await db.exec("create or replace function pg_catalog.now() returns timestamptz language sql stable as $$select '2026-10-13T08:00:00Z'::timestamptz$$");
  await db.exec('create role service_role bypassrls');for(const file of ['20261008211721_device_features_v863.sql','20261009100224_appointment_reminders_v865.sql','20261009101042_arrival_timers_v865.sql','20261010095629_admin_device_work_context_v866.sql'])await db.exec(fs.readFileSync(path.join(dir,'supabase/migrations',file),'utf8'));
  const today=(await db.query("select (now() at time zone 'Europe/Berlin')::date::text as work_day")).rows[0].work_day;
  await actor('business');const plan=(await db.query("insert into appointments(employee_id,event_date,customer_id,customer_name,title,notes) values($1,$2,$3,'Klostermanns Hof','Geplante Wartung','ZE-PLAN-1:{\"start\":\"10:00\",\"end\":\"11:00\",\"status\":\"confirmed\"}') returning *",[ids.anna,today,ids.customer])).rows[0];
@@ -18,6 +21,7 @@ async function main(){const f=await fixture({offers:true,units:true}),{db,ids,ac
   if(method==='PATCH')return send((await db.query('update '+table+' set '+keys.map((k,i)=>k+'=$'+(values.length+i+1)).join(',')+where+' returning *',[...values,...data])).rows);
   throw Error('Unexpected mutation');
  }catch(e){return send({message:e.message,code:e.code},400);}});return queue;});
+ await page.clock.setFixedTime(new Date('2026-10-13T08:00:00Z'));
  await page.goto(url);await page.waitForFunction(()=>!!window.__timerTest);
  const test=async(name,fn)=>{await fn();passed++;console.log('PASS '+name);};
  const role=async(name,view='home')=>{await queue;await admin();const profile=(await db.query('select * from profiles where id=$1',[ids[name]])).rows[0];current=name;await page.evaluate(async({profile,view,date,business,employee})=>{const a=window.__timerTest;Object.assign(a.state,{profile,session:{user:{id:profile.id},access_token:'synthetic'},businessId:business,employeeId:employee,view,date,month:date.slice(0,7),orderId:'',planId:'',customerId:'',notice:null,planPrefill:null});await a.reload();a.render();},{profile,view,date:today,business:ids.business,employee:ids.anna});};

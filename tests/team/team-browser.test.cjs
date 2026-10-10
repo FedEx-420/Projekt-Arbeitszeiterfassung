@@ -279,7 +279,7 @@ async function main(){
     await test('Catalog creation and editing store their units without overwriting order snapshots',async()=>{
       await setRole('business','materials');const form=page.locator('[data-form="material"]');await form.locator('[name="name"]').fill('Kupferleitung Einheitentest');await form.locator('[name="unit"]').selectOption('Kg');await form.locator('button').click();await page.waitForFunction(()=>!window.__appTest.state.busy);assert.match(await page.locator('.list-section').innerText(),/Kupferleitung Einheitentest/);await admin();const id=(await db.query("select id from materials where name='Kupferleitung Einheitentest'")).rows[0].id;
       await page.locator('[data-action="edit-material"][data-id="'+id+'"]').click();const editor=page.locator('[data-form="material-edit"]');assert.equal(await editor.locator('[name="unit"]').inputValue(),'Kg');await editor.locator('[name="unit"]').selectOption('Pau');await editor.locator('button').click();await page.waitForFunction(()=>!window.__appTest.state.busy);await admin();assert.equal((await db.query('select unit from materials where id=$1',[id])).rows[0].unit,'Pau');assert.equal((await db.query("select unit from work_order_items where work_order_id=$1 and position_name='Sonderleistung Einheitentest'",[unitOrder])).rows[0].unit,'Kg');
-      assert.equal(await page.locator('[data-form="hourly-price"] [name="unit"]').count(),3);
+      assert.equal(await page.locator('[data-form="hourly-price"] [name="unit"]').count(),4);
     });
     await test('Work proof and invoice PDFs display the per-position units beside the quantity',async()=>{
       await setRole('business','orders','2026-10-07');

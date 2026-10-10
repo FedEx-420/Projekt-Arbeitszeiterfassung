@@ -11,7 +11,7 @@
   const state = {
     session: null, profile: null, people: [], view: 'home', date: today(), month: today().slice(0, 7),
     businessId: '', businessBrand: null, employeeId: '', customerId: '', customerSearch: '', materialId: '', orderId: '', timeEntryId: '', orderCustomer: '', orderOrigin: 'orders', billingKey: '', billingMode: 'open', menu: false, vacationForm: false, appointmentForm: false, composeMessage: false, mailboxFolder: 'received', notice: null, busy: false,
-    rows: { entries: [], orders: [], items: [], customers: [], days: [], vacations: [], messages: [], attachments: [], recipients: [], materials: [], appointments: [], planningRequests: [], payslips: [], documents: [] }
+    rows: { entries: [], orders: [], items: [], customers: [], customerRates: [], days: [], vacations: [], messages: [], attachments: [], recipients: [], materials: [], appointments: [], planningRequests: [], payslips: [], documents: [] }
   };
   /* BEGIN SESSION AUTH V859
    * Keep auth in the app bundle so previously cached index pages also work.
@@ -436,7 +436,27 @@
     const edit = selected || state.customerId === 'new'
       ? '<section class="panel" id="customer-profile" tabindex="-1"><h3>' + (selected ? 'Kunde bearbeiten' : 'Neuer Kunde') + '</h3><form data-form="customer" class="entry-form">' + customerFields(selected) + '<button class="primary wide">Kunde speichern</button></form>' + (selected ? '<button type="button" class="secondary wide" data-action="create-order-from-customer" data-id="' + escape(selected.id) + '">Arbeitsschein erstellen</button>' : '') + '</section>'
       : '';
-    return '<section class="page-head"><div><span class="eyebrow">Gemeinsame Daten</span><h2>Kundenliste</h2></div><button type="button" class="secondary" data-action="new-customer">Kunde hinzufügen</button></section>' + edit + '<section class="list-section"><label>Kunden suchen<input type="search" data-customer-search value="' + escape(state.customerSearch) + '" placeholder="Name, Ort, Adresse, Telefon oder E-Mail"></label><p class="empty" data-customer-search-empty style="display:none">Kein passender Kunde gefunden.</p>' + list + '</section>';
+    return '<section class="page-head"><div><span class="eyebrow">Gemeinsame Daten</span><h2>Kundenliste</h2></div><button type="button" class="secondary" data-action="new-customer">Kunde hinzufügen</button></section>' + edit + customerRatesView(selected) + '<section class="list-section"><label>Kunden suchen<input type="search" data-customer-search value="' + escape(state.customerSearch) + '" placeholder="Name, Ort, Adresse, Telefon oder E-Mail"></label><p class="empty" data-customer-search-empty style="display:none">Kein passender Kunde gefunden.</p>' + list + '</section>';
+  }
+  function customerRatesView(customer) {
+    if (!customer || !isManager()) return '';
+    const rate = state.rows.customerRates?.find(row => same(row.customer_id,customer.id));
+    const company = materialBusinessId(customer.employee_id);
+    const fields = [['meister','Meister','Meisterstunde'],['monteur','Monteur','Monteurstunde'],['azubi','Auszubildender','Auszubildendenstunde']].map(([type,label,name]) => {
+      const fallback = state.rows.materials.find(row=>same(row.business_id,company)&&lower(row.name)===lower(name));
+      return `<label>${label} · €/h netto<input name="${type}" type="number" min="0" max="100000" step="0.01" value="${escape(rate?.[type]??'')}" placeholder="Firmenstandard: ${n(fallback?.unit_price).toLocaleString('de-DE',{minimumFractionDigits:2})} €"></label>`;
+    }).join('');
+    return `<section class="panel"><h3>Stundensätze für ${escape(customer.name)}</h3><p>Leer = Preis aus der Materialliste. 0,00 € = ausdrücklich kostenlos. Gilt für neue und noch nicht abgerechnete Arbeitsscheine; abgeschlossene Rechnungen behalten ihre Preise.</p>${state.customerRatesReady===false?'<p class="locked">Kundensätze konnten nicht geladen werden. Bitte erneut synchronisieren.</p>':`<form data-form="customer-rates" class="entry-form"><input type="hidden" name="customer_id" value="${escape(customer.id)}">${fields}<button class="primary wide">Stundensätze speichern</button></form>`}</section>`;
+  }
+  async function saveCustomerRates(form) {
+    if (!isManager()) throw new Error('Nur die Geschäftsleitung darf Kundensätze ändern.');
+    const rates = {};
+    for (const type of ['meister','monteur','azubi']) {
+      const raw = form.elements[type].value.trim();
+      rates[type] = raw==='' ? null : Number(raw);
+      if (rates[type]!==null && (!Number.isFinite(rates[type]) || rates[type]<0 || rates[type]>100000 || Math.abs(rates[type]*100-Math.round(rates[type]*100))>1e-7)) throw new Error('Bitte gültige Stundensätze mit höchstens zwei Nachkommastellen eingeben.');
+    }
+    await api('/rest/v1/rpc/save_customer_hourly_rates',{method:'POST',body:{p_customer:form.elements.customer_id.value,p_rates:rates}});
   }
   function messageRecipients() { return state.rows.recipients || []; }
   function personName(person) { return person?.display_name || person?.username || 'Unbekannt'; }
@@ -473,7 +493,7 @@
     const materials = state.rows.materials.filter(row => same(row.business_id, businessId()) && row.active !== false);
     const others = materials.filter(row => !isHourlyMaterial(row));
     const selected = others.find(row => same(row.id, state.materialId));
-    const hourlyCards = HOURLY_MATERIALS.map(name => materials.find(row => lower(row.name) === lower(name))).filter(Boolean).map(material => '<section class="panel"><h3>' + escape(material.name) + '</h3><p>Wird nach der in den Einstellungen hinterlegten Arbeitskraft des Mitarbeiters automatisch in den Arbeitsschein übernommen. Die Position kann nicht gelöscht oder umbenannt werden.</p><form data-form="hourly-price" class="entry-form"><input type="hidden" name="id" value="' + escape(material.id) + '"><label>Preis pro ' + escape(material.name) + ' in €<input name="price" type="number" min="0" step="0.01" value="' + n(material.unit_price) + '"></label>' + unitSelect('unit',materialUnit(material)) + '<button class="primary">Preis speichern</button></form></section>').join('');
+    const hourlyCards = HOURLY_MATERIALS.map(name => materials.find(row => lower(row.name) === lower(name))).map((material,index) => material || {id:'',name:HOURLY_MATERIALS[index],unit_price:0,unit:'H'}).map(material => '<section class="panel"><h3>' + escape(material.name) + '</h3><p>Wird nach der in den Einstellungen hinterlegten Arbeitskraft des Mitarbeiters automatisch in den Arbeitsschein übernommen. Die Position kann nicht gelöscht oder umbenannt werden.</p><form data-form="hourly-price" class="entry-form"><input type="hidden" name="id" value="' + escape(material.id) + '"><input type="hidden" name="name" value="' + escape(material.name) + '"><label>Preis pro ' + escape(material.name) + ' in €<input name="price" type="number" min="0" step="0.01" value="' + n(material.unit_price) + '"></label>' + unitSelect('unit',materialUnit(material)) + '<button class="primary">Preis speichern</button></form></section>').join('');
     const list = others.map(row => '<article class="row-card"><div><b>' + escape(row.name) + '</b><span>' + n(row.unit_price).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' }) + ' / ' + escape(materialUnit(row)) + '</span></div><div class="actions"><button type="button" class="secondary small" data-action="edit-material" data-id="' + escape(row.id) + '">Bearbeiten</button><button type="button" class="danger small" data-action="delete-material" data-id="' + escape(row.id) + '">Löschen</button></div></article>').join('') || '<p class="empty">Keine weiteren Materialien vorhanden.</p>';
     const editor = selected
       ? '<section class="panel"><section class="page-head"><div><span class="eyebrow">Materialliste</span><h3>Material bearbeiten</h3></div><button type="button" class="secondary small" data-action="close-material-edit">Abbrechen</button></section><form data-form="material-edit" class="entry-form">' + materialEditFields(selected) + '<button class="primary wide">Änderungen speichern</button></form><p>Preis- und Namensänderungen werden nur auf offene, noch nicht abgerechnete Arbeitsscheine übertragen.</p></section>'
@@ -507,8 +527,8 @@
     const person = worker(), business = managerBusiness();
     const own = `<section class="panel"><h3>Mein Benutzerkonto</h3><form data-form="self" class="entry-form"><label>Benutzername<input name="username" value="${escape(state.profile.username)}"></label><label>Neues Passwort<input name="password" type="password" minlength="8" placeholder="Nur bei Änderung"></label><label>Urlaubsanspruch pro Jahr<input name="allowance" type="number" min="0" step="0.5" value="${n(state.profile.vacation_allowance)}"></label>${isBusiness() ? `<label>Firma<input name="company" value="${escape(state.profile.company_name || '')}"></label>` : ''}<button class="primary">Eigenes Konto speichern</button></form></section>`;
     const logo = business ? `<section class="panel"><h3>Firmenlogo${isAdmin() ? `: ${escape(business.company_name || business.username)}` : ''}</h3><p>Das Logo erscheint auf neu erstellten Rechnungen dieses Geschäftskontos.</p>${companyLogoUrl(business) ? `<img src="${escape(companyLogoUrl(business))}" alt="Firmenlogo" style="max-width:220px;max-height:100px;object-fit:contain;display:block;margin:12px 0">` : '<p class="empty">Noch kein Firmenlogo hinterlegt.</p>'}<form data-form="company-logo" class="entry-form"><label class="wide">Logo-Datei (PNG, JPG oder WebP, max. 5 MB)<input name="logo" type="file" accept="image/png,image/jpeg,image/webp" required></label><button class="secondary">Logo speichern</button>${companyLogoUrl(business) ? '<button type="button" class="danger" data-action="remove-company-logo">Logo entfernen</button>' : ''}</form></section>` : '';
-    const employee = person?.role === 'employee' ? `<section class="panel"><h3>Mitarbeiter bearbeiten: ${escape(person.username)}</h3><form data-form="employee-credentials" class="entry-form"><label>Benutzername<input name="username" value="${escape(person.username)}"></label><label>Neues Passwort<input name="password" type="password" minlength="8" placeholder="Nur bei Änderung"></label><button class="secondary">Benutzername und Passwort speichern</button></form><form data-form="employee-labor-type" class="entry-form"><label>Arbeitskraft<select name="labor_type"><option value="monteur" ${person.labor_type === 'monteur' ? 'selected' : ''}>Monteur</option><option value="meister" ${person.labor_type === 'meister' ? 'selected' : ''}>Meister</option><option value="aushilfe" ${person.labor_type === 'aushilfe' ? 'selected' : ''}>Aushilfe</option></select></label><button class="secondary">Arbeitskraft speichern</button></form><form data-form="employee-permissions" class="entry-form"><div class="wide permissions">${permissionFields(person)}</div><button class="secondary wide">Menüfreigaben speichern</button></form><form data-form="employee-vacation" class="entry-form"><label>Urlaubsanspruch pro Jahr<input name="allowance" type="number" min="0" step="0.5" value="${n(person.vacation_allowance)}"></label><button class="secondary">Urlaubsanspruch speichern</button></form><div class="actions"><button type="button" class="danger" data-action="delete-employee" data-id="${person.id}">Mitarbeiter löschen</button></div></section>` : '<section class="panel"><p>Bitte einen Mitarbeiter in der Auswahl oben auswählen.</p></section>';
-    const newEmployee = businessId() ? `<section class="panel"><h3>Mitarbeiter hinzufügen</h3><form data-form="employee-new" class="entry-form"><label>Benutzername<input name="username" required></label><label>Passwort<input name="password" type="password" minlength="8" required></label><label>Arbeitskraft<select name="labor_type"><option value="monteur">Monteur</option><option value="meister">Meister</option><option value="aushilfe">Aushilfe</option></select></label><label>Urlaubsanspruch pro Jahr<input name="allowance" type="number" min="0" step="0.5" value="30"></label><div class="wide permissions">${permissionFields({})}</div><button class="primary wide">Mitarbeiter anlegen</button></form></section>` : '';
+    const employee = person?.role === 'employee' ? `<section class="panel"><h3>Mitarbeiter bearbeiten: ${escape(person.username)}</h3><form data-form="employee-credentials" class="entry-form"><label>Benutzername<input name="username" value="${escape(person.username)}"></label><label>Neues Passwort<input name="password" type="password" minlength="8" placeholder="Nur bei Änderung"></label><button class="secondary">Benutzername und Passwort speichern</button></form><form data-form="employee-labor-type" class="entry-form"><label>Arbeitskraft<select name="labor_type"><option value="monteur" ${person.labor_type === 'monteur' ? 'selected' : ''}>Monteur</option><option value="meister" ${person.labor_type === 'meister' ? 'selected' : ''}>Meister</option><option value="azubi" ${person.labor_type === 'azubi' ? 'selected' : ''}>Auszubildender</option><option value="aushilfe" ${person.labor_type === 'aushilfe' ? 'selected' : ''}>Aushilfe</option></select></label><button class="secondary">Arbeitskraft speichern</button></form><form data-form="employee-permissions" class="entry-form"><div class="wide permissions">${permissionFields(person)}</div><button class="secondary wide">Menüfreigaben speichern</button></form><form data-form="employee-vacation" class="entry-form"><label>Urlaubsanspruch pro Jahr<input name="allowance" type="number" min="0" step="0.5" value="${n(person.vacation_allowance)}"></label><button class="secondary">Urlaubsanspruch speichern</button></form><div class="actions"><button type="button" class="danger" data-action="delete-employee" data-id="${person.id}">Mitarbeiter löschen</button></div></section>` : '<section class="panel"><p>Bitte einen Mitarbeiter in der Auswahl oben auswählen.</p></section>';
+    const newEmployee = businessId() ? `<section class="panel"><h3>Mitarbeiter hinzufügen</h3><form data-form="employee-new" class="entry-form"><label>Benutzername<input name="username" required></label><label>Passwort<input name="password" type="password" minlength="8" required></label><label>Arbeitskraft<select name="labor_type"><option value="monteur">Monteur</option><option value="meister">Meister</option><option value="azubi">Auszubildender</option><option value="aushilfe">Aushilfe</option></select></label><label>Urlaubsanspruch pro Jahr<input name="allowance" type="number" min="0" step="0.5" value="30"></label><div class="wide permissions">${permissionFields({})}</div><button class="primary wide">Mitarbeiter anlegen</button></form></section>` : '';
     const newBusiness = isAdmin() ? `<section class="panel"><h3>Neues Geschäftskonto</h3><form data-form="business-new" class="entry-form"><label>Firma<input name="company" required></label><label>Benutzername<input name="username" required></label><label>Passwort<input name="password" type="password" minlength="8" required></label><button class="primary">Geschäftskonto anlegen</button></form></section>${business ? `<section class="panel"><h3>Ausgewähltes Geschäftskonto</h3><form data-form="business-update" class="entry-form"><label>Firma<input name="company" value="${escape(business.company_name || '')}"></label><label>Benutzername<input name="username" value="${escape(business.username)}"></label><label>Neues Passwort<input name="password" type="password" minlength="8" placeholder="Nur bei Änderung"></label><button class="secondary">Geschäftskonto speichern</button></form><button type="button" class="danger" data-action="delete-business" data-id="${business.id}">Geschäftskonto löschen</button></section>` : ''}` : '';
     return `<section class="page-head"><div><span class="eyebrow">Verwaltung</span><h2>Einstellungen</h2></div><button type="button" class="secondary" data-action="pdf">Daten als PDF drucken</button></section>${own}${newBusiness}${logo}${newEmployee}${employee}`;
   }
@@ -559,8 +579,8 @@
     const created = await write('customers', { employee_id: employee, name, custom_fields: {} });
     return rememberCatalogRow('customers', created, 'Der Kunde');
   }
-  const HOURLY_MATERIALS = ['Monteurstunde', 'Meisterstunde', 'Aushilfsstunde'];
-  const LABOR_TYPES = { monteur: 'Monteurstunde', meister: 'Meisterstunde', aushilfe: 'Aushilfsstunde' };
+  const HOURLY_MATERIALS = ['Monteurstunde', 'Meisterstunde', 'Aushilfsstunde', 'Auszubildendenstunde'];
+  const LABOR_TYPES = { monteur: 'Monteurstunde', meister: 'Meisterstunde', aushilfe: 'Aushilfsstunde', azubi: 'Auszubildendenstunde' };
   function laborTypeForEmployee(employeeId) {
     const type = lower(state.rows.people.find(person => same(person.id, employeeId))?.labor_type);
     return Object.prototype.hasOwnProperty.call(LABOR_TYPES, type) ? type : 'monteur';
@@ -570,15 +590,16 @@
     const normalized = lower(typeof value === 'string' ? value : value?.name);
     if (normalized === 'meisterstunde' || normalized === 'meister') return 'Meisterstunde';
     if (normalized === 'aushilfsstunde' || normalized === 'aushilfe') return 'Aushilfsstunde';
+    if (normalized === 'auszubildendenstunde' || normalized === 'azubi' || normalized === 'auszubildender') return 'Auszubildendenstunde';
     return 'Monteurstunde';
   }
   function isHourlyMaterial(material) { return HOURLY_MATERIALS.some(name => lower(name) === lower(typeof material === 'string' ? material : material?.name)); }
-  function materialBusinessId(employeeId) { return state.rows.people.find(person => same(person.id, employeeId))?.business_id || businessId(); }
+  function materialBusinessId(employeeId) { const person=state.rows.people.find(person => same(person.id,employeeId)); return person?.role==='business' ? person.id : person?.business_id || businessId(); }
   async function ensureHourlyMaterial(value, targetBusinessId = businessId()) {
     const name = hourlyName(value);
     const current = state.rows.materials.find(row => same(row.business_id, targetBusinessId) && lower(row.name) === lower(name));
     if (current) return current;
-    const created = await write('materials', { business_id: targetBusinessId, name, unit_price: 0, active: true });
+    const created = await write('materials', { business_id: targetBusinessId, name, unit_price: 0, unit: 'H', active: true });
     return rememberCatalogRow('materials', created, 'Die Stundenposition');
   }
   async function ensureMaterial(value, targetBusinessId = businessId(), unit = 'Stk') {
@@ -600,7 +621,7 @@
     const name = hourlyNameForEmployee(order.employee_id);
     const material = await ensureHourlyMaterial(name, materialBusinessId(order.employee_id));
     if (!material?.id) throw new Error('Die Stundenposition konnte nicht angelegt werden.');
-    await write('work_order_items', { work_order_id: order.id, material_id: material.id, position_name: name, quantity: Math.max(0.25, n(hours)), unit: materialUnit(material), unit_price: n(material.unit_price) });
+    await write('work_order_items', { work_order_id: order.id, material_id: material.id, position_name: name, quantity: Math.max(0.25, n(hours)), unit: 'H', unit_price: customerLaborPrice(order,material,n(material.unit_price)) });
   }
   function currentMaterialForItem(item, order) {
     const direct = state.rows.materials.find(material => same(material.id, item?.material_id));
@@ -610,7 +631,15 @@
   }
   function invoiceItemPrice(item, order) {
     const material = currentMaterialForItem(item, order);
-    return !order?.invoiced && material ? n(material.unit_price) : n(item?.unit_price);
+    return !order?.invoiced && material ? customerLaborPrice(order,material,n(material.unit_price)) : n(item?.unit_price);
+  }
+  function customerLaborPrice(order,material,fallback) {
+    if (!order || order.invoiced || !isHourlyMaterial(material)) return fallback;
+    if (state.customerRatesReady===false) throw new Error('Die Kundensätze konnten nicht synchronisiert werden. Bitte erneut laden, bevor eine Abrechnung erstellt wird.');
+    const type = {'meisterstunde':'meister','monteurstunde':'monteur','auszubildendenstunde':'azubi'}[lower(material?.name)];
+    if (!type) return fallback;
+    const rate = state.rows.customerRates?.find(row=>same(row.customer_id,order.customer_id));
+    return rate?.[type]===null || rate?.[type]===undefined ? fallback : n(rate[type]);
   }
   function invoiceItemName(item, order) {
     const material = currentMaterialForItem(item, order);
@@ -621,18 +650,18 @@
       for (const item of state.rows.items.filter(row => same(row.work_order_id, order.id))) {
         const material = currentMaterialForItem(item, order);
         if (!material) continue;
-        const price = n(material.unit_price), name = material.name;
+        const price = customerLaborPrice(order,material,n(material.unit_price)), name = material.name;
         if (n(item.unit_price) !== price || item.position_name !== name || !same(item.material_id, material.id)) await write('work_order_items', { material_id: material.id, unit_price: price, position_name: name }, 'PATCH', `id=eq.${encodeURIComponent(item.id)}`);
       }
     }
   }
   async function updateHourlyPrice(form) {
-    const material = state.rows.materials.find(row => same(row.id, form.elements.id.value) && same(row.business_id, businessId()) && isHourlyMaterial(row));
+    const material = form.elements.id.value ? state.rows.materials.find(row => same(row.id, form.elements.id.value) && same(row.business_id, businessId()) && isHourlyMaterial(row)) : (isHourlyMaterial(form.elements.name?.value) ? await ensureHourlyMaterial(form.elements.name.value) : null);
     if (!material) throw new Error('Die geschützte Stundenposition wurde nicht gefunden.');
     const price = Math.max(0, n(form.elements.price.value));
     await write('materials', { unit_price: price, unit: normalizeUnit(form.elements.unit?.value || materialUnit(material),true) }, 'PATCH', 'id=eq.' + material.id);
     const openOrderIds = new Set(state.rows.orders.filter(order => !order.invoiced).map(order => order.id));
-    for (const item of state.rows.items.filter(item => same(item.material_id, material.id) && openOrderIds.has(item.work_order_id))) await write('work_order_items', { unit_price: price }, 'PATCH', 'id=eq.' + item.id);
+    for (const item of state.rows.items.filter(item => same(item.material_id, material.id) && openOrderIds.has(item.work_order_id))) await write('work_order_items', { unit_price: customerLaborPrice(state.rows.orders.find(order=>same(order.id,item.work_order_id)),{...material,unit_price:price},price) }, 'PATCH', 'id=eq.' + item.id);
     await load(); notice('Preis für ' + material.name + ' gespeichert. Offene Arbeitsscheine wurden aktualisiert.'); render();
   }
   async function updateMaterial(form) {
@@ -973,6 +1002,7 @@
       time: () => saveTime(form), order: () => saveOrder(form), 'order-edit': () => updateOrder(form), customer: () => saveCustomer(form),
       material: () => { if (isHourlyMaterial(form.elements.name.value)) throw new Error('Diese geschützte Stundenposition ist bereits vorhanden.'); return write('materials', { business_id: businessId(), name: String(form.elements.name.value || '').trim(), unit_price: n(form.elements.price.value), unit: normalizeUnit(form.elements.unit?.value), active: true }); },
       'hourly-price': () => updateHourlyPrice(form),
+      'customer-rates': () => saveCustomerRates(form),
       'material-edit': () => updateMaterial(form),
       vacation: () => flow('request', { employeeId: workerId(), startDate: form.elements.start.value, endDate: form.elements.end.value }),
       'message-send': () => sendMailboxMessage(form),
@@ -1094,6 +1124,7 @@
       load('payslips', 'employee_payslips', 'select=*&order=created_at.desc'), load('documents', 'work_order_documents'), loadRecipients(), loadPlanningRequests()
     ]);
     state.people = state.rows.people;
+    try { state.rows.customerRates = await allRows('customer_hourly_rates','select=*&order=customer_id.asc'); state.customerRatesReady=true; } catch { state.customerRatesReady=false; issues.push('customerRates'); }
     if (!isManager()) { try { state.businessBrand = (await api('/rest/v1/rpc/current_business_branding', { method: 'POST', body: {} }))?.[0] || null; } catch { state.businessBrand = null; } } else state.businessBrand = null;
     if (isAdmin() && !businesses().some(person => same(person.id, state.businessId))) state.businessId = businesses()[0]?.id || '';
     if (!workers().some(person => same(person.id, state.employeeId))) state.employeeId = workers()[0]?.id || state.profile.id;
@@ -1492,14 +1523,16 @@
     if (!actor) throw new Error('Bitte erneut anmelden.');
     const proof=await planningSync.begin(ifChanged);
     if(proof.unchanged)return false;
-    const [appointments, days, vacations, orders, entries, customers, requests] = await Promise.all([
+    const [appointments, days, vacations, orders, entries, customers, requests, customerRates] = await Promise.all([
       allRows('appointments', 'select=*&order=event_date.asc,id.asc'), allRows('work_days', 'select=*&order=employee_id.asc,work_date.asc'),
       allRows('vacation_requests', 'select=*&order=id.asc'), allRows('work_orders', 'select=*&order=id.asc'), allRows('time_entries', 'select=*&order=id.asc'), allRows('customers', 'select=*&order=name.asc,id.asc'),
-      allRows('planning_requests', 'select=*&order=created_at.desc,id.asc').catch(()=>null)
+      allRows('planning_requests', 'select=*&order=created_at.desc,id.asc').catch(()=>null),
+      allRows('customer_hourly_rates','select=*&order=customer_id.asc')
     ]);
     if (!same(actor, state.profile?.id)) throw new Error('Das Benutzerkonto hat sich geändert. Bitte die Planung erneut öffnen.');
     planningSync.assertCurrent(proof);
-    Object.assign(state.rows, { appointments, days, vacations, orders, entries, customers });
+    Object.assign(state.rows, { appointments, days, vacations, orders, entries, customers, customerRates });
+    state.customerRatesReady=true;
     state.planningRequestsReady=requests!==null;
     if(requests!==null){state.rows.planningRequests=requests;planningSync.commit(proof);}
     return true;

@@ -20,6 +20,7 @@ const people = [
 const metadata = details => 'ZE-PLAN-1:' + JSON.stringify({ start: '08:00', end: '10:00', priority: 'normal', status: 'planned', details, workOrderId: '' });
 const database = {
   profiles: people,
+  customer_hourly_rates: [],
   customers: [
     { id: 'customer-one', employee_id: 'max', name: 'Klostermanns Hof', custom_fields: { first_name: 'Testkunde', street: 'Teststraße', house_no: '12', postal_code: '48143', city: 'Münster', phone_private: '0251 12345', phone_mobile: '0176 12345', email: 'kunde@example.invalid', extra_contact: 'Schlüssel im Büro' } },
     { id: 'customer-two', employee_id: 'felix', name: 'Klostermanns Hof', custom_fields: { street: 'Andere Firmenstraße', city: 'Andere Firma' } }
@@ -42,7 +43,7 @@ const database = {
 const notifications = [], writes = [], pageErrors = [], tests = [];
 let failPlanningGet = false;
 let revisionEnabled = false, historyReads = 0;
-const revisionTables=['appointments','work_days','vacation_requests','work_orders','time_entries','customers','planning_requests'];
+const revisionTables=['appointments','work_days','vacation_requests','work_orders','time_entries','customers','planning_requests','customer_hourly_rates'];
 const revision=()=>createHash('md5').update(JSON.stringify(revisionTables.map(table=>database[table]))).digest('hex');
 const server = http.createServer((req, res) => {
   const name = decodeURIComponent(new URL(req.url, 'http://localhost').pathname).replace(/^\//, '') || 'index.html';

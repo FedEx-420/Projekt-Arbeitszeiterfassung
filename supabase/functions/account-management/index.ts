@@ -4,7 +4,7 @@ const APP_ORIGIN = 'https://fedex-420.github.io'
 const EMPLOYEE_MENUS = ['time', 'customers', 'orders', 'calendar'] as const
 type EmployeeMenu = typeof EMPLOYEE_MENUS[number]
 type Role = 'administrator' | 'business' | 'employee'
-type LaborType = 'monteur' | 'meister' | 'aushilfe'
+type LaborType = 'monteur' | 'meister' | 'aushilfe' | 'azubi'
 type Profile = { id: string; username: string; role: Role; business_id: string | null; company_name: string | null; company_logo_path: string | null }
 
 function cors(request: Request) {
@@ -59,7 +59,7 @@ function cleanPermissions(value: unknown): Record<EmployeeMenu, boolean> {
 
 function cleanLaborType(value: unknown): LaborType {
   const laborType = String(value ?? 'monteur').trim().toLocaleLowerCase('de-DE')
-  if (!['monteur', 'meister', 'aushilfe'].includes(laborType)) throw new Error('Die Arbeitskraft muss Monteur, Meister oder Aushilfe sein.')
+  if (!['monteur', 'meister', 'aushilfe', 'azubi'].includes(laborType)) throw new Error('Die Arbeitskraft muss Monteur, Meister, Aushilfe oder Auszubildender sein.')
   return laborType as LaborType
 }
 
@@ -230,6 +230,7 @@ Deno.serve(withSupabase({ auth: 'user' }, async (request, ctx) => {
         { business_id: data.user.id, name: 'Monteurstunde', unit_price: 0, active: true },
         { business_id: data.user.id, name: 'Meisterstunde', unit_price: 0, active: true },
         { business_id: data.user.id, name: 'Aushilfsstunde', unit_price: 0, active: true },
+        { business_id: data.user.id, name: 'Auszubildendenstunde', unit_price: 0, unit: 'H', active: true },
       ])
       if (materialError) throw materialError
       return response(request, { ok: true, business: { id: data.user.id, username } }, 201)

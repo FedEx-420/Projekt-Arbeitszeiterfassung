@@ -18,6 +18,15 @@
     const clock=n=>`${String(Math.floor(n/60)).padStart(2,'0')}:${String(n%60).padStart(2,'0')}`;
     return {date:start.date,start:clock(a),end:clock(b),hours:(duration+drive)/60,drive:drive/60,elapsed};
   }
+  function correctedProposal(timer,start,end,drive,side='before') {
+    const parse=value=>{if(!/^\d{2}:\d{2}$/.test(value||''))throw Error('Bitte Beginn und Ende prüfen.');const [h,m]=value.split(':').map(Number);if(h>23||m>59)throw Error('Ungültige Uhrzeit.');return Math.round((h*60+m)/15)*15;};
+    const a=parse(start),b=parse(end);
+    if(b<=a||!Number.isInteger(drive)||drive<0||drive>720||drive%15)throw Error('Bitte Beginn, Ende und Fahrzeit prüfen.');
+    const from=a-(side==='before'?drive:0),to=b+(side==='after'?drive:0);
+    if(from<0||to>=1440)throw Error('Bitte die Zeiten getrennt je Kalendertag erfassen.');
+    const clock=n=>`${String(Math.floor(n/60)).padStart(2,'0')}:${String(n%60).padStart(2,'0')}`;
+    return {date:berlin(timer.started_at).date,start:clock(from),end:clock(to),hours:(to-from)/60,drive:drive/60,elapsed:b-a};
+  }
   function create(ctx) {
     const {root,state,api,allRows,render,businessId,workerId,planningMeta,planEmployeeIds,canUse,locked,openPlanningOrder,teamPeriodFields,teamPersonFields}=ctx;
     let timers=[],ready=false,user='',watch=null,watchEpoch=0,targetKey='',busy=false,dialog=null,draft=null,message='',tick=null;
@@ -97,7 +106,10 @@
       if(!same(stamp,identity()))return;
       timers=[timer,...timers.filter(t=>!same(t.id,timer.id))];mount();await ctx.refreshPlanningData?.();if(!same(stamp,identity()))return;dialog?.remove();
       dialog=document.createElement('dialog');dialog.className='device-dialog';dialog.innerHTML=`<h2>Fahrzeit ergänzen</h2><p>${esc(timer.customer_name)} · gemessen ${duration(timer)}</p><p>Der Timer ist beendet. Die Zeit wird auf Viertelstunden gerundet und bleibt vor dem Speichern bearbeitbar.</p><form><label>Fahrzeit in Stunden<input name="drive" type="number" min="0" max="12" step="0.25" value="0" required></label><label>Fahrzeit zuordnen<select name="side"><option value="before">Vor dem Arbeitsbeginn</option><option value="after">Nach dem Arbeitsende</option></select></label><p class="timer-proposal" role="status"></p><p class="timer-dialog-error" role="alert"></p><div class="actions"><button type="button" class="secondary" data-cancel>Später</button><button class="primary">In Arbeitsschein übernehmen</button></div></form>`;document.body.append(dialog);dialog.showModal();
-      const form=dialog.querySelector('form'),preview=()=>{try{const p=timeProposal(timer,Number(form.elements.drive.value)*60,form.elements.side.value);dialog.querySelector('.timer-proposal').textContent=`${p.start} – ${p.end} Uhr · ${p.hours.toLocaleString('de-DE')} h inklusive Fahrzeit`;return p;}catch(e){dialog.querySelector('.timer-proposal').textContent=e.message;return null;}};preview();form.addEventListener('input',preview);form.addEventListener('change',preview);
+      const form=dialog.querySelector('form');
+      let initial=null;try{initial=timeProposal(timer,0);}catch{}
+      const review=document.createElement('section');review.innerHTML=`<label class="device-check"><input type="checkbox" name="correct_times" ${initial?'':'checked'}> Zeiten prüfen / korrigieren</label><p class="device-help">Zum Beispiel nach leerem Akku oder verspäteter GPS-Meldung. Die ursprüngliche Messung bleibt erhalten; der Arbeitsschein verwendet deine geprüften Zeiten für ${esc(berlin(timer.started_at).date)}.</p><label>Arbeitsbeginn<input type="time" name="correct_start" step="900" value="${initial?.start||''}" ${initial?'disabled':''} required></label><label>Arbeitsende<input type="time" name="correct_end" step="900" value="${initial?.end||''}" ${initial?'disabled':''} required></label>`;form.prepend(review);
+      const preview=()=>{const manual=form.elements.correct_times.checked;form.elements.correct_start.disabled=!manual;form.elements.correct_end.disabled=!manual;try{const drive=Number(form.elements.drive.value)*60,side=form.elements.side.value,p=manual?correctedProposal(timer,form.elements.correct_start.value,form.elements.correct_end.value,drive,side):timeProposal(timer,drive,side);dialog.querySelector('.timer-proposal').textContent=`${p.start} – ${p.end} Uhr · ${p.hours.toLocaleString('de-DE')} h inklusive Fahrzeit`;return p;}catch(e){dialog.querySelector('.timer-proposal').textContent=e.message;return null;}};preview();form.addEventListener('input',preview);form.addEventListener('change',preview);
       form.addEventListener('invalid',()=>window.WorktimeDeviceFeatures?.validateForm(form),true);
       dialog.querySelector('[data-cancel]').onclick=()=>{dialog.close();dialog.remove();dialog=null;};
       form.onsubmit=async event=>{event.preventDefault();if(window.WorktimeDeviceFeatures&&!window.WorktimeDeviceFeatures.validateForm(form))return;const proposal=preview();if(!proposal)return;const button=form.querySelector('button.primary');button.disabled=true;try{await ctx.refreshPlanningData?.();if(!same(stamp,identity()))return;await openOrder(timer,proposal);dialog?.close();dialog?.remove();dialog=null;}catch(e){if(dialog)dialog.querySelector('.timer-dialog-error').textContent=e.message;}finally{if(button.isConnected)button.disabled=false;}};
@@ -145,5 +157,5 @@
     setInterval(()=>{if(state.profile&&eligible()&&document.visibilityState==='visible'&&!busy&&!dialog)refresh();},20000);
     return {load,afterRender,reset,saved:id=>{timers=timers.filter(t=>!same(t.id,id));if(same(draft?.timer.id,id))draft=null;mount();},refresh:()=>{mount();watchArrival();}};
   }
-  window.WorktimeArrivalTimer={create,timeProposal,berlin};
+  window.WorktimeArrivalTimer={create,timeProposal,correctedProposal,berlin};
 })();

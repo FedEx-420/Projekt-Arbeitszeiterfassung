@@ -1,0 +1,8 @@
+.owntracks-settings {overflow-wrap:anywhere}
+.owntracks-guide {display:grid;gap:12px;margin-top:18px}
+.owntracks-guide label {display:grid;gap:5px;min-width:0}
+.owntracks-guide input {box-sizing:border-box;width:100%;max-width:100%;min-width:0}
+.owntracks-guide ol {padding-left:22px;margin:8px 0}
+.owntracks-guide li {margin-bottom:14px;line-height:1.5}
+.owntracks-settings .row-card {margin:10px 0;display:grid;gap:8px}
+.owntracks-status {min-height:24px}

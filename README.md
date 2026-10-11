@@ -2,6 +2,8 @@
 
 Installierbare Web-App für Android und iPhone mit gemeinsamer, geschützter Arbeitszeiterfassung.
 
+Neu in v871: freiwilliger [OwnTracks-Pilot](RELEASE-V871.md) mit persönlicher Admin-Gerätebindung, serverseitigem Kundenstandortabgleich ohne 20-Kunden-Grenze, bearbeitbarer Ankunft-/Abfahrtsmessung und nachträglicher Zeitkorrektur. Ein echter iPhone-Standby-Test bleibt erforderlich; keine garantierte Hintergrundortung oder unbegrenzt kostenlose Serverkapazität.
+
 - Anmeldung für Chef und Mitarbeiter
 - getrennte Daten je Mitarbeiter; der Chef kann alle Daten einsehen und bearbeiten
 - Kundenverwaltung inklusive Löschen und Jahresstunden

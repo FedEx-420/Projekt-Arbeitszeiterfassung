@@ -1,0 +1,37 @@
+# v871 · Freiwilliger OwnTracks-Pilot
+
+Ein zusätzlicher Einstellungsbereich verbindet eine native OwnTracks-App per HTTPS mit einem eng begrenzten persönlichen Gerätekennwort. Bestehende Konten, Kunden, Zeiten, Materialien, Rechnungen und Kurzbefehle bleiben bestehen. Die Einwilligung und Einrichtung müssen auf dem tatsächlichen eigenen iPhone erfolgen. Standorterkennung auf einem echten gesperrten iPhone ist noch nicht als getestet anzusehen.
+
+## Einrichtung
+
+Als Hauptadministrator angemeldet bleiben; zuerst in Einstellungen das **eigene persönliche Arbeitskonto auf diesem Gerät** verknüpfen. Die Mitarbeiterauswahl der Übersicht ändert die Gerätezuordnung nicht. Dann **OwnTracks · automatische Ankunft und Abfahrt → OwnTracks-Einrichtung öffnen**, tägliches Mo–Fr-Zeitfenster festlegen, freiwillig zustimmen und die Verbindung erstellen. Nur der SHA-256-Hash des zufälligen 32-Byte-Gerätekennworts gelangt zur Datenbank. Der Rohwert erscheint einmal maskiert im Arbeitsspeicher; bewusst in OwnTracks übernehmen, niemals im Chat oder einem öffentlichen Repository speichern. Freigabe gilt 90 Tage, kann pausiert oder widerrufen werden. Ein neues Kennwort ersetzt die Verbindung dieses Geräts.
+
+In OwnTracks HTTP-Verbindung mit der in der App angezeigten HTTPS-Adresse, Identifikation Benutzername `worktime` und persönlichem Gerätekennwort konfigurieren. Keine Kontopasswörter/Supabase-Schlüssel, keine Authentifizierung in der URL. Keine Fernsteuerung, Kontaktefreigabe oder fremde Konfigurationsdateien nötig. Standortzugriff Immer/Genauer Standort bewusst erlauben. Für den Pilot Move-Modus verwenden; ein konfigurierbarer `locatorInterval` von 30 Sekunden ermöglicht häufigere Meldungen, ist aber kein garantiertes iOS-Ausführungsintervall. Nur während der Arbeit verwenden; außerhalb Quiet-Modus. Nicht bewusst wegwischen. iOS, Funkloch, Neustart und Energiesparfunktionen können Meldungen verzögern oder verhindern.
+
+Der Browser-Verbindungstest startet keinen Timer und bestätigt noch nicht die Verbindung des iPhones. Eine OwnTracks-Standortmeldung senden, danach Status aktualisieren. An einem freigegebenen Werktag einen Kunden aufsuchen, etwa zwei Minuten bleiben und verlassen. Anschließend Übersicht → Mein Baustellen-Timer prüfen. Keine künstlichen Arbeitsscheine unterschreiben/buchen.
+
+## Erkennung und Datensicherheit
+
+Der Server vergleicht Standortmeldungen nur mit der Firma des ausdrücklich zugeordneten persönlichen Arbeitskontos. Kunden benötigen gespeicherte vollständige Straße, Hausnummer, Postleitzahl, Ort und einen bestätigten Kundenstandort. Adressänderungen, fehlende/ungenaue Positionen und überlappende Kundenstandorte lösen keinen geratenen Kunden aus. Keine Grenze von 20 gespeicherten Kunden: serverseitiger Abgleich statt 20 native Regionen. Gerätepositionen sind vom Gerät gemeldete Daten, kein manipulationssicherer Anwesenheitsnachweis.
+
+Ankunft braucht mehrere eindeutige Meldungen mit mindestens 60 Sekunden Aufenthalt. Arbeitsbeginn ist die erste bestätigte Standortmeldung; keine sekundengenaue Garantie. Abfahrt braucht mehrere Meldungen außerhalb des Bereichs mit Sicherheitsabstand und mindestens 60 Sekunden Abstand. Die erste bestätigte Außenmeldung wird als gemessene Endzeit gespeichert. Ein anderer/manueller Timer wird nie automatisch beendet. Pro Kunde und Tag maximal eine automatische Messung; weitere Besuche manuell erfassen. Bei einem langen Übertragungsausfall werden neue Ankunfts-/Abfahrtshinweise erneut geprüft, nicht über die Lücke interpoliert. Meldungen älter als zehn Minuten, aus anderen Tagen, doppelte oder zukünftige Meldungen werden verworfen. Keine automatische Arbeitsstundenbuchung.
+
+Die Anwendung speichert keinen Bewegungsverlauf und keine empfangenen GPS-Koordinaten. Im privaten Geräte-Zustand bleiben nur Freigabe, letzte Meldungs-/Prüfzeit, aktueller Kundenkandidat und Timerbezug. OwnTracks selbst kann lokale Standortdaten speichern und sendet je Modus auch außerhalb des Zeitfensters; der Server verwirft dann die Positionsauswertung. Deshalb ist Quiet außerhalb der Arbeit empfohlen. Keine Standortdaten oder Kennwörter werden durch eigenen Anwendungscode protokolliert. Plattform-/Netzwerkmetadaten und OwnTracks-eigene Speicherung sind davon getrennt.
+
+Bei leerem Akku kann keine Abfahrt gemeldet werden. Eine vorher übertragene Startzeit bleibt auf dem Server erhalten. Nach Wiederanmeldung Timer beenden/fortsetzen, im Fahrzeitdialog **Zeiten prüfen / korrigieren** wählen und die tatsächlichen Zeiten eintragen. Auch Messungen über mehrere Kalendertage behalten ihren ursprünglichen Datensatz; Zeiten für den ursprünglichen Arbeitstag bewusst prüfen. Fahrzeit ergänzen, Zeiten/Pause im Arbeitsschein bearbeiten; erst nach Unterschrift und bestätigtem Speichern werden Stunden gebucht. Wiederholtes Speichern verbraucht denselben Timer nur einmal.
+
+## Sicherheitsgrenzen
+
+Separater Endpunkt `owntracks-arrival`, eigener zwingender HTTPS-Basic-Gerätecode statt Supabase-JWT. Nur die neue Funktion darf mit `verify_jwt=false` betrieben werden; bestehende Funktionen bleiben unverändert. Benutzer-/Firmen-/Kunden-IDs und beliebige Zusatzfelder aus OwnTracks werden niemals zur Auswahl des Arbeitskontos verwendet. Jede Meldung prüft live Rolle, bestehende Firma, Arbeitskonto-/Admin-Gerätebindung, Arbeitsschein-Berechtigung, Ablauf/Widerruf, Arbeitszeitfenster und Abwesenheit. Private Tabelle mit RLS und ohne direkten App-/Anonymous-Zugriff; privilegierter Empfang nur für service_role. Öffentliche Benutzer-RPCs sind Invoker-Wrapper mit internen Eigentümerprüfungen. Größenlimit 8 KB und maximal 30 authentifizierte Aufrufe pro Minute/Gerätecode. Antworten liefern ein OwnTracks-kompatibles leeres JSON-Array, keine Fremd-/Kunden-/Standortdaten.
+
+Keine bestehende Push-Funktion wurde umgestellt. Der Pilot-Empfänger sendet selbst noch keine zusätzliche Timer-Push; bestehende Push-/Vordergrundfunktionen bleiben unverändert. Kostenloses OwnTracks bedeutet keine Zusage unbegrenzt kostenloser Serverkapazität. Eine Sekunde als Intervall sollte nicht konfiguriert werden.
+
+## Prüfung
+
+`node tests/team/owntracks-database.test.cjs`, `owntracks-server.test.cjs`, `owntracks-browser.test.cjs` zusätzlich zur bestehenden Suite ausführen. Synthetische Daten, isolierter PostgreSQL und vier Bildschirmgrößen; kein echter Benutzerlogin oder realer Timerstart. Aktivierung ausschließlich im vorhandenen Projekt `yzlnfrljlknazywskylb`, nach zurückgerollter Echter-Schema-Probe, verschlüsselter Bestandssicherung, Datenvergleich und Sicherheitsberater-Prüfung. Kein kostenpflichtiger Tarif und keine Account-/Datenlöschung.
+
+Quellen: [OwnTracks HTTP](https://owntracks.org/booklet/tech/http/), [Standortmodi](https://owntracks.org/booklet/features/location/), [iPhone-Hinweise](https://owntracks.org/booklet/features/ios/).
+
+Release-Prüfung: 557 Prüfungen über 46 Befehle bestanden, einschließlich 19 Datenbank-, 7 Server- und 10 Browserprüfungen für OwnTracks. Vor Aktivierung 13 zusätzliche Prüfungen im echten Schema ausschließlich in einer zurückgerollten Transaktion. Keine echten Benutzerlogins, keine realen Standortmeldungen und kein physischer iPhone-Standby-Test.
+
+Nach Aktivierung erneut 13 Echter-Schema-Prüfungen zurückgerollt. Alle 28 bestehenden Datentabellen im verschlüsselten Vorher-/Nachher-Vergleich unverändert. Sicherheitsberater: sechs bereits bestehende Warnungen, keine neue Warnung. Neue Funktion `owntracks-arrival` Version 1 aktiv; keine persönliche OwnTracks-Freigabe durch die Agent-Tests angelegt.

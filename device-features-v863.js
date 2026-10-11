@@ -69,21 +69,22 @@
     let scans=[],settings=[],reminders=[],remindersReady=false,loading=null,loadedUser='',ocr=null,dialog=null,scanForm=null,scanFile=null,scanPath='',scanId='',savedScan=null;
     let pushActive=false,pushDeviceId='',pushSubscription=null,pushRegistration=null,pushKey='',pushReadyUser='',pushIssue='',deviceBusy=false,ocrPrefix='';
     let locations=[],arrivals=[],watchId=null,watchOrder='',gpsSaving=false,gpsPausedOrder='',locationAllowed=false,locationPermission='prompt',locationPermissionHandle=null;
-    let workContext=null,workContextReady=false,workDeviceId='';
+    let workContext=null,workContextReady=false,workDeviceId='',workLinks=[],personalAccounts=[],multiWorkReady=false;
     const geocoding=new Map();
     const workAccount=()=>isAdmin()?state.rows.people.find(p=>same(p.id,workContext?.employee_id)&&['employee','business'].includes(p.role)&&same(p.role==='business'?p.id:p.business_id,workContext.business_id)):state.profile;
     const workCompany=()=>{const p=workAccount();return p?.role==='business'?p.id:p?.business_id||'';};
+    const workAccounts=()=>isAdmin()?state.rows.people.filter(p=>['employee','business'].includes(p.role)&&[workContext,...workLinks].some(a=>same(a?.employee_id,p.id)&&same(a.business_id,p.role==='business'?p.id:p.business_id))):[state.profile].filter(Boolean);
     const metres=(a,b)=>{const rad=value=>value*Math.PI/180;const q=Math.sin(rad(a.latitude-b.latitude)/2)**2+Math.cos(rad(a.latitude))*Math.cos(rad(b.latitude))*Math.sin(rad(a.longitude-b.longitude)/2)**2;return 6371000*2*Math.asin(Math.min(1,Math.sqrt(q)));};
-    const arrivalTimer=window.WorktimeArrivalTimer?.create({...ctx,workAccount,workCompany,workDevice:()=>isAdmin()?workContext?.id||'':'',metres,locations:()=>locations,locationAllowed:()=>locationAllowed,pushDevice:()=>pushActive?pushDeviceId:''});
+    const arrivalTimer=window.WorktimeArrivalTimer?.create({...ctx,workAccount,workAccounts,workCompany,workDevice:()=>isAdmin()?workContext?.id||'':'',metres,locations:()=>locations,locationAllowed:()=>locationAllowed,pushDevice:()=>pushActive?pushDeviceId:''});
     const iphoneShortcuts=window.WorktimeIphoneShortcuts?.create({root,state,api,workAccount,workDevice:()=>workDeviceId,isAdmin});
-    const owntracks=window.WorktimeOwntracks?.create({root,state,api,workAccount,workDevice:()=>workDeviceId,isAdmin});
+    const owntracks=window.WorktimeOwntracks?.create({root,state,api,workAccount,workAccounts,workScopeReady:()=>!isAdmin()||window.WORKTIME_CONFIG?.adminMultiWork!==true||multiWorkReady,workDevice:()=>workDeviceId,isAdmin});
     function stopGps(){if(watchId!=null)navigator.geolocation?.clearWatch(watchId);watchId=null;watchOrder='';}
     initValidation(root);
     const same=(a,b)=>String(a||'')===String(b||'');
     const announce=(target,text)=>{if(target){target.textContent=text;target.setAttribute('role','status');}};
     const locationConsentKey=user=>'worktime-v864-location.'+user+(isAdmin()?'.'+(workContext?.employee_id||'none'):'');
     async function loadWorkContext(user){
-      workContextReady=false;workContext=null;workDeviceId='';
+      workContextReady=false;workContext=null;workDeviceId='';workLinks=[];personalAccounts=[];multiWorkReady=false;
       if(!isAdmin()){workContextReady=true;return;}
       try{
         const key='worktime-v866-device.'+user;workDeviceId=localStorage.getItem(key)||crypto.randomUUID();localStorage.setItem(key,workDeviceId);
@@ -91,19 +92,29 @@
         if(!same(state.profile?.id,user))return;
         workContext=rows.find(row=>same(row.owner_id,user)&&same(row.id,workDeviceId))||null;
         if(workContext&&!workAccount())workContext=null;
-        workContextReady=true;
+        if(window.WORKTIME_CONFIG?.adminMultiWork===true)try{
+          const [links,preferences]=await Promise.all([allRows('work_device_accounts_v873',`select=*&device_id=eq.${workDeviceId}`),allRows('admin_personal_accounts_v873',`select=*&owner_id=eq.${user}`)]);
+          if(!same(state.profile?.id,user))return;
+          workLinks=workContext?links.filter(a=>same(a.device_id,workDeviceId)):[];personalAccounts=preferences.filter(a=>same(a.owner_id,user));multiWorkReady=true;
+        }catch{workLinks=[];personalAccounts=[];multiWorkReady=false;}
+        workContextReady=window.WORKTIME_CONFIG?.adminMultiWork!==true||multiWorkReady;
       }catch{workContext=null;}
     }
     async function saveWorkContext(form){
       if(!isAdmin()||!workContextReady||!workDeviceId)throw Error('Die Geräteverknüpfung konnte nicht geladen werden. Bitte aktualisieren.');
       const actor=state.profile.id,employee=form.elements.work_employee.value||null,previous=workContext?.employee_id;
-      const saved=await api('/rest/v1/rpc/set_work_device_context',{method:'POST',body:{p_device:workDeviceId,p_employee:employee,p_subscription:pushActive?pushDeviceId:null}});
+      const beforeScope=workAccounts().map(p=>p.id).sort().join(','),employees=employee?[...new Set([employee,...Array.from(form.querySelectorAll('[name="work_additional"]:checked'),f=>f.value)])]:[];
+      const multi=multiWorkReady&&(employees.length>1||workLinks.length>0);
+      const result=await api('/rest/v1/rpc/'+(multi?'set_work_device_accounts_v873':'set_work_device_context'),{method:'POST',body:{p_device:workDeviceId,...(multi?{p_primary:employee,p_employees:employees}:{p_employee:employee}),p_subscription:pushActive?pushDeviceId:null}});
+      const saved=multi?result?.context:result;
       if(!same(actor,state.profile?.id))throw Error('Die Anmeldung wurde geändert.');
       if(employee&&(!saved?.id||!same(saved.employee_id,employee)||!same(saved.owner_id,actor)))throw Error('Die Verknüpfung wurde nicht bestätigt.');
-      stopGps();arrivalTimer?.reset();if(!same(previous,employee))setLocationConsent(false);workContext=saved;
-      if(!same(previous,employee))setLocationConsent(false);
+      if(multi&&(!Array.isArray(result.accounts)||result.accounts.length!==employees.length||!employees.every(id=>result.accounts.some(a=>same(a.employee_id,id)))))throw Error('Die zusätzlichen Arbeitskonten wurden nicht bestätigt. Bitte aktualisieren.');
+      stopGps();arrivalTimer?.reset();workLinks=multi?result.accounts.filter(a=>!same(a.employee_id,employee)).map(a=>({...a,device_id:workDeviceId})):[];
+      if(!same(previous,employee))setLocationConsent(false);workContext=saved;
+      if(!same(previous,employee)||beforeScope!==workAccounts().map(p=>p.id).sort().join(',')){setLocationConsent(false);owntracks?.reset();}
       await arrivalTimer?.load();render();
-      return employee?'Persönliches Arbeitskonto für dieses Gerät gespeichert. Push bitte erlauben; Standort bei Bedarf separat freigeben.':'Persönliches Arbeitskonto getrennt. Standortprüfung ausgeschaltet; vorhandene Timer bleiben gespeichert.';
+      return employee?(employees.length>1?'Persönliche Arbeitskonten für dieses Gerät gespeichert. Jetzt eine neue gemeinsame OwnTracks-Verbindung erstellen und auf dem iPhone importieren.':'Persönliches Arbeitskonto für dieses Gerät gespeichert. Push bitte erlauben; Standort bei Bedarf separat freigeben.'):'Persönliches Arbeitskonto getrennt. Standortprüfung ausgeschaltet; vorhandene Timer bleiben gespeichert.';
     }
     async function bindWorkPush(user){
       if(!isAdmin()||!workAccount()||!pushActive||same(workContext.subscription_id,pushDeviceId))return;
@@ -116,7 +127,9 @@
     function workContextHtml(){
       if(!isAdmin())return '';
       const people=state.rows.people.filter(p=>['employee','business'].includes(p.role)),company=p=>state.rows.people.find(b=>same(b.id,p.role==='business'?p.id:p.business_id))?.company_name||state.rows.people.find(b=>same(b.id,p.role==='business'?p.id:p.business_id))?.username||'Firma';
-      return `<div class="device-permission-card"><h4>Mein Arbeitskonto auf diesem Gerät</h4><p class="device-help">Du bleibst Administrator mit allen bisherigen Einsichten. Wähle einmal dein eigenes Arbeitskonto für persönliche Terminerinnerungen und GPS-Timer. Die Mitarbeiterauswahl oben ändert diese Zuordnung nicht. Nur dieses Gerät wird verknüpft. Bei Änderung muss Standort erneut freigegeben werden; vorhandene Timer werden nicht gelöscht.</p>${workContextReady?`<form data-form="work-device-context" class="entry-form"><label class="wide">Persönliches Arbeitskonto<select name="work_employee"><option value="">Kein Arbeitskonto verknüpft</option>${people.sort((a,b)=>(company(a)+a.username).localeCompare(company(b)+b.username,'de')).map(p=>`<option value="${esc(p.id)}" ${same(p.id,workContext?.employee_id)?'selected':''}>${esc(company(p))} · ${esc(p.display_name||p.username)}</option>`).join('')}</select></label><button class="primary wide">Arbeitskonto auf diesem Gerät speichern</button></form>`:'<p role="alert">Verknüpfung konnte nicht geladen werden. Bitte Verbindung und Browser-Speicher prüfen und die App aktualisieren.</p>'}<p class="work-context-status" role="status"></p></div>`;
+      const primary=workContext?.employee_id||personalAccounts[0]?.employee_id||'',selected=workContext?[workContext,...workLinks]:personalAccounts;
+      const extra=multiWorkReady?`<fieldset class="wide work-account-choices"><legend>Weitere persönliche Arbeitskonten</legend><p class="device-help">Nur deine eigenen Konten auswählen, höchstens ein Konto pro Firma. Mit einer OwnTracks-Verbindung erkennt der Server den passenden Firmenkunden. Bei überlappenden Standorten bitte selbst zuordnen. Das Hauptarbeitskonto oben gilt für manuelle Ankunft und Browser-GPS.</p>${people.filter(p=>!same(p.id,primary)).map(p=>`<label class="device-check"><input type="checkbox" name="work_additional" value="${esc(p.id)}" ${selected.some(a=>same(a.employee_id,p.id))?'checked':''}>${esc(company(p))} · ${esc(p.display_name||p.username)}</label>`).join('')}</fieldset>`:'';
+      return `<div class="device-permission-card"><h4>Mein Arbeitskonto auf diesem Gerät</h4><p class="device-help">Du bleibst Administrator mit allen bisherigen Einsichten. Wähle deine eigenen Arbeitskonten für persönliche Terminerinnerungen und GPS-Timer. Die Mitarbeiterauswahl oben ändert diese Zuordnung nicht. Nur dieses Gerät wird verknüpft. Bei Änderung muss Standort erneut freigegeben werden; vorhandene Timer werden nicht gelöscht.</p>${workContextReady?`<form data-form="work-device-context" class="entry-form"><label class="wide">Persönliches Hauptarbeitskonto<select name="work_employee"><option value="">Kein Arbeitskonto verknüpft</option>${people.sort((a,b)=>(company(a)+a.username).localeCompare(company(b)+b.username,'de')).map(p=>`<option value="${esc(p.id)}" ${same(p.id,primary)?'selected':''}>${esc(company(p))} · ${esc(p.display_name||p.username)}</option>`).join('')}</select></label>${extra}<button class="primary wide">Arbeitskonto auf diesem Gerät speichern</button></form>`:'<p role="alert">Verknüpfung konnte nicht geladen werden. Bitte Verbindung und Browser-Speicher prüfen und die App aktualisieren.</p>'}<p class="work-context-status" role="status"></p></div>`;
     }
     function readLocationConsent(user){try{return localStorage.getItem(locationConsentKey(user))==='allowed';}catch{return false;}}
     function setLocationConsent(allowed){if(!allowed){locationAllowed=false;stopGps();}try{if(allowed)localStorage.setItem(locationConsentKey(state.profile.id),'allowed');else localStorage.removeItem(locationConsentKey(state.profile.id));}catch{if(allowed)throw Error('Die Freigabe kann auf diesem Gerät nicht gespeichert werden. Bitte den Browser-Speicher erlauben.');}locationAllowed=allowed;arrivalTimer?.refresh();}
@@ -149,7 +162,7 @@
       state.view=view==='home'?'home':'planning';state.menu=false;render();
     }
     async function load() {
-      const user=state.profile?.id;if(!user){scans=[];settings=[];reminders=[];remindersReady=false;locations=[];arrivals=[];stopGps();arrivalTimer?.reset();locationAllowed=false;pushActive=false;pushDeviceId='';pushReadyUser='';loadedUser='';workContext=null;workContextReady=false;workDeviceId='';return;}
+      const user=state.profile?.id;if(!user){scans=[];settings=[];reminders=[];remindersReady=false;locations=[];arrivals=[];stopGps();arrivalTimer?.reset();owntracks?.reset();locationAllowed=false;pushActive=false;pushDeviceId='';pushReadyUser='';loadedUser='';workContext=null;workContextReady=false;workDeviceId='';workLinks=[];personalAccounts=[];multiWorkReady=false;return;}
       if(loading)return loading;
       const task=(async()=>{
         const results=await Promise.allSettled([allRows('receipt_scans','select=*&order=receipt_date.desc,id.asc'),allRows('company_notification_settings'),allRows('customer_locations'),allRows('order_arrivals'),allRows('appointment_reminders')]);

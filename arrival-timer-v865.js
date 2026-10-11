@@ -31,11 +31,14 @@
     const {root,state,api,allRows,render,businessId,workerId,planningMeta,planEmployeeIds,canUse,locked,openPlanningOrder,teamPeriodFields,teamPersonFields}=ctx;
     let timers=[],ready=false,user='',watch=null,watchEpoch=0,targetKey='',busy=false,dialog=null,draft=null,message='',tick=null;
     const account=()=>ctx.workAccount?ctx.workAccount():state.profile;
+    const accounts=()=>ctx.workAccounts?ctx.workAccounts():[account()].filter(Boolean);
+    const workIds=()=>accounts().map(p=>p.id).sort();
     const workId=()=>account()?.id||'';
     const device=()=>ctx.workDevice?.()||'';
-    const identity=()=>`${state.profile?.id||''}:${workId()}:${device()}`;
+    const identity=()=>`${state.profile?.id||''}:${workId()}:${device()}:${workIds().join(',')}`;
     const customers=()=>state.rows.customers.filter(c=>{if(!ctx.workCompany||!ctx.isAdmin?.())return true;if(same(c.employee_id,ctx.workCompany()))return true;const p=state.rows.people.find(p=>same(p.id,c.employee_id));return same(p?.role==='business'?p.id:p?.business_id,ctx.workCompany());});
-    const own=()=>timers.filter(t=>same(t.employee_id,workId())&&!t.consumed_at);
+    const own=()=>timers.filter(t=>workIds().some(id=>same(t.employee_id,id))&&!t.consumed_at);
+    const companyLabel=timer=>{if(accounts().length<2)return '';const p=accounts().find(p=>same(p.id,timer.employee_id)),b=state.rows.people.find(b=>same(b.id,p?.role==='business'?p.id:p?.business_id));return b?.company_name||b?.display_name||b?.username||'Firma';};
     const active=()=>own().find(t=>!t.finished_at);
     const eligible=()=>state.profile&&['employee','business'].includes(account()?.role)&&canUse('orders');
     const today=()=>berlin().date;
@@ -44,7 +47,8 @@
     async function load(){
       const id=workId(),stamp=identity();if(!id){reset();return;}
       if(!same(user,stamp)){reset();user=stamp;}
-      try{const rows=await allRows('job_timers',`select=*&employee_id=eq.${id}&consumed_at=is.null&order=started_at.desc,id.asc`);if(!same(identity(),stamp))return;timers=rows;ready=true;if(draft&&!timers.some(t=>same(t.id,draft.timer.id)))draft=null;}catch{if(same(identity(),stamp))status('Timerstand konnte nicht aktualisiert werden. Die letzte Messung bleibt sichtbar; bitte Verbindung prüfen.');}
+      const ids=workIds(),filter=ids.length>1?`in.(${ids.join(',')})`:`eq.${id}`;
+      try{const rows=await allRows('job_timers',`select=*&employee_id=${filter}&consumed_at=is.null&order=started_at.desc,id.asc`);if(!same(identity(),stamp))return;timers=rows;ready=true;if(draft&&!timers.some(t=>same(t.id,draft.timer.id)))draft=null;}catch{if(same(identity(),stamp))status('Timerstand konnte nicht aktualisiert werden. Die letzte Messung bleibt sichtbar; bitte Verbindung prüfen.');}
     }
     function candidates(){
       if(!eligible()||locked(workId(),today()))return [];
@@ -71,10 +75,21 @@
         if(old?.dataset.timerRevision!==revision){const selected=old?.querySelector('[name="timer_customer"]')?.value,focused=document.activeElement?.name==='timer_customer';if(old)old.outerHTML=card();else root.querySelector('.content')?.insertAdjacentHTML('afterbegin',card());const panel=root.querySelector('[data-arrival-timer]');if(panel){panel.dataset.timerRevision=revision;if(device())panel.querySelector('h3').insertAdjacentHTML('afterend',`<p class="device-help">Persönliches Arbeitskonto: ${esc(account().display_name||account().username)}. Du bleibst als Administrator angemeldet.</p>`);const field=panel.querySelector('[name="timer_customer"]');if(field&&selected)field.value=selected;if(field&&focused)field.focus({preventScroll:true});}}
       }
       else old?.remove();
+      const panel=root.querySelector('[data-arrival-timer]');
+      if(panel&&accounts().length>1){
+        for(const t of own().filter(t=>!t.finished_at&&t!==active()))if(!panel.querySelector(`[data-timer-action="finish"][data-id="${t.id}"]`)){
+          const button=document.createElement('button');button.type='button';button.className='secondary timer-pending';button.dataset.timerAction='finish';button.dataset.id=t.id;
+          button.textContent=`${t.customer_name} · weiterer laufender Timer · prüfen`;panel.querySelector('.timer-status').before(button);
+        }
+        for(const button of panel.querySelectorAll('[data-timer-action="finish"]')){
+          const t=own().find(t=>same(t.id,button.dataset.id));if(t&&!button.querySelector('.timer-company')){const label=document.createElement('span');label.className='timer-company';label.textContent=companyLabel(t);button.append(label);}
+        }
+      }
       if(!tick)tick=setInterval(()=>{for(const node of root.querySelectorAll('[data-timer-duration]')){const t=timers.find(t=>same(t.id,node.dataset.timerDuration));if(t)node.textContent=duration(t);}},1000);
     }
     function status(text){message=text;const node=root.querySelector('.timer-status');if(node)node.textContent=text;}
     async function start(customer,plan,source='manual',position=null){
+      if(active())throw Error('Für eines deiner Arbeitskonten läuft bereits ein Timer. Bitte zuerst prüfen oder beenden.');
       const stamp=identity(),workDevice=device();
       const data=await api('/rest/v1/rpc/'+(workDevice?'start_job_timer_for_device':'start_job_timer'),{method:'POST',body:{...(workDevice?{p_device:workDevice}:{}),p_customer:customer,p_appointment:plan||null,p_source:source,p_position:position?{latitude:position.coords.latitude,longitude:position.coords.longitude,accuracy:position.coords.accuracy}:null}});
       const saved=Array.isArray(data)?data[0]:data;
@@ -115,36 +130,40 @@
       form.onsubmit=async event=>{event.preventDefault();if(window.WorktimeDeviceFeatures&&!window.WorktimeDeviceFeatures.validateForm(form))return;const proposal=preview();if(!proposal)return;const button=form.querySelector('button.primary');button.disabled=true;try{await ctx.refreshPlanningData?.();if(!same(stamp,identity()))return;await openOrder(timer,proposal);dialog?.close();dialog?.remove();dialog=null;}catch(e){if(dialog)dialog.querySelector('.timer-dialog-error').textContent=e.message;}finally{if(button.isConnected)button.disabled=false;}};
     }
     async function openOrder(timer,p){
+      const worker=accounts().find(a=>same(a.id,timer.employee_id));if(!worker)throw Error('Dieses Arbeitskonto ist nicht mehr mit dem Gerät verknüpft. Die Timerzeit bleibt gespeichert.');
+      const workerId=worker.id,company=worker.role==='business'?worker.id:worker.business_id;
+      if(!same(timer.business_id||company,company))throw Error('Firma und Timer stimmen nicht überein.');
+      const stamp=identity();if(device())state.businessId=company;state.employeeId=workerId;await ctx.loadTeamContext?.();if(!same(stamp,identity()))throw Error('Das persönliche Arbeitskonto wurde geändert. Die Timerzeit bleibt gespeichert.');
       const customer=state.rows.customers.find(c=>same(c.id,timer.customer_id));if(!customer)throw Error('Der Kunde fehlt inzwischen. Bitte die Geschäftsleitung kontaktieren. Die Timerzeit bleibt gespeichert.');
-      if(locked(workId(),p.date))throw Error('Dieser Tag ist wegen Urlaub, Krankheit oder Feiertag gesperrt. Die Timerzeit bleibt gespeichert.');
-      const stamp=identity();if(device())state.businessId=ctx.workCompany();state.employeeId=workId();await ctx.loadTeamContext?.();if(!same(stamp,identity()))throw Error('Das persönliche Arbeitskonto wurde geändert. Die Timerzeit bleibt gespeichert.');
+      if(locked(workerId,p.date))throw Error('Dieser Tag ist wegen Urlaub, Krankheit oder Feiertag gesperrt. Die Timerzeit bleibt gespeichert.');
       const plan=state.rows.appointments.find(a=>same(a.id,timer.appointment_id)),existing=plan&&state.rows.orders.find(o=>same(o.id,plan.id));
-      const period={key:crypto.randomUUID(),employee_id:workId(),start_time:p.start,end_time:p.end,pause_hours:0,executed_hours:p.hours};
+      const period={key:crypto.randomUUID(),employee_id:workerId,start_time:p.start,end_time:p.end,pause_hours:0,executed_hours:p.hours};
       draft={timer,period,existingId:existing?.id||'',date:p.date};
-      state.date=p.date;state.month=p.date.slice(0,7);state.employeeId=workId();state.menu=false;
+      state.date=p.date;state.month=p.date.slice(0,7);state.employeeId=workerId;state.menu=false;
       if(existing){state.planPrefill=null;state.orderId=existing.id;state.view='order-detail';}
       else{
         if(plan)openPlanningOrder(plan);else{state.planPrefill=null;state.orderId='';state.view='orders';}
-        state.employeeId=workId();
+        state.employeeId=workerId;
         const previous=state.planPrefill||{};
-        state.planPrefill={...previous,employeeId:workId(),ownerId:plan?.employee_id||workId(),date:p.date,customerName:customer.name,customerDetails:customer,start:p.start,end:p.end,timerId:timer.id,
-          timerPeriods:[period,...(planEmployeeIds(plan).filter(id=>!same(id,workId())).map(employee_id=>({employee_id,start_time:'',end_time:'',pause_hours:0})))],
+        state.planPrefill={...previous,employeeId:workerId,ownerId:plan?.employee_id||workerId,date:p.date,customerName:customer.name,customerDetails:customer,start:p.start,end:p.end,timerId:timer.id,
+          timerPeriods:[period,...(planEmployeeIds(plan).filter(id=>!same(id,workerId)).map(employee_id=>({employee_id,start_time:'',end_time:'',pause_hours:0})))],
           details:[previous.details,`Timer: ${duration(timer)}; Fahrzeit: ${p.drive.toLocaleString('de-DE')} h (in Arbeitszeit enthalten).`].filter(Boolean).join('\n')};
         state.orderCustomer=customer.name;
       }
       render();root.querySelector('form[data-form="order"],form[data-form="order-edit"]')?.scrollIntoView({block:'start'});
     }
     function attachDraft(){
-      if(!draft||!same(draft.timer.employee_id,workId())||!own().some(t=>same(t.id,draft.timer.id)))return;
+      if(!draft||!own().some(t=>same(t.id,draft.timer.id)))return;
+      const draftWorker=draft.timer.employee_id;
       const form=draft.existingId?root.querySelector(`form[data-form="order-edit"] input[name="id"][value="${draft.existingId}"]`)?.form:state.planPrefill?.timerId===draft.timer.id&&root.querySelector('form[data-form="order"]');
       if(!form||form.dataset.timerId)return;
       form.dataset.timerId=draft.timer.id;
       if(device())form.dataset.timerDevice=device();
       if(draft.existingId){
         const target=form.querySelector('[data-team-times]');if(!target)return;
-        const existing=[...target.querySelectorAll('[data-team-employee]')].find(s=>same(s.dataset.teamEmployee,workId()));
+        const existing=[...target.querySelectorAll('[data-team-employee]')].find(s=>same(s.dataset.teamEmployee,draftWorker));
         if(existing){const duplicate=[...existing.querySelectorAll('[data-team-period]')].some(p=>p.querySelector('[data-team-time="start"]').value===draft.period.start_time&&p.querySelector('[data-team-time="end"]').value===draft.period.end_time&&Number(p.querySelector('[data-team-time="pause"]').value)===draft.period.pause_hours);if(!duplicate)existing.querySelector('[data-person-periods]').insertAdjacentHTML('beforeend',teamPeriodFields(draft.period));}
-        else{target.insertAdjacentHTML('beforeend',teamPersonFields(workId(),[draft.period]));const choice=form.querySelector(`[name="team_employee"][value="${workId()}"]`);if(choice)choice.checked=true;}
+        else{target.insertAdjacentHTML('beforeend',teamPersonFields(draftWorker,[draft.period]));const choice=form.querySelector(`[name="team_employee"][value="${draftWorker}"]`);if(choice)choice.checked=true;}
       }
       form.insertAdjacentHTML('afterbegin',`<p class="wide plan-alert">Timerzeit übernommen · ${esc(draft.timer.customer_name)}. Fahrzeit enthalten; Pause und Zeiten vor dem Speichern bitte prüfen. Erst mit Unterschrift werden die Stunden gebucht.</p>`);
     }

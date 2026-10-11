@@ -3,5 +3,6 @@
 window.WORKTIME_CONFIG = {
   supabaseUrl: 'https://yzlnfrljlknazywskylb.supabase.co',
   supabasePublishableKey: 'sb_publishable_NjNYJRgtzol7JARAuzZ1Bg_gaSrY0OZ',
+  adminMultiWork: true,
 };
 

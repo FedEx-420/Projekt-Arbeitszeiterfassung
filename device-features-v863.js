@@ -75,6 +75,7 @@
     const workCompany=()=>{const p=workAccount();return p?.role==='business'?p.id:p?.business_id||'';};
     const metres=(a,b)=>{const rad=value=>value*Math.PI/180;const q=Math.sin(rad(a.latitude-b.latitude)/2)**2+Math.cos(rad(a.latitude))*Math.cos(rad(b.latitude))*Math.sin(rad(a.longitude-b.longitude)/2)**2;return 6371000*2*Math.asin(Math.min(1,Math.sqrt(q)));};
     const arrivalTimer=window.WorktimeArrivalTimer?.create({...ctx,workAccount,workCompany,workDevice:()=>isAdmin()?workContext?.id||'':'',metres,locations:()=>locations,locationAllowed:()=>locationAllowed,pushDevice:()=>pushActive?pushDeviceId:''});
+    const iphoneShortcuts=window.WorktimeIphoneShortcuts?.create({root,state,api,workAccount,workDevice:()=>workDeviceId,isAdmin});
     function stopGps(){if(watchId!=null)navigator.geolocation?.clearWatch(watchId);watchId=null;watchOrder='';}
     initValidation(root);
     const same=(a,b)=>String(a||'')===String(b||'');
@@ -197,7 +198,7 @@
           if(form.elements.company)form.elements.company.required=true;
         }
       }
-      if(!state.profile)return;
+      if(!state.profile){iphoneShortcuts?.reset();return;}
       if(['planning','home'].includes(new URL(location.href).searchParams.get('open'))){const url=new URL(location.href),view=url.searchParams.get('open');url.searchParams.delete('open');history.replaceState(null,'',url);openPersonalDeviceView(view).catch(()=>{});return;}
       if(watchId!=null&&!same(state.orderId,watchOrder))stopGps();
       if(state.view==='customers'&&state.customerId){const customer=state.rows.customers.find(row=>same(row.id,state.customerId));if(customer)root.querySelector('#customer-profile')?.insertAdjacentHTML('beforeend',customerOrdersHtml(customer));}
@@ -222,6 +223,7 @@
       if(!root.querySelector('.device-status')&&['receipts','orders','order-detail'].includes(state.view))root.querySelector('.content')?.insertAdjacentHTML('beforeend','<p class="device-status" role="status"></p>');
       root.querySelectorAll('form[data-form="appointment-reminder"]').forEach(updateReminderForm);
       arrivalTimer?.afterRender();
+      iphoneShortcuts?.mount();
     }
     function lineHtml(item={}) {return `<div class="scan-line"><label>Artikel<input name="scan_name" maxlength="300" required value="${esc(item.name||'')}"></label><label>Brutto (€)<input name="scan_gross" inputmode="decimal" value="${money(item.gross)}"></label><label>Netto (€)<input name="scan_net" inputmode="decimal" value="${money(item.net)}"></label><button type="button" class="danger small" data-device-action="scan-remove-line" aria-label="Position entfernen">×</button></div>`;}
     function openScanner(button) {

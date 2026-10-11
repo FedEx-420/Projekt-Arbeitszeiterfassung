@@ -37,7 +37,8 @@
     const device=()=>ctx.workDevice?.()||'';
     const identity=()=>`${state.profile?.id||''}:${workId()}:${device()}:${workIds().join(',')}`;
     const customers=()=>state.rows.customers.filter(c=>{if(!ctx.workCompany||!ctx.isAdmin?.())return true;if(same(c.employee_id,ctx.workCompany()))return true;const p=state.rows.people.find(p=>same(p.id,c.employee_id));return same(p?.role==='business'?p.id:p?.business_id,ctx.workCompany());});
-    const own=()=>timers.filter(t=>workIds().some(id=>same(t.employee_id,id))&&!t.consumed_at);
+    const own=()=>timers.filter(t=>workIds().some(id=>same(t.employee_id,id))&&!t.consumed_at&&!t.discarded_at);
+    const deleteButton=t=>window.WORKTIME_CONFIG?.timerDismiss===true?`<button type="button" class="danger small timer-discard" data-timer-action="discard" data-id="${esc(t.id)}" aria-label="Standortmessung für ${esc(t.customer_name)} löschen">Standortmessung löschen</button>`:'';
     const companyLabel=timer=>{if(accounts().length<2)return '';const p=accounts().find(p=>same(p.id,timer.employee_id)),b=state.rows.people.find(b=>same(b.id,p?.role==='business'?p.id:p?.business_id));return b?.company_name||b?.display_name||b?.username||'Firma';};
     const active=()=>own().find(t=>!t.finished_at);
     const eligible=()=>state.profile&&['employee','business'].includes(account()?.role)&&canUse('orders');
@@ -72,7 +73,7 @@
       if(!eligible()){old?.remove();stopWatch();return;}
       const revision=JSON.stringify([own().map(t=>[t.id,t.started_at,t.finished_at,t.customer_name,t.customer_address]),ready,candidates().map(t=>[t.customer.id,t.plan?.id]),customers().map(c=>[c.id,c.name]),locked(workId(),today())]);
       if(state.view==='home'){
-        if(old?.dataset.timerRevision!==revision){const selected=old?.querySelector('[name="timer_customer"]')?.value,focused=document.activeElement?.name==='timer_customer';if(old)old.outerHTML=card();else root.querySelector('.content')?.insertAdjacentHTML('afterbegin',card());const panel=root.querySelector('[data-arrival-timer]');if(panel){panel.dataset.timerRevision=revision;if(device())panel.querySelector('h3').insertAdjacentHTML('afterend',`<p class="device-help">Persönliches Arbeitskonto: ${esc(account().display_name||account().username)}. Du bleibst als Administrator angemeldet.</p>`);const field=panel.querySelector('[name="timer_customer"]');if(field&&selected)field.value=selected;if(field&&focused)field.focus({preventScroll:true});}}
+        if(old?.dataset.timerRevision!==revision){const selected=old?.querySelector('[name="timer_customer"]')?.value,focused=document.activeElement?.name==='timer_customer';if(old)old.outerHTML=card();else{const banner=root.querySelector('.home-company-banner');if(banner)banner.insertAdjacentHTML('afterend',card());else root.querySelector('.content')?.insertAdjacentHTML('afterbegin',card());}const panel=root.querySelector('[data-arrival-timer]');if(panel){panel.dataset.timerRevision=revision;if(device())panel.querySelector('h3').insertAdjacentHTML('afterend',`<p class="device-help">Persönliches Arbeitskonto: ${esc(account().display_name||account().username)}. Du bleibst als Administrator angemeldet.</p>`);const field=panel.querySelector('[name="timer_customer"]');if(field&&selected)field.value=selected;if(field&&focused)field.focus({preventScroll:true});}}
       }
       else old?.remove();
       const panel=root.querySelector('[data-arrival-timer]');
@@ -85,6 +86,7 @@
           const t=own().find(t=>same(t.id,button.dataset.id));if(t&&!button.querySelector('.timer-company')){const label=document.createElement('span');label.className='timer-company';label.textContent=companyLabel(t);button.append(label);}
         }
       }
+      if(panel)for(const t of own()){const button=panel.querySelector(`[data-timer-action="finish"][data-id="${t.id}"]`);if(button&&!panel.querySelector(`[data-timer-action="discard"][data-id="${t.id}"]`))button.insertAdjacentHTML('afterend',deleteButton(t));}
       if(!tick)tick=setInterval(()=>{for(const node of root.querySelectorAll('[data-timer-duration]')){const t=timers.find(t=>same(t.id,node.dataset.timerDuration));if(t)node.textContent=duration(t);}},1000);
     }
     function status(text){message=text;const node=root.querySelector('.timer-status');if(node)node.textContent=text;}
@@ -118,6 +120,7 @@
       const row=own().find(t=>same(t.id,id)),stamp=identity(),workDevice=device();if(!row)throw Error('Der eigene Timer ist nicht mehr verfügbar.');
       const saved=await api('/rest/v1/rpc/'+(workDevice?'stop_job_timer_for_device':'stop_job_timer'),{method:'POST',body:{p_id:id,...(workDevice?{p_device:workDevice}:{})}});const timer=Array.isArray(saved)?saved[0]:saved;
       if(!timer?.finished_at)throw Error('Das Timerende konnte nicht bestätigt werden.');
+      if(timer.discarded_at)throw Error('Diese Standortmessung wurde gelöscht.');
       if(!same(stamp,identity()))return;
       timers=[timer,...timers.filter(t=>!same(t.id,timer.id))];mount();await ctx.refreshPlanningData?.();if(!same(stamp,identity()))return;dialog?.remove();
       dialog=document.createElement('dialog');dialog.className='device-dialog';dialog.innerHTML=`<h2>Fahrzeit ergänzen</h2><p>${esc(timer.customer_name)} · gemessen ${duration(timer)}</p><p>Der Timer ist beendet. Die Zeit wird auf Viertelstunden gerundet und bleibt vor dem Speichern bearbeitbar.</p><form><label>Fahrzeit in Stunden<input name="drive" type="number" min="0" max="12" step="0.25" value="0" required></label><label>Fahrzeit zuordnen<select name="side"><option value="before">Vor dem Arbeitsbeginn</option><option value="after">Nach dem Arbeitsende</option></select></label><p class="timer-proposal" role="status"></p><p class="timer-dialog-error" role="alert"></p><div class="actions"><button type="button" class="secondary" data-cancel>Später</button><button class="primary">In Arbeitsschein übernehmen</button></div></form>`;document.body.append(dialog);dialog.showModal();
@@ -168,9 +171,19 @@
       form.insertAdjacentHTML('afterbegin',`<p class="wide plan-alert">Timerzeit übernommen · ${esc(draft.timer.customer_name)}. Fahrzeit enthalten; Pause und Zeiten vor dem Speichern bitte prüfen. Erst mit Unterschrift werden die Stunden gebucht.</p>`);
     }
     function afterRender(){if(!state.profile){reset();return;}mount();attachDraft();watchArrival();}
+    async function discard(id){
+      const row=own().find(t=>same(t.id,id)),stamp=identity();if(!row)throw Error('Diese Messung ist nicht mehr verfügbar.');
+      if(!confirm(`Standortmessung für „${row.customer_name}“ löschen? Es werden keine Arbeitsstunden gebucht. Bereits gespeicherte Arbeitsscheine bleiben erhalten.`))return;
+      const saved=await api('/rest/v1/rpc/discard_job_timer_v875',{method:'POST',body:{p_id:id}});
+      if(saved?.id!==id||saved.discarded!==true)throw Error('Das Löschen wurde nicht bestätigt. Die Messung bleibt sichtbar.');
+      if(!same(stamp,identity()))return;
+      // Retain local suppression evidence so foreground GPS cannot recreate it.
+      timers=timers.map(t=>same(t.id,id)?{...t,discarded_at:new Date().toISOString(),finished_at:t.finished_at||new Date().toISOString()}:t);
+      if(same(draft?.timer.id,id)){draft=null;state.planPrefill=null;}dialog?.remove();dialog=null;stopWatch();mount();status('Standortmessung gelöscht. Es wurden keine Arbeitsstunden gebucht.');watchArrival();
+    }
     async function run(button,fn){if(busy)return;busy=true;if(button)button.disabled=true;try{await fn();}catch(e){status(e.message);}finally{busy=false;if(button?.isConnected)button.disabled=false;}}
     root.addEventListener('submit',e=>{if(e.target.dataset.form!=='timer-start')return;e.preventDefault();e.stopImmediatePropagation();const customer=e.target.elements.timer_customer.value;if(!customer)return;const plan=candidates().find(t=>same(t.customer.id,customer))?.plan;run(e.submitter,()=>start(customer,plan?.id));},true);
-    root.addEventListener('click',e=>{const b=e.target.closest('[data-timer-action]');if(!b)return;e.preventDefault();e.stopImmediatePropagation();run(b,()=>b.dataset.timerAction==='finish'?finish(b.dataset.id):start(b.dataset.customer,b.dataset.plan));},true);
+    root.addEventListener('click',e=>{const b=e.target.closest('[data-timer-action]');if(!b)return;e.preventDefault();e.stopImmediatePropagation();run(b,()=>b.dataset.timerAction==='discard'?discard(b.dataset.id):b.dataset.timerAction==='finish'?finish(b.dataset.id):start(b.dataset.customer,b.dataset.plan));},true);
     async function refresh(){if(state.view==='home')try{await ctx.refreshPlanningData?.();}catch{}await load();mount();watchArrival();}
     document.addEventListener('visibilitychange',()=>{if(document.visibilityState!=='visible')stopWatch();else if(state.profile)refresh();});
     setInterval(()=>{if(state.profile&&eligible()&&document.visibilityState==='visible'&&!busy&&!dialog)refresh();},20000);

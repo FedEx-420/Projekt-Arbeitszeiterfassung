@@ -2,6 +2,7 @@
   "name": "arbeitszeiterfassung-regression-tests",
   "private": true,
   "scripts": {
+    "test:discard-timers": "node --check arrival-timer-v865.js && node tests/team/discard-timers-database.test.cjs && node tests/team/discard-timers-browser.test.cjs",
     "test:owntracks-weekdays": "node --check owntracks-v871.js && node tests/team/owntracks-weekdays-database.test.cjs && node tests/team/owntracks-weekdays-browser.test.cjs",
     "test:multi-work": "node --check device-features-v863.js && node --check arrival-timer-v865.js && node --check owntracks-v871.js && node tests/team/multi-work-database.test.cjs && node tests/team/multi-work-browser.test.cjs",
     "test:owntracks": "node --check owntracks-v871.js && node tests/team/owntracks-config.test.cjs && node tests/team/owntracks-database.test.cjs && node tests/team/owntracks-server.test.cjs && node tests/team/owntracks-browser.test.cjs",
@@ -11,6 +12,7 @@
   "owntracksTestFiles": ["tests/team/owntracks-config.test.cjs", "tests/team/owntracks-database.test.cjs", "tests/team/owntracks-server.test.cjs", "tests/team/owntracks-browser.test.cjs"],
   "multiWorkTestFiles": ["tests/team/multi-work-database.test.cjs", "tests/team/multi-work-browser.test.cjs"],
   "owntracksWeekdaysTestFiles": ["tests/team/owntracks-weekdays-database.test.cjs", "tests/team/owntracks-weekdays-browser.test.cjs"],
+  "discardTimersTestFiles": ["tests/team/discard-timers-database.test.cjs", "tests/team/discard-timers-browser.test.cjs"],
   "devDependencies": {
     "@electric-sql/pglite": "0.5.8",
     "playwright": "1.62.1",

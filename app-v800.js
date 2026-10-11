@@ -205,7 +205,7 @@
       await reload();
     } catch (error) {
       auth.clear(); state.profile = null; notice(error.message || 'Die Anmeldung ist fehlgeschlagen.', true);
-    } finally { state.busy = false; render(); }
+    } finally { state.busy = false; render(); window.scrollTo({top:0,left:0,behavior:'instant'}); }
   }
   async function reload() {
     const load = async (name, table, query = 'select=*') => { try { state.rows[name] = await rows(table, query) || []; } catch { state.rows[name] = []; } };

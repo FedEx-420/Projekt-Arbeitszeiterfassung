@@ -9,3 +9,13 @@
 .owntracks-import {padding:16px;border:1px solid #c9ded8;border-radius:14px;background:#f1f8f5;min-width:0}
 .owntracks-import h4 {margin:0 0 10px}
 .owntracks-import button {max-width:100%;white-space:normal}
+.owntracks-weekdays {min-width:0;margin:0;padding:12px;border:1px solid #c9ded8;border-radius:12px;box-sizing:border-box}
+.owntracks-weekdays legend {padding:0 4px;font-weight:600}
+.owntracks-days {display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px}
+.owntracks-settings .owntracks-days label {display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;min-height:56px;padding:7px 2px;background:#f1f8f5;border-radius:8px;cursor:pointer}
+.owntracks-settings .owntracks-days input {width:20px;height:20px;margin:0;accent-color:#146554}
+.owntracks-weekdays.invalid {border:2px solid #b42318;background:#fff5f4}
+.owntracks-days-error {display:block;margin-top:8px;color:#b42318}
+.owntracks-days-error[hidden] {display:none}
+.owntracks-day-form {margin:6px 0}
+@media(max-width:480px) {.owntracks-days {grid-template-columns:repeat(4,minmax(0,1fr))}}

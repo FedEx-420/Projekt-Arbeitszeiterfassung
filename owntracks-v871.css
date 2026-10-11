@@ -6,3 +6,6 @@
 .owntracks-guide li {margin-bottom:14px;line-height:1.5}
 .owntracks-settings .row-card {margin:10px 0;display:grid;gap:8px}
 .owntracks-status {min-height:24px}
+.owntracks-import {padding:16px;border:1px solid #c9ded8;border-radius:14px;background:#f1f8f5;min-width:0}
+.owntracks-import h4 {margin:0 0 10px}
+.owntracks-import button {max-width:100%;white-space:normal}

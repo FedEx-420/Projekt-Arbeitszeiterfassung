@@ -1,0 +1,13 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
+const source=fs.readFileSync(path.join(__dirname,'../../owntracks-v871.js'),'utf8'),window={};
+vm.runInNewContext(source,{window,URL});
+const build=window.WorktimeOwntracks.configuration,endpoint='https://test.invalid/functions/v1/owntracks-arrival',secret='a'.repeat(64);
+let passed=0;
+const test=(name,fn)=>{fn();passed++;console.log('PASS '+name);};
+test('OwnTracks iOS import uses verified JSON format and HTTP mode',()=>{const c=JSON.parse(JSON.stringify(build(endpoint,secret)));assert.equal(c._type,'configuration');assert.equal(c.mode,3);assert.equal(c.url,endpoint);assert.equal(c.auth,true);assert.equal(c.username,'worktime');assert.equal(c.password,secret);assert.equal(c.tid,'WT');assert.equal(c.httpURL,undefined);});
+test('Move reporting interval and distance are explicit; not a timing guarantee',()=>{const c=build(endpoint,secret);assert.equal(c.monitoring,2);assert.equal(c.locatorInterval,30);assert.equal(c.locatorDisplacement,25);assert.equal(c.adapt,0);});
+test('Remote commands disabled and certificate verification required',()=>{const c=build(endpoint,secret);for(const key of ['cmd','allowRemoteLocation','remoteConfiguration','allowinvalidcerts'])assert.equal(c[key],false);assert.equal(c.httpHeaders,'');assert.equal(c.encryptionKey,'');});
+test('No location history, account identity, public URL credentials or import-permission bypass',()=>{const c=build(endpoint,secret);assert.equal(c.url.includes(secret),false);for(const key of ['allowConfigurationByURIAndConfigFile','allowIntentControl','intentAuthKey','waypoints','positions','days','employee_id','business_id','access_token','apikey'])assert.equal(c[key],undefined);assert.equal(Object.keys(c).length,17);});
+test('Missing, malformed and account passwords cannot create a config',()=>{for(const value of ['',null,undefined,'synthetic-account-password','A'.repeat(64),'a'.repeat(63),'a'.repeat(65),'a'.repeat(64)+'\n'])assert.throws(()=>build(endpoint,value));});
+test('Only credential-free HTTPS receiver URL accepted',()=>{for(const url of ['http://test.invalid/functions/v1/owntracks-arrival','https://worktime:pass@test.invalid/functions/v1/owntracks-arrival',endpoint+'?token=secret',endpoint+'#secret','https://test.invalid/rest/v1/profiles','owntracks:///config'])assert.throws(()=>build(url,secret));});
+console.log(JSON.stringify({passed,productionWrites:0,realCredentials:0}));

@@ -2,7 +2,9 @@
 
 Installierbare Web-App für Android und iPhone mit gemeinsamer, geschützter Arbeitszeiterfassung.
 
-Neu in v871: freiwilliger [OwnTracks-Pilot](RELEASE-V871.md) mit persönlicher Admin-Gerätebindung, serverseitigem Kundenstandortabgleich ohne 20-Kunden-Grenze, bearbeitbarer Ankunft-/Abfahrtsmessung und nachträglicher Zeitkorrektur. Ein echter iPhone-Standby-Test bleibt erforderlich; keine garantierte Hintergrundortung oder unbegrenzt kostenlose Serverkapazität.
+Neu in v872: [persönliche OwnTracks-Konfiguration herunterladen](RELEASE-V872.md), ohne Kontopasswörter weiterzugeben oder Verbindungsdaten abzutippen. Import und Standortfreigabe auf dem eigenen iPhone bewusst bestätigen. Eine gleichzeitige automatische Zuordnung zu mehreren Firmen ist noch nicht unterstützt.
+
+Seit v871: freiwilliger [OwnTracks-Pilot](RELEASE-V871.md) mit persönlicher Admin-Gerätebindung, serverseitigem Kundenstandortabgleich ohne 20-Kunden-Grenze, bearbeitbarer Ankunft-/Abfahrtsmessung und nachträglicher Zeitkorrektur. Ein echter iPhone-Standby-Test bleibt erforderlich; keine garantierte Hintergrundortung oder unbegrenzt kostenlose Serverkapazität.
 
 - Anmeldung für Chef und Mitarbeiter
 - getrennte Daten je Mitarbeiter; der Chef kann alle Daten einsehen und bearbeiten

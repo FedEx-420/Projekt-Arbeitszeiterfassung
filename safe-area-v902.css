@@ -1,0 +1,34 @@
+/* Keep header controls below the iPhone sensor housing in Safari and installed PWAs.
+   The dark banner still fills the status-bar area; only its content is inset.
+   No body inset: applying it twice would create an unnecessary gap. */
+@supports (padding-top: env(safe-area-inset-top)) {
+  .topbar {
+    padding-top: calc(18px + env(safe-area-inset-top, 0px));
+    padding-left: calc(max(24px, (100vw - 1170px) / 2 + 26px) + env(safe-area-inset-left, 0px));
+    padding-right: calc(max(24px, (100vw - 1170px) / 2 + 26px) + env(safe-area-inset-right, 0px));
+  }
+  html { scroll-padding-top: calc(90px + env(safe-area-inset-top, 0px)); }
+  .navigation-dropdown > .app-menu-sheet.nav-v901 {
+    padding-bottom: max(8px, env(safe-area-inset-bottom, 0px));
+  }
+  @media (max-width: 1000px) {
+    .topbar {
+      padding-top: calc(16px + env(safe-area-inset-top, 0px));
+      padding-left: calc(22px + env(safe-area-inset-left, 0px));
+      padding-right: calc(22px + env(safe-area-inset-right, 0px));
+    }
+  }
+  @media (max-width: 650px) {
+    .topbar {
+      padding-top: calc(14px + env(safe-area-inset-top, 0px));
+      padding-left: calc(16px + env(safe-area-inset-left, 0px));
+      padding-right: calc(16px + env(safe-area-inset-right, 0px));
+    }
+  }
+  @media (max-width: 380px) {
+    .topbar {
+      padding-left: calc(12px + env(safe-area-inset-left, 0px));
+      padding-right: calc(12px + env(safe-area-inset-right, 0px));
+    }
+  }
+}

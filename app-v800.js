@@ -13,6 +13,7 @@
     businessId: '', businessBrand: null, employeeId: '', customerId: '', customerSearch: '', materialId: '', orderId: '', timeEntryId: '', orderCustomer: '', orderOrigin: 'orders', billingKey: '', billingMode: 'open', menu: false, vacationForm: false, appointmentForm: false, composeMessage: false, mailboxFolder: 'received', notice: null, busy: false,
     rows: { entries: [], orders: [], items: [], customers: [], customerRates: [], days: [], vacations: [], messages: [], attachments: [], recipients: [], materials: [], appointments: [], planningRequests: [], payslips: [], documents: [] }
   };
+  const navigationFeature = window.WorktimeNavigation?.create({root,getOpen:()=>state.menu,setOpen:value=>{state.menu=value;}});
   /* BEGIN SESSION AUTH V859
    * Keep auth in the app bundle so previously cached index pages also work.
    * Only a definite JWT-expiry rejection may replay a write, once. */
@@ -307,14 +308,16 @@
   function menuItems() { return [['home','Übersicht',true],['time','Zeiterfassung',canUse('time')],['orders','Arbeitsscheine',canUse('orders')],['calendar','Kalender',canUse('calendar')],['customers','Kunden',canUse('customers')],['mailbox','Postfach',true],['materials','Materialliste',isManager()],['invoices','Abrechnungen Kunden',isManager()],['invoices-paid','Abgerechnete Arbeitsscheine',isManager()],['settings','Einstellungen',true]].filter(([, , yes]) => yes); }
   function selector() {
     if (!isManager()) return '';
-    const businessesHtml = isAdmin() ? `<label>Geschäftskonto<select data-select="business"><option value="">Auswählen</option>${businesses().map(person => `<option value="${person.id}" ${same(person.id, businessId()) ? 'selected' : ''}>${escape(person.company_name || person.username)}</option>`).join('')}</select></label>` : '';
-    return `<div class="account-selector">${businessesHtml}<label>Mitarbeiter<select data-select="employee">${workers().map(person => `<option value="${person.id}" ${same(person.id, workerId()) ? 'selected' : ''}>${escape(person.username)}</option>`).join('')}</select></label></div>`;
+    const businessesHtml = isAdmin() ? `<label>Firma ansehen<select data-select="business"><option value="">Firma auswählen</option>${businesses().map(person => `<option value="${person.id}" ${same(person.id, businessId()) ? 'selected' : ''}>${escape(person.company_name || person.username)}</option>`).join('')}</select></label>` : '';
+    return `<div class="account-selector">${businessesHtml}<label>Arbeitskonto ansehen<select data-select="employee">${workers().map(person => `<option value="${person.id}" ${same(person.id, workerId()) ? 'selected' : ''}>${escape(person.username)}</option>`).join('')}</select></label></div>`;
   }
   function appView() {
     const title = managerBusiness()?.company_name || 'Zeiterfassung';
     const headerLogo = companyLogoUrl(managerBusiness()), roleName = isAdmin() ? 'Administrator' : isBusiness() ? 'Geschäftsleitung' : 'Mitarbeiter';
-    const overlay = state.menu ? `<section class="app-menu-sheet"><header><b>Menü auswählen</b><button type="button" class="secondary small" data-action="menu">Schließen</button></header><nav>${menuItems().map(([id, text]) => `<button type="button" data-action="nav" data-view="${id}" class="${state.view === id ? 'active' : ''}">${text}</button>`).join('')}<hr><button type="button" data-action="logout">Abmelden</button></nav></section>` : '';
-    return `<div class="app-shell"><header class="topbar"><div class="brand-identity">${headerLogo ? `<img src="${escape(headerLogo)}" alt="Firmenlogo von ${escape(title)}">` : '<div class="brand-mark" aria-hidden="true">ZE</div>'}<div class="brand-caption"><h1>${escape(title)}</h1><p>${escape(state.profile?.username || '')} · ${roleName}</p></div></div><div class="top-actions">${selector()}<button type="button" class="menu-toggle" data-action="menu" aria-expanded="${state.menu}">Menü ⌄</button></div></header>${overlay}<main class="content">${viewHtml()}${noticeHtml()}</main></div>`;
+    const current = state.view === 'order-detail' ? (['invoices','invoices-paid','customers','planning'].includes(state.orderOrigin) ? state.orderOrigin : 'orders') : state.view === 'billing-detail' ? (state.billingMode === 'paid' ? 'invoices-paid' : 'invoices') : state.view;
+    const items = menuItems(), navigation = window.WorktimeNavigation?.markup({items,current,open:state.menu}) || `<button type="button" class="menu-toggle" data-action="menu" aria-expanded="${state.menu}">Menü ⌄</button>${state.menu ? `<section class="app-menu-sheet"><header><b>Menü auswählen</b><button type="button" class="secondary small" data-action="menu">Schließen</button></header><nav>${items.map(([id,text])=>`<button type="button" data-action="nav" data-view="${id}" class="${current===id?'active':''}">${text}</button>`).join('')}<hr><button type="button" data-action="logout">Abmelden</button></nav></section>` : ''}`;
+    const context = `<section class="workspace-context" aria-label="Aktueller Bereich und Arbeitskonto"><div class="workspace-location"><span aria-hidden="true"></span><strong>${escape(window.WorktimeNavigation?.currentLabel(items,current) || 'Übersicht')}</strong></div>${selector()}</section>`;
+    return `<div class="app-shell"><header class="topbar"><div class="brand-identity">${headerLogo ? `<img src="${escape(headerLogo)}" alt="Firmenlogo von ${escape(title)}">` : '<div class="brand-mark" aria-hidden="true">ZE</div>'}<div class="brand-caption"><h1>${escape(title)}</h1><p>${escape(state.profile?.username || '')} · ${roleName}</p></div></div><div class="top-actions">${navigation}</div></header><main class="content">${context}${viewHtml()}${noticeHtml()}</main></div>`;
   }
   function viewHtml() { return ({ home: homeView, time: timeView, orders: ordersView, 'order-detail': orderDetailView, calendar: calendarView, customers: customersView, mailbox: mailboxView, materials: materialsView, invoices: invoicesView, 'invoices-paid': paidInvoicesView, 'billing-detail': billingDetailView, settings: settingsView }[state.view] || homeView)(); }
 
@@ -884,8 +887,8 @@
     }
     if (action === 'shift-day') { state.date = addDate(state.date, n(button.dataset.days)); state.month = state.date.slice(0, 7); state.orderId = ''; state.timeEntryId = ''; state.vacationForm = false; render(); return; }
     if (action === 'shift-order-date') { const input = button.closest('label')?.querySelector('input[name="work_date"]'); if (!input) return; input.value = addDate(input.value || state.date, n(button.dataset.days)); input.focus(); return; }
-    if (action === 'menu') { state.menu = !state.menu; render(); return; }
-    if (action === 'nav') { state.view = button.dataset.view; state.menu = false; state.vacationForm = false; state.composeMessage = false; state.orderId = ''; state.timeEntryId = ''; state.orderCustomer = ''; state.orderOrigin = 'orders'; state.billingKey = ''; render(); return; }
+    if (action === 'menu') { if (navigationFeature) navigationFeature.toggle(); else { state.menu = !state.menu; render(); } return; }
+    if (action === 'nav') { state.view = button.dataset.view; state.menu = false; state.vacationForm = false; state.composeMessage = false; state.orderId = ''; state.timeEntryId = ''; state.orderCustomer = ''; state.orderOrigin = 'orders'; state.billingKey = ''; render(); window.scrollTo({top:0,behavior:'instant'}); return; }
     if (action === 'logout') return logout();
     if (action === 'forgot') return perform('Die zuständige Verwaltung wurde informiert.', () => api('/functions/v1/request-password-help', { method: 'POST', body: { username: root.querySelector('[name="username"]')?.value || '' } }));
     if (action === 'pick-day') { state.date = button.dataset.date; state.month = state.date.slice(0, 7); state.timeEntryId = ''; state.vacationForm = false; render(); return; }
@@ -2000,4 +2003,6 @@
     reload=async()=>{await reloadBeforeLegalV900();await legalFeature.load();};
     homeView=()=>homeBeforeLegalV900()+legalFeature.setupPanel();
   }
+  const renderBeforeNavigationV901=render;
+  render=()=>{renderBeforeNavigationV901();navigationFeature?.afterRender();};
 })();

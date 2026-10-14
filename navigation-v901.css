@@ -1,0 +1,48 @@
+/* Compact prototype-style right dropdown, with the original production routes. */
+.topbar{display:flex;flex-direction:row;flex-wrap:nowrap;align-items:center;gap:16px;min-height:84px}
+.topbar .brand-identity{min-width:0}.topbar .brand-caption h1{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.topbar .top-actions{display:flex;flex:none;width:auto;max-width:none;align-items:center}
+.navigation-dropdown{position:relative;flex:none}
+.navigation-dropdown>.menu-toggle{display:flex;align-items:center;justify-content:center;gap:9px;margin:0;min-height:48px;min-width:110px;align-self:auto}
+.menu-toggle svg{width:18px;height:18px;flex:none}
+.menu-toggle[aria-expanded=true]{background:#29434c}
+.navigation-dropdown>.app-menu-sheet.nav-v901{position:absolute;top:calc(100% + 12px);right:0;left:auto;width:min(340px,calc(100vw - 32px));max-height:calc(100dvh - 112px);padding:8px;border-radius:16px;color:var(--ink);border:1px solid var(--line);background:#fff;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;box-shadow:0 16px 60px #122b3540;text-align:left}
+.nav-v901[hidden]{display:none!important}
+.app-menu-sheet.nav-v901>header{position:static;display:flex;justify-content:space-between;align-items:center;padding:8px 8px 13px;margin:0;border-bottom:1px solid var(--line);gap:12px}
+.nav-v901>header div{min-width:0}.nav-v901>header small{display:block;font-size:10px;letter-spacing:.7px;text-transform:uppercase;color:var(--muted)}
+.nav-v901>header b{display:block;font-size:15px;overflow-wrap:anywhere}
+.nav-v901>header .nav-close{padding:0;min-width:44px;min-height:44px;background:#f1f5f4;border:0;font-size:26px;color:var(--ink);flex:none}
+.app-menu-sheet.nav-v901 nav{display:grid;gap:3px;padding-top:6px}
+.nav-v901 .nav-category,.nav-v901 .nav-category-group>summary{display:flex;width:100%;align-items:center;gap:11px;padding:12px 9px;min-height:62px;border:0;border-radius:10px;background:transparent;color:var(--ink);text-align:left;cursor:pointer;list-style:none;font:inherit}
+.nav-category-group>summary::-webkit-details-marker{display:none}
+.nav-v901 .nav-copy{display:block;flex:1;min-width:0}.nav-copy strong{display:block;font-size:14px;font-weight:650;line-height:1.35;overflow-wrap:anywhere}
+.nav-copy small{display:block;font-size:11px;color:var(--muted);line-height:1.4;margin-top:3px;font-weight:400;overflow-wrap:anywhere}
+.nav-symbol{display:grid;place-items:center;width:32px;height:32px;flex:none;border-radius:9px;background:#f1f5f4;color:#4e6d72}
+.nav-symbol svg{width:21px;height:21px}.nav-chevron{color:#6b8388;flex:none;font-size:20px}
+.nav-v901 .nav-category:hover,.nav-category-group>summary:hover{background:#f1f6f4}
+.nav-v901 .nav-category.active,.nav-category-group.current>summary{background:var(--mint-soft,#e6f3ed);color:var(--brand)}
+.nav-category.active .nav-symbol,.nav-category-group.current .nav-symbol{background:#d6e9df;color:var(--brand)}
+.nav-category-group{border:0;padding:0}.nav-category-group[open]{padding-bottom:4px}
+.nav-destinations{border-left:2px solid #d8e8e1;margin:5px 8px 4px 25px;padding-left:9px;display:grid;gap:3px}
+.app-menu-sheet.nav-v901 .nav-destination{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:46px;width:100%;padding:9px 12px;border:0;background:#fff;font-size:13px;font-weight:500;white-space:normal}
+.nav-v901 .nav-destination.active{background:#e6f3ed;color:var(--brand);font-weight:650}
+.nav-v901>footer{border-top:1px solid var(--line);padding:6px 0 0;margin-top:6px}
+.nav-v901>footer button{display:flex;justify-content:space-between;align-items:center;width:100%;text-align:left;background:transparent;border:0;padding:11px 12px;min-height:46px;color:var(--muted);font-size:13px}
+.nav-v901 :is(button,summary):focus-visible,.menu-toggle:focus-visible{outline:3px solid #48a18b;outline-offset:2px}
+.workspace-context{display:flex;align-items:center;justify-content:space-between;gap:20px;border-bottom:1px solid var(--line);padding-bottom:18px;min-width:0}
+.workspace-location{display:flex;align-items:center;gap:8px;min-width:0;color:var(--muted);font-size:13px}.workspace-location strong{color:var(--ink);font-size:14px;font-weight:650}
+.workspace-location span{display:block;width:7px;height:7px;flex:none;border-radius:50%;background:var(--brand)}
+.workspace-context .account-selector{display:flex;flex-direction:row;gap:12px;min-width:0;flex:0 1 520px}
+.workspace-context .account-selector label{min-width:0;max-width:none;flex:1;color:var(--muted);font-size:11px;font-weight:500}
+.workspace-context .account-selector select{width:100%;max-width:100%;min-width:0;min-height:44px;font-size:14px;color:var(--ink);background:#fff;padding:9px 10px}
+@media(max-width:650px){
+  .topbar{padding:14px 16px;gap:10px;min-height:78px}.topbar .top-actions{display:flex;grid-column:auto;grid-row:auto}
+  .topbar .brand-identity{gap:9px}.topbar .brand-identity>img{width:76px;height:44px}.topbar .brand-caption h1{font-size:14px}.topbar .brand-caption p{font-size:10px}
+  .navigation-dropdown>.menu-toggle{padding:10px 11px;min-width:92px;gap:6px;font-size:13px;grid-column:auto;grid-row:auto}
+  .navigation-dropdown>.app-menu-sheet.nav-v901{top:calc(100% + 10px);right:0;left:auto;width:min(340px,calc(100vw - 32px));padding:8px;max-height:calc(100dvh - 106px)}
+  .workspace-context{align-items:stretch;flex-direction:column;gap:12px;padding-bottom:16px}.workspace-context .account-selector{flex:auto;gap:10px;grid-column:auto;grid-row:auto}
+  .workspace-location{font-size:12px}.workspace-location strong{font-size:13px}.content{padding-top:20px}
+}
+@media(max-width:380px){.topbar{padding-left:12px;padding-right:12px}.topbar .brand-identity>img{width:55px;height:40px}.topbar .brand-caption h1{font-size:12px}.topbar .brand-caption p{font-size:9px}.navigation-dropdown>.menu-toggle{min-width:84px;gap:5px;padding:10px 8px}.menu-toggle svg{width:16px}.navigation-dropdown>.app-menu-sheet.nav-v901{width:min(340px,calc(100vw - 24px))}}
+@media(max-height:500px){.topbar{position:relative}.navigation-dropdown>.app-menu-sheet.nav-v901{max-height:calc(100dvh - 100px)}}
+@media(prefers-reduced-motion:reduce){.nav-v901 *{transition:none}}

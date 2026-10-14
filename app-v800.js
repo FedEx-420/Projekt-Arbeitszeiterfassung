@@ -312,8 +312,9 @@
   }
   function appView() {
     const title = managerBusiness()?.company_name || 'Zeiterfassung';
+    const headerLogo = companyLogoUrl(managerBusiness()), roleName = isAdmin() ? 'Administrator' : isBusiness() ? 'Geschäftsleitung' : 'Mitarbeiter';
     const overlay = state.menu ? `<section class="app-menu-sheet"><header><b>Menü auswählen</b><button type="button" class="secondary small" data-action="menu">Schließen</button></header><nav>${menuItems().map(([id, text]) => `<button type="button" data-action="nav" data-view="${id}" class="${state.view === id ? 'active' : ''}">${text}</button>`).join('')}<hr><button type="button" data-action="logout">Abmelden</button></nav></section>` : '';
-    return `<div class="app-shell"><header class="topbar"><div><span class="eyebrow">${escape(title)}</span><h1>Zeiterfassung</h1></div><div class="top-actions">${selector()}<button type="button" class="menu-toggle" data-action="menu">☰ Menü</button></div></header>${overlay}<main class="content">${viewHtml()}${noticeHtml()}</main></div>`;
+    return `<div class="app-shell"><header class="topbar"><div class="brand-identity">${headerLogo ? `<img src="${escape(headerLogo)}" alt="Firmenlogo von ${escape(title)}">` : '<div class="brand-mark" aria-hidden="true">ZE</div>'}<div class="brand-caption"><h1>${escape(title)}</h1><p>${escape(state.profile?.username || '')} · ${roleName}</p></div></div><div class="top-actions">${selector()}<button type="button" class="menu-toggle" data-action="menu" aria-expanded="${state.menu}">Menü ⌄</button></div></header>${overlay}<main class="content">${viewHtml()}${noticeHtml()}</main></div>`;
   }
   function viewHtml() { return ({ home: homeView, time: timeView, orders: ordersView, 'order-detail': orderDetailView, calendar: calendarView, customers: customersView, mailbox: mailboxView, materials: materialsView, invoices: invoicesView, 'invoices-paid': paidInvoicesView, 'billing-detail': billingDetailView, settings: settingsView }[state.view] || homeView)(); }
 
@@ -1983,4 +1984,20 @@
     offersFeature.bind();
   }
   root.addEventListener('submit',event=>{if(event.target.dataset.form!=='time-account-download')return;event.preventDefault();event.stopImmediatePropagation();downloadAnnualPdf(event.target);},true);
+  const platformFeature=window.WorktimePlatform?.create({root,state,api,render:()=>render(),escape,isAdmin,businessId});
+  if(platformFeature){
+    const menuBeforeV900=menuItems,viewBeforeV900=viewHtml,reloadBeforeV900=reload,settingsBeforeV900=settingsView;
+    menuItems=()=>{const items=menuBeforeV900();if(platformFeature.creator())items.splice(items.findIndex(row=>row[0]==='settings'),0,['platform','Preise & Konten',true]);return items;};
+    viewHtml=()=>state.view==='platform'?platformFeature.view():viewBeforeV900();
+    reload=async()=>{await reloadBeforeV900();await platformFeature.load();};
+    settingsView=()=>settingsBeforeV900()+platformFeature.settingsPanel();
+  }
+  const legalFeature=window.WorktimeLegal?.create({root,state,api,allRows,render:()=>render(),escape,isManager,businessId,managerBusiness});
+  if(legalFeature){
+    const menuBeforeLegalV900=menuItems,viewBeforeLegalV900=viewHtml,reloadBeforeLegalV900=reload,homeBeforeLegalV900=homeView;
+    menuItems=()=>{const items=menuBeforeLegalV900();items.splice(items.findIndex(row=>row[0]==='settings'),0,['legal','Unterlagen & Freigaben',true]);return items;};
+    viewHtml=()=>state.view==='legal'?legalFeature.view():viewBeforeLegalV900();
+    reload=async()=>{await reloadBeforeLegalV900();await legalFeature.load();};
+    homeView=()=>homeBeforeLegalV900()+legalFeature.setupPanel();
+  }
 })();

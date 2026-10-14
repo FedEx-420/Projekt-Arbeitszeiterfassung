@@ -829,42 +829,50 @@
     requestAnimationFrame(move);
     setTimeout(move, 40);
   }
-  function addPdfReturnBar(windowRef) {
+  function pdfPreviewControlStyles() {
+    return `#pdf-return-actions{position:fixed;top:0;left:0;right:0;z-index:2147483000;box-sizing:border-box;width:100%;max-width:100vw;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;padding:calc(12px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) 12px max(16px,env(safe-area-inset-left,0px));margin:0;background:#142b35;color:#fff;border-bottom:1px solid #38505a;font:14px/1.4 Arial,sans-serif;box-shadow:0 3px 12px #0002}#pdf-return-actions .pdf-control-copy{min-width:0;overflow-wrap:anywhere}#pdf-return-actions .pdf-control-copy strong{display:block;font-size:14px}#pdf-return-actions .pdf-preview-note{display:block;color:#c7deda;font-size:12px;margin-top:3px}#pdf-return-actions .pdf-control-buttons{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}#pdf-return-actions button{box-sizing:border-box;min-height:48px;min-width:0;width:100%;padding:10px 14px;border:1px solid #6a838b;border-radius:10px;background:#29434c;color:#fff;font:600 14px/1.35 Arial,sans-serif;white-space:normal;cursor:pointer;touch-action:manipulation}#pdf-return-actions button[data-pdf-print]{background:#167964;border-color:#45a28c}#pdf-return-actions button:focus-visible{outline:3px solid #a4e0cc;outline-offset:2px}#pdf-return-actions [data-pdf-print-status]{grid-column:1/-1;margin:0;font-size:12px;color:#d9ece7}#pdf-return-actions [hidden]{display:none!important}body{padding-top:var(--pdf-controls-height,0px)!important}html{scroll-padding-top:var(--pdf-controls-height,0px)}@media(max-width:650px){#pdf-return-actions{grid-template-columns:minmax(0,1fr);gap:8px}#pdf-return-actions .pdf-control-buttons{grid-row:1;grid-column:1}#pdf-return-actions .pdf-control-copy{grid-row:2;grid-column:1}#pdf-return-actions button{padding:10px 8px;font-size:13px}}@media print{#pdf-return-actions,#invoice-preview-actions{display:none!important}body{padding-top:0!important}}`;
+  }
+  function addPdfReturnBar(windowRef, invoicePreview = false) {
     if (!windowRef) return;
     const addBar = () => {
-      if (!windowRef.document?.body || windowRef.document.getElementById('pdf-return-actions')) return;
-      const bar = windowRef.document.createElement('div');
+      const doc = windowRef.document; if (!doc?.body) return;
+      const existing = doc.getElementById('pdf-return-actions');
+      if (existing) { if (invoicePreview) existing.querySelector('.pdf-preview-note').textContent = 'Rechnungsvorschau: Die Arbeitsscheine bleiben offen und bearbeitbar.'; return; }
+      if (!doc.querySelector('meta[name="viewport"]')) {
+        const viewport = doc.createElement('meta'); viewport.name = 'viewport'; viewport.content = 'width=device-width, initial-scale=1, viewport-fit=cover'; doc.head.append(viewport);
+      }
+      const style = doc.createElement('style'); style.id = 'pdf-preview-control-styles'; style.textContent = pdfPreviewControlStyles(); doc.head.append(style);
+      const bar = doc.createElement('section');
       bar.id = 'pdf-return-actions';
-      bar.style.cssText = 'position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:12px;padding:10px 0 12px;margin-bottom:18px;background:#fff;border-bottom:1px solid #d9e5e2;font:14px Arial,sans-serif';
-      bar.innerHTML = '<span style="flex:1;color:#48645d">PDF geöffnet</span><button type="button">← Zurück zur App</button>';
-      const button = bar.querySelector('button');
-      button.style.cssText = 'border:0;border-radius:7px;padding:10px 14px;background:#48645d;color:#fff;font-weight:bold;cursor:pointer';
-      button.addEventListener('click', () => {
+      bar.setAttribute('aria-label', 'Dokumentvorschau: Zurück und Drucken');
+      bar.innerHTML = '<div class="pdf-control-copy"><strong>Dokumentvorschau</strong><span class="pdf-preview-note"></span></div><div class="pdf-control-buttons"><button type="button" data-pdf-back>← Zurück zur App</button><button type="button" data-pdf-print>Drucken / PDF sichern</button></div><p data-pdf-print-status role="status" hidden></p>';
+      bar.querySelector('.pdf-preview-note').textContent = invoicePreview ? 'Rechnungsvorschau: Die Arbeitsscheine bleiben offen und bearbeitbar.' : 'Dokument prüfen und anschließend drucken oder als PDF sichern.';
+      bar.querySelector('[data-pdf-back]').addEventListener('click', () => {
         try { windowRef.opener?.focus(); } catch (_) {}
         try { if (windowRef.history.length > 1) { windowRef.history.back(); return; } } catch (_) {}
         try { windowRef.close(); } catch (_) {}
       });
-      windowRef.document.body.prepend(bar);
+      const setSpacing = () => doc.documentElement.style.setProperty('--pdf-controls-height', `${Math.ceil(bar.getBoundingClientRect().height)}px`);
+      bar.querySelector('[data-pdf-print]').addEventListener('click', () => {
+        const status = bar.querySelector('[data-pdf-print-status]'); status.hidden = false;
+        status.textContent = 'Druckdialog wird angefordert. Falls er auf dem iPhone nicht erscheint: Vorschau in Safari öffnen und Teilen → Drucken verwenden.';
+        setSpacing();
+        try {
+          try { windowRef.focus(); } catch (_) {}
+          if (typeof windowRef.print !== 'function') throw new Error('Printing unavailable');
+          // Direct call in the button's click event: retain the browser's user gesture.
+          // Do not replace window.print or defer this call to a timer/promise.
+          windowRef.print();
+        } catch (_) { status.textContent = 'Der Browser konnte den Druckdialog nicht öffnen. Bitte die Vorschau in Safari öffnen und Teilen → Drucken wählen.'; setSpacing(); }
+      });
+      doc.body.prepend(bar); setSpacing();
+      windowRef.addEventListener('resize', setSpacing);
+      if (windowRef.ResizeObserver) new windowRef.ResizeObserver(setSpacing).observe(bar);
     };
     if (windowRef.document.readyState === 'complete') addBar(); else windowRef.addEventListener('load', addBar, { once: true });
   }
   function showInvoicePreviewControls(windowRef) {
-    if (!windowRef) return;
-    addPdfReturnBar(windowRef);
-    const nativePrint = windowRef.print.bind(windowRef);
-    windowRef.print = () => {};
-    const addControls = () => {
-      if (!windowRef.document?.body || windowRef.document.getElementById('invoice-preview-actions')) return;
-      const bar = windowRef.document.createElement('div');
-      bar.id = 'invoice-preview-actions';
-      bar.style.cssText = 'position:sticky;top:55px;z-index:10;display:flex;gap:10px;align-items:center;padding:12px 0;background:#fff;border-bottom:1px solid #d9e5e2;margin-bottom:18px;font:14px Arial,sans-serif';
-      bar.innerHTML = '<span style="flex:1;color:#48645d">Vorschau: Die Arbeitsscheine bleiben bearbeitbar, bis sie ausdrücklich als abgerechnet markiert werden.</span><button type="button">Drucken / als PDF sichern</button>';
-      const button = bar.querySelector('button');
-      button.style.cssText = 'border:0;border-radius:7px;padding:10px 14px;background:#238473;color:#fff;font-weight:bold;cursor:pointer';
-      button.addEventListener('click', nativePrint);
-      windowRef.document.body.prepend(bar);
-    };
-    if (windowRef.document.readyState === 'complete') addControls(); else windowRef.addEventListener('load', addControls, { once: true });
+    addPdfReturnBar(windowRef, true);
   }
   function pdfStyles() {
     return `*{box-sizing:border-box}body{margin:0;background:#edf4f2;color:#193631;font:14px/1.5 Arial,sans-serif}.pdf-page{max-width:980px;margin:28px auto;background:#fff;padding:34px 38px 42px;box-shadow:0 14px 34px rgba(17,55,48,.14)}.pdf-banner{display:flex;align-items:stretch;justify-content:space-between;gap:28px;min-height:142px;padding:18px 22px;background:linear-gradient(135deg,#075d59,#15917f);color:#fff;border-radius:16px 16px 6px 6px;overflow:hidden}.pdf-brand{display:flex;align-items:center;gap:18px;min-width:0}.pdf-logo{width:228px;min-width:150px;height:106px;padding:10px;background:#fff;border-radius:11px;display:flex;align-items:center;justify-content:center;box-shadow:0 8px 20px rgba(0,0,0,.16)}.pdf-logo img{display:block;width:100%;height:100%;object-fit:contain}.pdf-logo-fallback{font-size:30px;font-weight:800;letter-spacing:.08em;color:#075d59}.pdf-company{font-size:17px;font-weight:700;line-height:1.25}.pdf-subtitle{margin-top:5px;color:#d9faf3;font-size:13px}.pdf-title{text-align:right;display:flex;flex-direction:column;justify-content:center}.pdf-title h1{margin:0;font-size:32px;line-height:1.05;letter-spacing:.01em}.pdf-title span{margin-top:8px;color:#d9faf3;font-size:13px}.pdf-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:24px 0}.pdf-card{padding:15px 17px;border:1px solid #d6e5e1;background:#f7fbfa;border-radius:10px}.pdf-card-label{display:block;margin-bottom:5px;color:#4f6a64;font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase}.pdf-section{margin:24px 0}.pdf-section h2{margin:0 0 10px;color:#075d59;font-size:18px}.pdf-execution{margin:0 0 20px;padding:14px 17px;border-left:4px solid #15917f;background:#f2f8f6}.pdf-execution-row{padding:9px 0;border-bottom:1px solid #d7e5e1}.pdf-execution-row:last-child{border-bottom:0}.pdf-table{width:100%;border-collapse:collapse;margin:12px 0 0}.pdf-table th,.pdf-table td{padding:11px 9px;border-bottom:1px solid #d9e6e3;text-align:left;vertical-align:top}.pdf-table th{background:#e8f3f0;color:#31574f;font-size:11px;letter-spacing:.04em;text-transform:uppercase}.pdf-table .number{text-align:right;white-space:nowrap}.pdf-table small{display:block;color:#58716b;margin-top:3px}.pdf-tag{display:inline-block;margin:0 0 0 7px;padding:2px 7px;border-radius:999px;background:#d8f0e9;color:#076654;font-size:10px;font-weight:700;vertical-align:middle}.pdf-total{display:flex;justify-content:space-between;gap:18px;max-width:365px;margin:25px 0 0 auto;padding:13px 0 0;border-top:3px solid #15917f;color:#075d59;font-size:19px}.pdf-note{margin-top:35px;padding-top:14px;border-top:1px solid #d9e6e3;color:#5b706a;font-size:12px}.pdf-list{margin:6px 0;padding-left:20px}.pdf-list li{margin:7px 0}.pdf-muted{color:#5b706a}.pdf-empty{padding:14px;background:#f7fbfa;border-radius:9px;color:#5b706a}@media(max-width:650px){.pdf-page{margin:0;padding:18px}.pdf-banner{gap:14px;min-height:0;flex-direction:column}.pdf-logo{width:100%;height:90px}.pdf-title{text-align:left}.pdf-grid{grid-template-columns:1fr}.pdf-table{font-size:12px}.pdf-table th,.pdf-table td{padding:8px 5px}}@media print{body{background:#fff}.pdf-page{max-width:none;margin:0;padding:0;box-shadow:none}.pdf-banner{break-inside:avoid}#pdf-return-actions,#invoice-preview-actions{display:none!important}}`;

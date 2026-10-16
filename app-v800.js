@@ -834,6 +834,7 @@
   }
   function addPdfReturnBar(windowRef, invoicePreview = false) {
     if (!windowRef) return;
+    if (windowRef.actualPdf) { if (invoicePreview) windowRef.setNote('Rechnungsvorschau: Die Arbeitsscheine bleiben offen und bearbeitbar.'); return; }
     const addBar = () => {
       const doc = windowRef.document; if (!doc?.body) return;
       const existing = doc.getElementById('pdf-return-actions');
@@ -2013,4 +2014,49 @@
   }
   const renderBeforeNavigationV901=render;
   render=()=>{renderBeforeNavigationV901();navigationFeature?.afterRender();};
+  // Real PDF snapshots replace the old reflowing HTML popups; no booking/finalization writes.
+  function documentPdfModel(orders,kind='work') {
+    const list=[...orders].sort((a,b)=>String(a.work_date).localeCompare(String(b.work_date))),first=list[0];
+    if(!first)throw new Error('Für dieses Dokument sind keine Arbeitsscheine vorhanden.');
+    const customer=state.rows.customers.find(row=>same(row.id,first.customer_id))||state.rows.customers.find(row=>lower(row.name)===lower(first.customer_name));
+    const fields=customer?.custom_fields||{},name=customer?.name||first.customer_name||'Kunde';
+    const days=new Map(),items=[];
+    for(const order of list){
+      const day=days.get(order.work_date)||{date:order.work_date,periods:[],items:[],notes:[],signatures:[]};
+      const periods=orderPeriods(order).map(p=>({name:p.employee_name||personName(teamPerson(p.employee_id)),start:p.start_time,end:p.end_time,pause:n(p.pause_hours),hours:n(p.executed_hours)}));
+      day.periods.push(...periods);
+      if(String(order.documentation||'').trim())day.notes.push(personName(teamPerson(order.employee_id))+': '+order.documentation);
+      if(order.signature_data)day.signatures.push({image:order.signature_data,signer:order.signed_by});
+      const recorded=state.rows.items.filter(item=>same(item.work_order_id,order.id));
+      const source=recorded.length?recorded:kind==='invoice'?[{position_name:order.title||'Arbeitsleistung',quantity:n(order.executed_hours),unit_price:0}]:[];
+      for(const item of source){const line={date:order.work_date,name:invoiceItemName(item,order),quantity:n(item.quantity),unit:itemUnit(item),price:invoiceItemPrice(item,order),description:order.title||'',execution:periods.map(p=>`${p.name}: ${timeText(p.start)} - ${timeText(p.end)}`).join('\n')};items.push(line);day.items.push(line);}
+      days.set(order.work_date,day);
+    }
+    const company=managerBusiness(),number=`RE-${today().replaceAll('-','')}-${String(first.id||'').replace(/[^a-z0-9]/gi,'').slice(0,8).toUpperCase()||'OFFEN'}`;
+    return {kind,company:company?.company_name||'Zeiterfassung',companyProfile:structuredClone(company||{}),customer:[fields.first_name,name].filter(Boolean).join(' '),address:[[fields.street,fields.house_no].filter(Boolean).join(' '),[fields.postal_code,fields.city].filter(Boolean).join(' '),fields.email].filter(Boolean),number,issued:today(),from:first.work_date,to:list.at(-1).work_date,orderCount:list.length,hours:list.reduce((sum,order)=>sum+orderHours(order),0),total:items.reduce((sum,item)=>sum+item.quantity*item.price,0),days:[...days.values()],items};
+  }
+  function openDocumentPdf(data,title,filename,creator,note='') {
+    if(!window.WorktimePdfViewer||typeof window.DevicePdf?.[creator]!=='function')throw new Error('Die neue PDF-Vorschau ist noch nicht geladen. Bitte die App neu öffnen.');
+    const snapshot=structuredClone(data);
+    return window.WorktimePdfViewer.open({title,filename,note,createBytes:async()=>{snapshot.logoBytes=await planningLogoBytes(snapshot.companyProfile);return window.DevicePdf[creator](snapshot);}});
+  }
+  printInvoicePdf=group=>{
+    if(!isManager())throw new Error('Rechnungen können nur durch Administrator oder Geschäftskonto erstellt werden.');
+    const data=documentPdfModel(group?.orders||[],'invoice');
+    return openDocumentPdf(data,'Rechnungsvorschau',`Rechnung_${data.number}_${data.customer}.pdf`,'createInvoice','Vorschau – keine automatische Abrechnung.');
+  };
+  printBillingPdf=(key,invoiced)=>{
+    const group=invoiceGroups(invoiced).find(item=>same(item.key,key));if(!group)throw new Error('Die Abrechnung wurde nicht gefunden.');
+    const data=documentPdfModel(group.orders);data.subtitle=invoiced?'Bereits abgerechnet':'Offen zur Abrechnung';
+    return openDocumentPdf(data,'Arbeitsnachweis',`Arbeitsnachweis_${data.customer}.pdf`,'createWorkReport','Alle ausgewählten Arbeitsscheine, nach Einsatztag zusammengefasst.');
+  };
+  printOrderPdf=id=>{
+    const order=state.rows.orders.find(row=>same(row.id,id));if(!order)throw new Error('Der Arbeitsschein wurde nicht gefunden.');
+    const data=documentPdfModel([order]);data.subtitle=dateText(order.work_date);
+    return openDocumentPdf(data,'Arbeitsnachweis',`Arbeitsnachweis_${data.customer}_${order.work_date}.pdf`,'createWorkReport');
+  };
+  printPdf=()=>{
+    const company=managerBusiness(),report=timeAccountReport(),person=personName(worker()),data={years:structuredClone(report.years),person,company:company?.company_name||'Zeiterfassung',companyProfile:structuredClone(company||{})};
+    return openDocumentPdf(data,'Zeiterfassungsnachweis',`Zeiterfassung_${person}.pdf`,'createTimeAccountBundle','Nach Jahr und Monat sortiert, mit Arbeitszeiten und Abwesenheiten.');
+  };
 })();

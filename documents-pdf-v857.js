@@ -98,13 +98,24 @@
       });
       y-=116;
     }
+    function amountTotal(label,value){
+      room(66);const text=money(value),right=margin+content,x=right-300;
+      page.drawLine({start:{x,y:y-5},end:{x:right,y:y-5},thickness:2,color:colors.teal});
+      draw(label,x,y-28,11,bold,colors.teal);
+      const size=Math.min(14,140/bold.widthOfTextAtSize(safe(text),1));
+      draw(text,right-bold.widthOfTextAtSize(safe(text),size),y-28,size,bold,colors.teal);y-=52;
+    }
+    async function signature(value,signer){
+      if(!String(value||'').startsWith('data:image/png;base64,'))return;
+      try{const bytes=Uint8Array.from(atob(value.split(',')[1]),char=>char.charCodeAt(0)),image=await pdf.embedPng(bytes);room(140);heading('Unterschrift',130);const scale=Math.min(300/image.width,75/image.height);page.drawImage(image,{x:margin,y:y-78,width:image.width*scale,height:image.height*scale});y-=88;lines('Unterschrieben von: '+(signer||'-'),{size:9,gap:14});}catch{lines('Unterschrieben von: '+(signer||'-'),{size:9,gap:14});}
+    }
     function finish(){
       const pages=pdf.getPages();
       pages.forEach((sheet,index)=>{sheet.drawLine({start:{x:margin,y:43},end:{x:width-margin,y:43},thickness:.5,color:colors.line});sheet.drawText(safe(footer),{x:margin,y:29,size:8,font:normal,color:colors.muted});const text='Seite '+(index+1)+' / '+pages.length;sheet.drawText(text,{x:width-margin-normal.widthOfTextAtSize(text,8),y:29,size:8,font:normal,color:colors.muted});});
       pdf.setTitle(safe(title));pdf.setAuthor(safe(data.company||'Zeiterfassung'));pdf.setCreator('Zeiterfassung v861');return pdf.save();
     }
     newPage();
-    return {pdf,colors,draw,wrap,lines,heading,cards,table,offerTotals,room,finish,get y(){return y;},set y(value){y=value;},set context(value){context=value;},margin,content};
+    return {pdf,colors,draw,wrap,lines,heading,cards,table,offerTotals,amountTotal,signature,room,finish,get y(){return y;},set y(value){y=value;},set context(value){context=value;},margin,content};
   }
   async function createTimeAccount(data){
     const year=data.year,e=await layout(data,'Jahresübersicht '+year.year,'Arbeitsstunden, Urlaub, Krankheit und NRW-Feiertage','Arbeitszeiten und Abwesenheiten');
@@ -136,9 +147,44 @@
     if(offer.notes){e.heading('Hinweise',70);e.lines(offer.notes,{size:9,gap:14});}
     return e.finish();
   }
+  async function createInvoice(data){
+    const e=await layout(data,'Rechnung',data.number,'Rechnungsvorschau - Abrechnung erfolgt separat');
+    e.heading('Rechnung an',75);e.lines(data.customer,{size:13,gap:18});
+    if(data.address?.length)e.lines(data.address.join('\n'),{gap:13});e.y-=8;
+    e.lines('Ausgestellt am: '+date(data.issued)+' | Leistungszeitraum: '+date(data.from)+(data.to!==data.from?' bis '+date(data.to):''),{size:9,gap:14});
+    e.lines(data.orderCount+' Arbeitsschein(e)',{size:9,gap:14});
+    for(const day of data.days){
+      e.context='';e.heading('Ausführung am '+date(day.date),85);e.context=date(day.date);
+      e.table(['Mitarbeiter','Von','Bis','Pause','Stunden'],day.periods.map(p=>({numeric:[3,4],cells:[p.name,time(p.start),time(p.end),hours(p.pause),hours(p.hours)]})),[217.28,75,75,74,74]);
+    }
+    e.context='';e.heading('Leistungen und Material',90);e.context='Leistungen und Material';
+    e.table(['Pos.','Position / Ausführung','Menge','Einheit','Einzelpreis','Gesamt'],data.items.map((item,index)=>({numeric:[0,2,4,5],cells:[String(index+1),[item.name,date(item.date),item.execution,item.description].filter(Boolean).join('\n'),count(item.quantity),item.unit,money(item.price),money(item.quantity*item.price)]})),[32,175,68,44,93,103.28],{numericHeaders:[0,2,4,5],lastRowReserve:72});
+    e.context='';e.amountTotal('Rechnungsbetrag',data.total);
+    e.lines('Die Preise entsprechen dem Stand der ausgewählten Arbeitsscheine. Durch Vorschau, Download oder Drucken werden keine Arbeitsscheine als abgerechnet markiert.',{size:8,color:e.colors.muted,gap:12});
+    return e.finish();
+  }
+  async function createWorkReport(data){
+    const e=await layout(data,'Arbeitsnachweis',data.subtitle||'Arbeit und Material','Arbeitsnachweis');
+    e.heading('Kunde',65);e.lines(data.customer,{size:13,gap:18});
+    if(data.address?.length)e.lines(data.address.join('\n'),{gap:13});
+    e.lines(data.orderCount+' Arbeitsschein(e) | '+hours(data.hours)+' Arbeitszeit',{size:9,gap:16});
+    for(const day of data.days){
+      e.context='';e.heading(date(day.date),90);e.context=date(day.date);
+      e.table(['Mitarbeiter','Von','Bis','Pause','Stunden'],day.periods.map(p=>({numeric:[3,4],cells:[p.name,time(p.start),time(p.end),hours(p.pause),hours(p.hours)]})),[217.28,75,75,74,74]);
+      for(const note of day.notes||[]){e.heading('Dokumentation',65);e.lines(note,{size:9,gap:14});}
+      if(day.items.length)e.table(['Leistung / Material','Menge','Einheit','Einzelpreis','Gesamt'],day.items.map(item=>({numeric:[1,3,4],cells:[[item.name,item.description].filter(Boolean).join('\n'),count(item.quantity),item.unit,money(item.price),money(item.quantity*item.price)]})),[218,65,45,87,100.28],{numericHeaders:[1,3,4]});
+      for(const entry of day.signatures||[])await e.signature(entry.image,entry.signer);
+    }
+    e.context='';e.amountTotal('Gesamtsumme',data.total);return e.finish();
+  }
+  async function createTimeAccountBundle(data){
+    const pdf=await window.PDFLib.PDFDocument.create();
+    for(const year of data.years){const bytes=await createTimeAccount({...data,year}),source=await window.PDFLib.PDFDocument.load(bytes),pages=await pdf.copyPages(source,source.getPageIndices());pages.forEach(page=>pdf.addPage(page));}
+    pdf.setTitle('Zeiterfassungsnachweis');pdf.setAuthor(data.company||'Zeiterfassung');return pdf.save();
+  }
   function download(bytes,filename){
     const url=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'})),link=document.createElement('a');
     link.href=url;link.download=String(filename).replace(/[<>:"/\\|?*\u0000-\u001F]/g,'_');document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
   }
-  window.DevicePdf={createTimeAccount,createOffer,download};
+  window.DevicePdf={createTimeAccount,createOffer,createInvoice,createWorkReport,createTimeAccountBundle,download};
 })();

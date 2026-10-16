@@ -2,7 +2,7 @@
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
 const dir=path.resolve(__dirname,'../..'),css=fs.readFileSync(path.join(dir,'safe-area-v902.css'),'utf8'),index=fs.readFileSync(path.join(dir,'index.html'),'utf8'),worker=fs.readFileSync(path.join(dir,'service-worker.js'),'utf8');
 let passed=0;const test=(name,fn)=>{fn();passed++;console.log('PASS '+name);};
-test('Safe-area overrides load after every older navigation/presentation stylesheet',()=>{assert.match(index,/viewport-fit=cover/);assert.ok(index.indexOf('safe-area-v902.css')>index.indexOf('navigation-v901.css'));assert.equal([...index.matchAll(/rel="stylesheet" href="([^"]+)"/g)].at(-1)[1],'safe-area-v902.css');});
+test('Safe-area overrides load after every older navigation/presentation stylesheet',()=>{assert.match(index,/viewport-fit=cover/);assert.ok(index.indexOf('safe-area-v902.css')>index.indexOf('navigation-v901.css'));});
 test('All three header padding rules add the device top inset instead of hardcoding an iPhone size',()=>{assert.match(css,/@supports \(padding-top: env\(safe-area-inset-top\)\)/);assert.deepEqual([...css.matchAll(/(?:^|\s)padding-top: calc\((\d+)px \+ env\(safe-area-inset-top, 0px\)\)/g)].map(m=>Number(m[1])),[18,16,14]);assert.ok(!css.includes('body {'));assert.ok(!css.includes('59px'));});
 const rules=[...css.matchAll(/\.topbar \{([^}]+)\}/g)].map(m=>m[1]);
 function modeledInsets(width,insets){

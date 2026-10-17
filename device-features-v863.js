@@ -206,7 +206,7 @@
         <div class="device-permission-card"><h4>Push-Mitteilungen</h4><p class="device-help">Einmal erlauben: Terminerinnerungen können danach auch bei geschlossener App erscheinen. Auf iPhone/iPad ab iOS 16.4: in Safari „Zum Home-Bildschirm“ hinzufügen und die App über dieses Symbol öffnen. Fokus-/Stumm-Einstellungen können die Anzeige unterdrücken. Keine Kundendaten auf dem Sperrbildschirm.</p>
         <p class="device-badge ${pushActive?'is-enabled':''}">${esc(pushText)}</p><div class="device-tools"><button type="button" class="secondary" data-device-action="push-enable">${pushActive?'Gerätefreigabe prüfen':'Push-Mitteilungen erlauben'}</button>${pushActive?'<button type="button" class="secondary" data-device-action="push-test">Testnachricht an dieses Gerät</button>':''}${pushSubscription?'<button type="button" class="secondary" data-device-action="push-disable">Push ausschalten</button>':''}</div><p class="device-status" role="status">${esc(pushIssue)}</p>
         <p class="device-help">Die Geschäftsleitung legt die Erinnerungszeit für jeden Termin direkt in der Planungsübersicht fest.</p></div>
-        <div class="device-permission-card"><h4>Standort / Ankunftserkennung</h4><p class="device-help">Einmal freiwillig erlauben. Die Freigabeprüfung hier speichert keinen Standort. Bei zugeordneten heutigen Planungen oder einem geöffneten Kunden startet am hinterlegten Kundenstandort dein Baustellen-Timer. Bei vorhandenen heutigen Arbeitsscheinen kann außerdem die Ankunft erfasst werden. Nur bei sichtbarer App, keine dauerhafte Hintergrundverfolgung, kein Bewegungsverlauf und keine automatische Stundenbuchung. Mit „Standort ausschalten“ sofort beenden.</p><p class="device-badge ${locationAllowed?'is-enabled':''}">${locationAllowed?'Für mein Konto auf diesem Gerät erlaubt.':locationPermission==='denied'?'Im Gerät/Browser blockiert. Bitte dort die Standortfreigabe ändern.':'Standortprüfung ist ausgeschaltet.'}</p><div class="device-tools"><button type="button" class="secondary" data-device-action="location-enable">${locationAllowed?'Standortfreigabe prüfen':'Standort erlauben'}</button>${locationAllowed?'<button type="button" class="secondary" data-device-action="location-disable">Standort ausschalten</button>':''}</div><p class="location-permission-status" role="status"></p></div></section>`;
+        <details class="device-permission-card device-location-alternative"><summary>Alternative: Standort nur bei geöffneter Web-App</summary><p class="device-help">Einmal freiwillig erlauben. Die Freigabeprüfung hier speichert keinen Standort. Bei zugeordneten heutigen Planungen oder einem geöffneten Kunden startet am hinterlegten Kundenstandort dein Baustellen-Timer. Bei vorhandenen heutigen Arbeitsscheinen kann außerdem die Ankunft erfasst werden. Nur bei sichtbarer App, keine dauerhafte Hintergrundverfolgung, kein Bewegungsverlauf und keine automatische Stundenbuchung. Mit „Standort ausschalten“ sofort beenden.</p><p class="device-badge ${locationAllowed?'is-enabled':''}">${locationAllowed?'Für mein Konto auf diesem Gerät erlaubt.':locationPermission==='denied'?'Im Gerät/Browser blockiert. Bitte dort die Standortfreigabe ändern.':'Standortprüfung ist ausgeschaltet.'}</p><div class="device-tools"><button type="button" class="secondary" data-device-action="location-enable">${locationAllowed?'Standortfreigabe prüfen':'Standort erlauben'}</button>${locationAllowed?'<button type="button" class="secondary" data-device-action="location-disable">Standort ausschalten</button>':''}</div><p class="location-permission-status" role="status"></p></details></section>`;
     }
     function afterRender() {
       for(const form of root.querySelectorAll('form')){
@@ -243,6 +243,18 @@
       arrivalTimer?.afterRender();
       iphoneShortcuts?.mount();
       owntracks?.mount();
+      if(state.view==='settings'){
+        const heading=root.querySelector('.content .page-head');
+        heading?.insertAdjacentHTML('afterend','<section class="panel"><h3>Standorterkennung</h3><p>Einrichtung und Verbindungsstatus an einer Stelle.</p><a class="secondary device-location-jump" href="#owntracks-einrichtung">Standorterkennung öffnen ↓</a></section>');
+        const own=root.querySelector('[data-owntracks]'),device=root.querySelector('[data-device-settings]');
+        if(own&&device)device.after(own);
+        const shortcut=root.querySelector('[data-iphone-shortcuts]');
+        if(shortcut&&shortcut.parentElement?.tagName!=='DETAILS'){
+          const alternative=document.createElement('details');alternative.className='device-location-alternative';
+          const summary=document.createElement('summary');summary.textContent='Alternative für einzelne Orte: iPhone-Kurzbefehle';
+          shortcut.before(alternative);alternative.append(summary,shortcut);
+        }
+      }
     }
     function lineHtml(item={}) {return `<div class="scan-line"><label>Artikel<input name="scan_name" maxlength="300" required value="${esc(item.name||'')}"></label><label>Brutto (€)<input name="scan_gross" inputmode="decimal" value="${money(item.gross)}"></label><label>Netto (€)<input name="scan_net" inputmode="decimal" value="${money(item.net)}"></label><button type="button" class="danger small" data-device-action="scan-remove-line" aria-label="Position entfernen">×</button></div>`;}
     function openScanner(button) {

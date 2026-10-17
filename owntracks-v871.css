@@ -18,4 +18,12 @@
 .owntracks-days-error {display:block;margin-top:8px;color:#b42318}
 .owntracks-days-error[hidden] {display:none}
 .owntracks-day-form {margin:6px 0}
+.owntracks-step{margin:16px 0;padding:16px;border:1px solid #d1e2dc;border-radius:14px;background:#f7fbf9}
+.owntracks-step h4{margin:0 0 10px}.owntracks-step .entry-form{margin-top:14px}
+.owntracks-advanced{margin:14px 0;border-top:1px solid #dce6e3;padding:12px 0}
+.owntracks-advanced summary{cursor:pointer;min-height:36px;font-weight:600;line-height:1.5}
+.owntracks-callout{padding:14px;border-radius:12px;background:#eaf5f0;border-left:4px solid #197b64}
+#owntracks-einrichtung{scroll-margin-top:calc(100px + env(safe-area-inset-top))}.device-location-jump{display:inline-block;padding:12px 16px;border-radius:10px;text-decoration:none}
+.owntracks-settings button{white-space:normal;min-height:44px}.owntracks-settings .actions{display:flex;flex-wrap:wrap;gap:8px}
+.device-location-alternative{margin-top:16px}.device-location-alternative>summary{cursor:pointer;font-weight:600;padding:14px;border:1px solid #d1e2dc;border-radius:12px}
 @media(max-width:480px) {.owntracks-days {grid-template-columns:repeat(4,minmax(0,1fr))}}

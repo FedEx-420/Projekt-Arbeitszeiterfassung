@@ -1,0 +1,19 @@
+.billing-selection{width:min(680px,calc(100vw - 24px));max-width:calc(100vw - 24px);max-height:calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 24px);padding:0;border:1px solid #cbdad7;border-radius:18px;color:#17353b;box-sizing:border-box;background:#fff}
+.billing-selection::backdrop{background:rgba(12,32,38,.65)}
+.billing-selection form{display:flex;flex-direction:column;max-height:inherit;margin:0}
+.billing-selection header{position:relative;padding:22px 55px 14px 22px;border-bottom:1px solid #dce6e3}
+.billing-selection h2{margin:4px 0;font-size:1.35rem}.billing-selection header p{margin:6px 0;overflow-wrap:anywhere}
+.billing-selection [data-close][aria-label]{position:absolute;right:12px;top:14px;background:#f0f5f3;border:0;border-radius:12px;width:38px;height:38px;font-size:26px;color:inherit}
+.billing-selection-body{overflow:auto;overscroll-behavior:contain;padding:0 22px;min-height:0}
+.billing-selection-tools{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.billing-selection fieldset{padding:0;border:0;min-width:0}.billing-selection legend{font-weight:700;margin-bottom:8px}
+.billing-selection-row{display:flex;align-items:center;gap:12px;border:1px solid #dce6e3;border-radius:12px;padding:14px;margin-bottom:8px;cursor:pointer;overflow-wrap:anywhere}
+.billing-selection-row:has(input:checked){border-color:#177467;background:#eff8f4}
+.billing-selection-row input,.billing-final-confirm input{flex:0 0 22px;width:22px;height:22px;accent-color:#177467}
+.billing-selection-row span{min-width:0}.billing-selection-row small{display:block;margin-top:5px;color:#52676a}
+.billing-final-confirm{display:flex;gap:10px;align-items:flex-start;margin:16px 0}.billing-selection-error{color:#b42318;font-weight:600;min-height:1em}
+.billing-selection footer{display:grid;gap:12px;padding:16px 22px max(16px,env(safe-area-inset-bottom));border-top:1px solid #dce6e3;background:#f5f9f7}
+.billing-selection .actions{display:flex;flex-wrap:wrap;gap:8px}.billing-selection button{min-height:44px;white-space:normal}
+.billing-selection{overflow:hidden}.billing-selection form{max-height:calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 26px)}.billing-selection header,.billing-selection footer{flex-shrink:0}
+html:has(.billing-selection[open]){overflow:hidden}
+@media(max-width:480px){.billing-selection header{padding-left:16px}.billing-selection-body{padding:0 16px}.billing-selection footer{padding-left:16px;padding-right:16px}.billing-selection footer .actions{flex-direction:column}.billing-selection footer button{width:100%}}

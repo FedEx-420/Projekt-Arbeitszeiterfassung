@@ -511,7 +511,20 @@
   function invoiceGroups(invoiced) {
     const groups = {};
     state.rows.orders.filter(row => orderInCurrentBusiness(row) && Boolean(row.invoiced) === invoiced).forEach(row => { const key = row.customer_id || `name:${lower(row.customer_name || 'Ohne Kunde')}`; (groups[key] ||= { key, customerName: row.customer_name || 'Ohne Kunde', orders: [] }).orders.push(row); });
-    return Object.values(groups).map(group => ({ ...group, hours: group.orders.reduce((sum, row) => sum + n(row.executed_hours), 0) })).sort((a, b) => String(a.customerName).localeCompare(String(b.customerName), 'de'));
+    return Object.values(groups).map(group => ({ ...group, hours: group.orders.reduce((sum, row) => sum + orderHours(row), 0) })).sort((a, b) => String(a.customerName).localeCompare(String(b.customerName), 'de'));
+  }
+  let billingSelectionScope = '', billingSelections = new Map();
+  async function chooseBillingOrders(group, purpose = 'invoice', initialId = '') {
+    if (!isManager() || !window.WorktimeBillingSelection) throw new Error('Die Arbeitsschein-Auswahl ist nicht verfügbar. Bitte die App aktualisieren.');
+    const scope = String(state.profile.id) + ':' + String(businessId());
+    if (billingSelectionScope !== scope) { billingSelectionScope = scope; billingSelections.clear(); }
+    const currentIds = new Set(group.orders.map(row => String(row.id))), remembered = billingSelections.get(group.key)?.filter(id => currentIds.has(id));
+    const initialIds = purpose === 'invoice' && initialId ? [initialId] : remembered?.length ? remembered : initialId ? [initialId] : undefined;
+    let selected;
+    try { selected = await window.WorktimeBillingSelection.choose({ group, people: state.rows.people, purpose, initialIds, resolve: () => isManager() && scope === String(state.profile.id) + ':' + String(businessId()) ? invoiceGroups(false).find(item => same(item.key, group.key)) : null }); }
+    catch (error) { notice(error.message || 'Die Auswahl konnte nicht geöffnet werden.', true); render(); return null; }
+    if (selected) billingSelections.set(group.key, selected.orders.map(row => String(row.id)));
+    return selected;
   }
   function billingListView(invoiced) {
     const groups = invoiceGroups(invoiced), title = invoiced ? 'Abgerechnete Arbeitsscheine' : 'Abrechnungen Kunden';
@@ -523,7 +536,7 @@
   function billingDetailView() {
     const invoiced = state.billingMode === 'paid', group = invoiceGroups(invoiced).find(item => same(item.key, state.billingKey));
     if (!group) return `<section class="panel"><h2>Abrechnung nicht gefunden</h2><button type="button" class="secondary" data-action="close-billing">Zurück</button></section>`;
-    const total = group.orders.reduce((sum, row) => sum + n(row.executed_hours), 0);
+    const total = group.orders.reduce((sum, row) => sum + orderHours(row), 0);
     const combinedDetails = group.orders.map(row => { const materials = state.rows.items.filter(item => same(item.work_order_id, row.id)); return `<div class="row-card"><div><b>${dateText(row.work_date)} · ${escape(row.title || 'Arbeitsschein')}</b><span>${timeText(row.start_time)} – ${timeText(row.end_time)} · Pause ${h(row.pause_hours)} · ${h(row.executed_hours)}</span>${row.documentation ? `<p>${escape(row.documentation)}</p>` : ''}${materials.length ? `<p><b>Material:</b> ${materials.map(item => `${escape(item.position_name)} (${n(item.quantity).toLocaleString('de-DE')} ${escape(itemUnit(item))})`).join(', ')}</p>` : ''}</div></div>`; }).join('');
     return `<section class="page-head"><div><span class="eyebrow">${invoiced ? 'Bereits abgerechnet' : 'Ein gemeinsamer offener Arbeitsschein'}</span><h2>${escape(group.customerName)}</h2><p>${group.orders.length} zusammengefügte Einträge · ${h(total)}</p></div><div class="actions">${invoiced ? '' : '<button type="button" class="primary" data-action="invoice-group">Rechnung erstellen</button><button type="button" class="secondary" data-action="mark-invoice-group">Als abgerechnet markieren</button>'}<button type="button" class="secondary" data-action="billing-pdf">Arbeitsnachweis als PDF</button><button type="button" class="secondary" data-action="close-billing">Zurück</button></div></section><section class="panel"><h3>Gesamter Arbeitsschein</h3>${combinedDetails}</section>`;
   }
@@ -885,7 +898,7 @@
     const logo = companyLogoUrl(company), name = company?.company_name || 'Zeiterfassung';
     return `<header class="pdf-banner"><div class="pdf-brand"><div class="pdf-logo">${logo ? `<img src="${escape(logo)}" alt="${escape(name)}">` : '<span class="pdf-logo-fallback">ZE</span>'}</div><div><div class="pdf-company">${escape(name)}</div><div class="pdf-subtitle">Digitale Arbeitszeiterfassung</div></div></div><div class="pdf-title"><h1>${escape(title)}</h1>${subtitle ? `<span>${escape(subtitle)}</span>` : ''}</div></header>`;
   }
-  root.addEventListener('click', event => {
+  root.addEventListener('click', async event => {
     const button = event.target.closest('[data-action]'); if (!button) return;
     const action = button.dataset.action;
     if (action === 'clear-signature') { clearSignaturePad(button.closest('form')?.querySelector('canvas.signature-pad')); return; }
@@ -963,18 +976,18 @@
     if (action === 'invoice-order') {
       const group = invoiceGroups(false).find(item => item.orders.some(order => same(order.id, button.dataset.id)));
       if (!group) { notice('Für diesen Arbeitsschein ist keine offene Abrechnung verfügbar.', true); render(); return; }
-      if (!confirm(`Rechnung über ${group.orders.length} offenen Arbeitsschein(e) für ${group.customerName} erstellen?`)) return;
-      showInvoicePreviewControls(printInvoicePdf(group));
+      const selected = await chooseBillingOrders(group, 'invoice', button.dataset.id); if (!selected) return;
+      showInvoicePreviewControls(printInvoicePdf(selected));
       notice('Rechnungsvorschau geöffnet. Die Arbeitsscheine bleiben offen und können weiter bearbeitet werden.'); render(); return;
     }
-    if (action === 'invoice-group') { const group = invoiceGroups(false).find(item => same(item.key, state.billingKey)); if (!group) return; if (!confirm(`Rechnungsvorschau über ${group.orders.length} offenen Arbeitsschein(e) für ${group.customerName} erstellen?`)) return; showInvoicePreviewControls(printInvoicePdf(group)); notice('Rechnungsvorschau geöffnet. Die Arbeitsscheine bleiben offen und können weiter bearbeitet werden.'); render(); return; }
+    if (action === 'invoice-group') { const group = invoiceGroups(false).find(item => same(item.key, state.billingKey)); if (!group) return; const selected = await chooseBillingOrders(group); if (!selected) return; showInvoicePreviewControls(printInvoicePdf(selected)); notice('Rechnungsvorschau für die Auswahl geöffnet. Alle Arbeitsscheine bleiben vorerst offen.'); render(); return; }
     if (action === 'mark-invoice-order') {
       const group = invoiceGroups(false).find(item => item.orders.some(order => same(order.id, button.dataset.id)));
       if (!group) { notice('Für diesen Arbeitsschein ist keine offene Abrechnung verfügbar.', true); render(); return; }
-      if (!confirm(`Wirklich alle ${group.orders.length} offenen Arbeitsschein(e) für ${group.customerName} als abgerechnet markieren? Dies erfolgt erst nach Abschluss der Rechnung.`)) return;
-      return perform('Die enthaltenen Arbeitsscheine wurden als abgerechnet markiert.', async () => { await snapshotCurrentPrices(group.orders); for (const order of group.orders) await write('work_orders', { invoiced: true }, 'PATCH', `id=eq.${encodeURIComponent(order.id)}`); state.orderId = ''; state.view = 'invoices-paid'; });
+      const selected = await chooseBillingOrders(group, 'mark', button.dataset.id); if (!selected) return;
+      return perform('Nur die ausgewählten Arbeitsscheine wurden als abgerechnet markiert.', async () => { await snapshotCurrentPrices(selected.orders); for (const order of selected.orders) await write('work_orders', { invoiced: true }, 'PATCH', `id=eq.${encodeURIComponent(order.id)}`); state.orderId = ''; state.view = 'invoices-paid'; });
     }
-    if (action === 'mark-invoice-group') { const group = invoiceGroups(false).find(item => same(item.key, state.billingKey)); if (!group) return; if (!confirm(`Wirklich alle ${group.orders.length} offenen Arbeitsschein(e) für ${group.customerName} als abgerechnet markieren? Dies erfolgt erst nach Abschluss der Rechnung.`)) return; return perform('Die enthaltenen Arbeitsscheine wurden als abgerechnet markiert.', async () => { await snapshotCurrentPrices(group.orders); for (const order of group.orders) await write('work_orders', { invoiced: true }, 'PATCH', `id=eq.${encodeURIComponent(order.id)}`); state.billingKey = ''; state.view = 'invoices-paid'; }); }
+    if (action === 'mark-invoice-group') { const group = invoiceGroups(false).find(item => same(item.key, state.billingKey)); if (!group) return; const selected = await chooseBillingOrders(group, 'mark'); if (!selected) return; return perform('Nur die ausgewählten Arbeitsscheine wurden als abgerechnet markiert.', async () => { await snapshotCurrentPrices(selected.orders); for (const order of selected.orders) await write('work_orders', { invoiced: true }, 'PATCH', `id=eq.${encodeURIComponent(order.id)}`); state.billingKey = ''; state.view = 'invoices-paid'; }); }
     if (action === 'read') return perform('Nachricht als gelesen markiert.', () => write('mailbox_messages', { read_at: new Date().toISOString() }, 'PATCH', `id=eq.${encodeURIComponent(button.dataset.id)}`));
     if (action === 'trash') return perform('Nachricht wurde in den Papierkorb verschoben.', () => write('mailbox_messages', { deleted_at: new Date().toISOString() }, 'PATCH', `id=eq.${encodeURIComponent(button.dataset.id)}`));
     if (action === 'restore-mail') return perform('Nachricht wurde wiederhergestellt.', () => write('mailbox_messages', { deleted_at: null }, 'PATCH', `id=eq.${encodeURIComponent(button.dataset.id)}`));

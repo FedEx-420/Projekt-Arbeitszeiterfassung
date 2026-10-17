@@ -213,7 +213,7 @@
     const loadRecipients = async () => { try { state.rows.recipients = (await api('/functions/v1/mailbox-send', { method: 'POST', body: { action: 'recipients' } }))?.recipients || []; } catch { state.rows.recipients = []; } };
     await Promise.all([
       load('people', 'profiles'), load('entries', 'time_entries', 'select=*&order=work_date.desc,created_at.desc'), load('orders', 'work_orders', 'select=*&order=work_date.desc,created_at.desc'),
-      load('items', 'work_order_items'), load('customers', 'customers', 'select=*&order=name.asc'), load('days', 'work_days'), load('vacations', 'vacation_requests', 'select=*&order=created_at.desc'),
+      load('items', 'work_order_items'), load('customers', 'customers', 'select=*&order=name.asc'), load('days', 'work_days'), load('vacations', 'vacation_requests', 'select=*&order=created_at.desc'), load('workweeks','employee_workweeks_v905','select=*&order=effective_from.asc'),
       load('messages', 'mailbox_messages', 'select=*&order=created_at.desc'), load('attachments', 'mailbox_attachments', 'select=*&order=created_at.asc'), load('materials', 'materials', 'select=*&order=name.asc'), load('appointments', 'appointments'),
       load('payslips', 'employee_payslips', 'select=*&order=created_at.desc'), load('documents', 'work_order_documents'), loadRecipients()
     ]);
@@ -282,13 +282,16 @@
     const easter = easterSunday(year), movable = { [addDate(easter, -2)]: 'Karfreitag', [addDate(easter, 1)]: 'Ostermontag', [addDate(easter, 39)]: 'Christi Himmelfahrt', [addDate(easter, 50)]: 'Pfingstmontag', [addDate(easter, 60)]: 'Fronleichnam' };
     return movable[date] || '';
   }
-  function dueHours(date) { if (nrwHoliday(date)) return 0; const day = new Date(`${date}T12:00:00`).getDay(); return day === 5 ? 5 : day === 0 || day === 6 ? 0 : 8; }
+  function isWorkingDay(id,date) { const schedule=(state.rows.workweeks||[]).filter(row=>same(row.employee_id,id)&&row.effective_from<=date).sort((a,b)=>b.effective_from.localeCompare(a.effective_from))[0]; return (schedule?.weekdays||[1,2,3,4,5]).includes(new Date(date+'T12:00:00Z').getUTCDay()||7); }
+  function vacationEligible(id,date) { return isWorkingDay(id,date)&&!nrwHoliday(date)&&!sick(id,date); }
+  function vacationRequestCount(request) { let count=0;if(!reportDateValid(request.start_date)||!reportDateValid(request.end_date)||request.end_date<request.start_date)return 0;for(let date=request.start_date;date<=request.end_date;date=addDate(date,1))if(vacationEligible(request.employee_id,date))count++;return count; }
+  function dueHours(date,id=workerId()) { if (nrwHoliday(date)||!isWorkingDay(id,date)) return 0; return new Date(date+'T12:00:00Z').getUTCDay()===5?5:8; }
   function sick(id = workerId(), date = state.date) { return state.rows.days.some(row => same(row.employee_id, id) && row.work_date === date && n(row.sick) > 0); }
-  function vacation(id = workerId(), date = state.date) { return state.rows.vacations.find(row => same(row.employee_id, id) && row.status === 'approved' && row.start_date <= date && row.end_date >= date); }
+  function vacation(id = workerId(), date = state.date) { return vacationEligible(id,date)&&state.rows.vacations.find(row => same(row.employee_id, id) && row.status === 'approved' && row.start_date <= date && row.end_date >= date); }
   function locked(id = workerId(), date = state.date) { return sick(id, date) || vacation(id, date) || Boolean(nrwHoliday(date)); }
   function lockedText(id = workerId(), date = state.date) { return sick(id, date) ? 'Krank gemeldet – keine Arbeitszeit oder Arbeitsscheine möglich.' : vacation(id, date) ? 'Genehmigter Urlaub – keine Arbeitszeit oder Arbeitsscheine möglich.' : nrwHoliday(date) ? `${nrwHoliday(date)} in NRW – keine Arbeitszeit oder Arbeitsscheine möglich.` : ''; }
   function annualSick(id = workerId()) { const year = state.date.slice(0, 4); return state.rows.days.filter(row => same(row.employee_id, id) && row.work_date.startsWith(year) && n(row.sick) > 0).reduce((sum, row) => sum + n(row.sick), 0); }
-  function vacationLeft(id = workerId()) { const person = state.people.find(row => same(row.id, id)) || worker(); const year = state.date.slice(0, 4); const used = state.rows.vacations.filter(row => same(row.employee_id, id) && row.status === 'approved' && row.start_date <= `${year}-12-31` && row.end_date >= `${year}-01-01`).reduce((sum, row) => sum + n(row.requested_days), 0); return Math.max(0, n(person?.vacation_allowance) - used); }
+  function vacationLeft(id = workerId()) { const person=state.people.find(row=>same(row.id,id))||worker(),year=state.date.slice(0,4);let used=0;for(let date=year+'-01-01';date<=year+'-12-31';date=addDate(date,1)){if(!vacationEligible(id,date))continue;const manual=state.rows.days.find(row=>same(row.employee_id,id)&&row.work_date===date);used+=n(manual?.vacation)>0?Math.min(1,n(manual.vacation)):vacation(id,date)?1:0;}return Math.max(0,n(person?.vacation_allowance)-used); }
   function overtime(id = workerId()) {
     // Time entries are the primary source, including manually recorded times.
     // A work order is used as a fallback only while its linked time entry has
@@ -389,7 +392,7 @@
     const id = workerId();
     const grid = monthDays().map(date => {
       const holiday = nrwHoliday(date), isSick = sick(id, date), isApproved = Boolean(vacation(id, date));
-      const isRequested = state.rows.vacations.some(row => same(row.employee_id, id) && row.status === 'requested' && row.start_date <= date && row.end_date >= date);
+      const isRequested = requestedVacation(id,date);
       const hasOrder = state.rows.orders.some(row => orderForEmployee(row,id) && row.work_date === date);
       const classes = ['month-day', date.slice(0, 7) === state.month ? '' : 'outside', date === state.date ? 'selected' : '', holiday ? 'holiday' : '', isSick ? 'sick' : '', isApproved ? 'approved' : '', isRequested ? 'requested' : '', hasOrder ? 'has-order' : ''].join(' ');
       const flags = `${holiday ? `<i class="flag-holiday">${escape(holiday)}</i>` : ''}${isSick ? '<i class="flag-sick">Krank</i>' : ''}${isApproved ? '<i class="flag-approved">Urlaub</i>' : ''}${isRequested ? '<i class="flag-requested">Beantragt</i>' : ''}${hasOrder ? '<i class="flag-order">Arbeitsschein</i>' : ''}`;
@@ -1134,7 +1137,7 @@
       load('people', 'profiles'), load('entries', 'time_entries', 'select=*&order=work_date.desc,created_at.desc'), load('orders', 'work_orders', 'select=*&order=work_date.desc,created_at.desc'),
       load('items', 'work_order_items'), load('customers', 'customers', 'select=*&order=name.asc'), load('days', 'work_days'), load('vacations', 'vacation_requests', 'select=*&order=created_at.desc'),
       load('messages', 'mailbox_messages', 'select=*&order=created_at.desc'), load('attachments', 'mailbox_attachments', 'select=*&order=created_at.asc'), load('materials', 'materials', 'select=*&order=name.asc'), load('appointments', 'appointments'),
-      load('payslips', 'employee_payslips', 'select=*&order=created_at.desc'), load('documents', 'work_order_documents'), loadRecipients(), loadPlanningRequests()
+      load('payslips', 'employee_payslips', 'select=*&order=created_at.desc'), load('documents', 'work_order_documents'), load('workweeks','employee_workweeks_v905','select=*&order=employee_id.asc,effective_from.asc'), loadRecipients(), loadPlanningRequests()
     ]);
     state.people = state.rows.people;
     try { state.rows.customerRates = await allRows('customer_hourly_rates','select=*&order=customer_id.asc'); state.customerRatesReady=true; } catch { state.customerRatesReady=false; issues.push('customerRates'); }
@@ -1154,15 +1157,15 @@
   function overtime(id = workerId()) {
     const year = state.date.slice(0, 4), days = new Map();
     recordedPeriods(id).filter(row => String(row.work_date || '').startsWith(year)).forEach(row => days.set(row.work_date, n(days.get(row.work_date)) + n(row.executed_hours)));
-    return [...days].reduce((sum, [date, hours]) => sum + hours - dueHours(date), 0);
+    return [...days].reduce((sum, [date, hours]) => sum + hours - dueHours(date,id), 0);
   }
-  function reportOvertime(entries) { const days = new Map(); entries.forEach(row => days.set(row.work_date, n(days.get(row.work_date)) + n(row.executed_hours))); return [...days].reduce((sum, [date, hours]) => sum + hours - dueHours(date), 0); }
+  function reportOvertime(entries,id=workerId()) { const days = new Map(); entries.forEach(row => days.set(row.work_date, n(days.get(row.work_date)) + n(row.executed_hours))); return [...days].reduce((sum, [date, hours]) => sum + hours - dueHours(date,id), 0); }
   function receiptTabs(selected) { return [['fuel','Tankbelege'],['vacations','Urlaubsanträge'],['sick','Krankmeldungen'],['training','Schulungstage']].map(([id,title]) => `<button type="button" class="${id === selected ? 'primary' : 'secondary'} small" data-action="receipt-section" data-section="${id}">${title}</button>`).join(''); }
   function receiptsView() {
     const id = workerId(), section = state.receiptSection || 'fuel';
     const vacations = state.rows.vacations.filter(row => same(row.employee_id, id));
     const sickDays = state.rows.days.filter(row => same(row.employee_id, id) && n(row.sick) > 0).sort((a,b) => String(b.work_date).localeCompare(String(a.work_date)));
-    const body = section === 'vacations' ? (vacations.map(row => `<article class="row-card"><div class="row-main"><b>${dateText(row.start_date)} bis ${dateText(row.end_date)}</b><span>${escape(row.status === 'approved' ? 'Genehmigt' : row.status === 'requested' ? 'Beantragt' : 'Abgelehnt')} · ${n(row.requested_days)} Tage</span></div></article>`).join('') || '<p class="empty">Keine Urlaubsanträge vorhanden.</p>') : section === 'sick' ? (sickDays.map(row => `<article class="row-card"><div class="row-main"><b>${dateText(row.work_date)}</b><span>Krank gemeldet</span></div></article>`).join('') || '<p class="empty">Keine Krankmeldungen vorhanden.</p>') : section === 'training' ? '<p class="empty">Noch keine Schulungstage erfasst.</p>' : '<p class="empty">Noch keine Tankbelege erfasst.</p>';
+    const body = section === 'vacations' ? (vacations.map(row => `<article class="row-card"><div class="row-main"><b>${dateText(row.start_date)} bis ${dateText(row.end_date)}</b><span>${escape(row.status === 'approved' ? 'Genehmigt' : row.status === 'requested' ? 'Beantragt' : 'Abgelehnt')} · ${vacationRequestCount(row)} Tage</span></div></article>`).join('') || '<p class="empty">Keine Urlaubsanträge vorhanden.</p>') : section === 'sick' ? (sickDays.map(row => `<article class="row-card"><div class="row-main"><b>${dateText(row.work_date)}</b><span>Krank gemeldet</span></div></article>`).join('') || '<p class="empty">Keine Krankmeldungen vorhanden.</p>') : section === 'training' ? '<p class="empty">Noch keine Schulungstage erfasst.</p>' : '<p class="empty">Noch keine Tankbelege erfasst.</p>';
     const title = section === 'fuel' ? 'Tankbelege' : section === 'vacations' ? 'Urlaubsanträge' : section === 'sick' ? 'Krankmeldungen' : 'Schulungstage';
     return `<section class="page-head"><div><span class="eyebrow">Persönliche Nachweise</span><h2>Belege</h2></div></section><section class="panel"><div class="actions">${receiptTabs(section)}</div><h3>${escape(title)}</h3>${body}</section>`;
   }
@@ -1189,16 +1192,16 @@
       for (const cursor=new Date(year+'-01-01T12:00:00Z'); cursor.getUTCFullYear()===Number(year); cursor.setUTCDate(cursor.getUTCDate()+1)) {
         const date=cursor.toISOString().slice(0,10), rows=byDate.get(date) || [], day=days.find(row => row.work_date===date);
         const holiday=nrwHoliday(date), sickDays=Math.max(0,n(day?.sick));
-        const approved=!sickDays && (n(day?.vacation)>0 || vacations.some(row => row.status==='approved' && row.start_date<=date && row.end_date>=date));
-        const requested=!sickDays && !approved && vacations.some(row => row.status==='requested' && row.start_date<=date && row.end_date>=date);
+        const eligible=vacationEligible(id,date),approved=eligible && (n(day?.vacation)>0 || vacations.some(row => row.status==='approved' && row.start_date<=date && row.end_date>=date));
+        const requested=eligible && !approved && vacations.some(row => row.status==='requested' && row.start_date<=date && row.end_date>=date);
         if (!rows.length && !holiday && !sickDays && !approved && !requested) continue;
         const labels=[...(holiday ? [{kind:'holiday',text:'Feiertag NRW: '+holiday}] : []),...(sickDays ? [{kind:'sick',text:'Krankheit'}] : []),...(approved ? [{kind:'approved',text:'Urlaub (genehmigt)'}] : []),...(requested ? [{kind:'requested',text:'Urlaub (beantragt)'}] : [])];
-        const record={date,entries:rows,labels,sickDays,holiday,approvedDays:approved && dueHours(date)>0 ? n(day?.vacation)>0 ? n(day.vacation) : 1 : 0,requestedDays:requested && dueHours(date)>0 ? 1 : 0};
+        const record={date,entries:rows,labels,sickDays,holiday,workingHoliday:Boolean(holiday)&&isWorkingDay(id,date),approvedDays:approved ? n(day?.vacation)>0 ? Math.min(1,n(day.vacation)) : 1 : 0,requestedDays:requested ? 1 : 0};
         records.push(record); const month=date.slice(0,7), list=months.get(month) || []; list.push(record); months.set(month,list);
       }
       const yearEntries=entries.filter(row => row.work_date.startsWith(year+'-'));
-      const sums=list=>({sickDays:list.reduce((sum,row)=>sum+row.sickDays,0),approvedDays:list.reduce((sum,row)=>sum+row.approvedDays,0),requestedDays:list.reduce((sum,row)=>sum+row.requestedDays,0),holidays:list.filter(row=>row.holiday).length});
-      return {year,entries:yearEntries,hours:yearEntries.reduce((sum,row)=>sum+n(row.executed_hours),0),overtime:reportOvertime(yearEntries),...sums(records),months:[...months].map(([month,list])=>({month,days:list,hours:list.flatMap(row=>row.entries).reduce((sum,row)=>sum+n(row.executed_hours),0),...sums(list)}))};
+      const sums=list=>({sickDays:list.reduce((sum,row)=>sum+row.sickDays,0),approvedDays:list.reduce((sum,row)=>sum+row.approvedDays,0),requestedDays:list.reduce((sum,row)=>sum+row.requestedDays,0),holidays:list.filter(row=>row.workingHoliday).length,calendarHolidays:list.filter(row=>row.holiday).length});
+      return {year,entries:yearEntries,hours:yearEntries.reduce((sum,row)=>sum+n(row.executed_hours),0),overtime:reportOvertime(yearEntries,id),...sums(records),months:[...months].map(([month,list])=>({month,days:list,hours:list.flatMap(row=>row.entries).reduce((sum,row)=>sum+n(row.executed_hours),0),...sums(list)}))};
     });
     return {years,totalHours:entries.reduce((sum,row)=>sum+n(row.executed_hours),0)};
   }
@@ -1406,7 +1409,7 @@
     link.href=url;link.download=`Planung_${from}_bis_${to}.pdf`;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
     state.planPdfFrom=from;state.planPdfTo=to;
   }
-  function requestedVacation(id, date) { return state.rows.vacations.some(row => same(row.employee_id, id) && row.status === 'requested' && row.start_date <= date && row.end_date >= date); }
+  function requestedVacation(id, date) { return vacationEligible(id,date)&&state.rows.vacations.some(row => same(row.employee_id, id) && row.status === 'requested' && row.start_date <= date && row.end_date >= date); }
   function timesOverlap(firstStart, firstEnd, secondStart, secondEnd) {
     if (!firstStart || !firstEnd || !secondStart || !secondEnd) return false;
     return toMinutes(firstStart) < toMinutes(secondEnd) && toMinutes(secondStart) < toMinutes(firstEnd);
@@ -1536,15 +1539,15 @@
     if (!actor) throw new Error('Bitte erneut anmelden.');
     const proof=await planningSync.begin(ifChanged);
     if(proof.unchanged)return false;
-    const [appointments, days, vacations, orders, entries, customers, requests, customerRates] = await Promise.all([
+    const [appointments, days, vacations, orders, entries, customers, requests, customerRates, workweeks] = await Promise.all([
       allRows('appointments', 'select=*&order=event_date.asc,id.asc'), allRows('work_days', 'select=*&order=employee_id.asc,work_date.asc'),
       allRows('vacation_requests', 'select=*&order=id.asc'), allRows('work_orders', 'select=*&order=id.asc'), allRows('time_entries', 'select=*&order=id.asc'), allRows('customers', 'select=*&order=name.asc,id.asc'),
       allRows('planning_requests', 'select=*&order=created_at.desc,id.asc').catch(()=>null),
-      allRows('customer_hourly_rates','select=*&order=customer_id.asc')
+      allRows('customer_hourly_rates','select=*&order=customer_id.asc'),allRows('employee_workweeks_v905','select=*&order=employee_id.asc,effective_from.asc')
     ]);
     if (!same(actor, state.profile?.id)) throw new Error('Das Benutzerkonto hat sich geändert. Bitte die Planung erneut öffnen.');
     planningSync.assertCurrent(proof);
-    Object.assign(state.rows, { appointments, days, vacations, orders, entries, customers, customerRates });
+    Object.assign(state.rows, { appointments, days, vacations, orders, entries, customers, customerRates, workweeks });
     state.customerRatesReady=true;
     state.planningRequestsReady=requests!==null;
     if(requests!==null){state.rows.planningRequests=requests;planningSync.commit(proof);}
@@ -1795,7 +1798,7 @@
   }, true);
   let planningSyncBusy = false;
   async function syncPlanningIfVisible() {
-    if (!state.session || !['planning', 'time', 'orders'].includes(state.view) || state.busy || planningSyncBusy || document.visibilityState === 'hidden') return;
+    if (!state.session || !['planning', 'time', 'orders','home','calendar','settings'].includes(state.view) || state.busy || planningSyncBusy || document.visibilityState === 'hidden') return;
     planningSyncBusy = true;
     try {
       if(await refreshPlanningData({ifChanged:true})===false)return;
@@ -1805,6 +1808,7 @@
         const form = root.querySelector('form[data-form="planning"]');
         if (form) { updatePlanningWarnings(form); updatePlanningCustomer(form); } else if (!state.menu) render();
       }
+      else if(['home','calendar','settings'].includes(state.view)&&!state.menu&&!document.activeElement?.closest('form')&&!document.activeElement?.matches('input,select,textarea'))render();
     } catch { /* Keep the last verified plan during temporary network outages. */ }
     finally { planningSyncBusy = false; }
   }
@@ -2043,7 +2047,8 @@
   printInvoicePdf=group=>{
     if(!isManager())throw new Error('Rechnungen können nur durch Administrator oder Geschäftskonto erstellt werden.');
     const data=documentPdfModel(group?.orders||[],'invoice');
-    return openDocumentPdf(data,'Rechnungsvorschau',`Rechnung_${data.number}_${data.customer}.pdf`,'createInvoice','Vorschau – keine automatische Abrechnung.');
+    if(!window.WorktimeInvoiceTax)throw new Error('Die Steuerabfrage ist noch nicht geladen. Bitte die App neu öffnen.');
+    return window.WorktimeInvoiceTax.ask(data,tax=>openDocumentPdf({...data,tax},'Rechnungsvorschau',`Rechnung_${data.number}_${data.customer}.pdf`,'createInvoice','Vorschau – keine automatische Abrechnung.'));
   };
   printBillingPdf=(key,invoiced)=>{
     const group=invoiceGroups(invoiced).find(item=>same(item.key,key));if(!group)throw new Error('Die Abrechnung wurde nicht gefunden.');
@@ -2059,4 +2064,17 @@
     const company=managerBusiness(),report=timeAccountReport(),person=personName(worker()),data={years:structuredClone(report.years),person,company:company?.company_name||'Zeiterfassung',companyProfile:structuredClone(company||{})};
     return openDocumentPdf(data,'Zeiterfassungsnachweis',`Zeiterfassung_${person}.pdf`,'createTimeAccountBundle','Nach Jahr und Monat sortiert, mit Arbeitszeiten und Abwesenheiten.');
   };
+  const settingsBeforeWorkweekV905=settingsView;
+  settingsView=()=>{
+    const content=settingsBeforeWorkweekV905(),person=worker();if(!isManager()||person?.role!=='employee')return content;
+    const schedule=(state.rows.workweeks||[]).filter(row=>same(row.employee_id,person.id)&&row.effective_from<=state.date).sort((a,b)=>b.effective_from.localeCompare(a.effective_from))[0],days=schedule?.weekdays||[1,2,3,4,5];
+    if(!isBusiness())return content+`<section class="panel"><h3>Regelmäßige Arbeitstage</h3><p>${days.map(day=>['Mo','Di','Mi','Do','Fr','Sa','So'][day-1]).join(', ')}${schedule?' · gültig ab '+dateText(schedule.effective_from):' · bisheriger Standard'}</p><p>Nur das zuständige Geschäftskonto kann die Arbeitstage dieses Mitarbeiters festlegen.</p></section>`;
+    return content+`<section class="panel"><h3>Arbeitstage: ${escape(personName(person))}</h3><p class="workweek-help">Urlaub zählt nur an ausgewählten Arbeitstagen ohne NRW-Feiertage und Krankheit. Vor dem Gültigkeitsdatum bleiben frühere Einstellungen erhalten; ohne Einstellung gilt Mo–Fr. Der jährliche Urlaubsanspruch wird nicht automatisch umgerechnet. Sollzeit bleibt Mo–Do 8 h, Fr 5 h; ausgewählte Wochenendtage 8 h.</p><form data-form="employee-workweek" class="entry-form"><label>Gültig ab<input type="date" name="effective_from" required value="${schedule?.effective_from||state.date.slice(0,4)+'-01-01'}"></label><fieldset class="wide"><legend>Regelmäßige Arbeitstage auswählen</legend><div class="workweek-options">${['Mo','Di','Mi','Do','Fr','Sa','So'].map((name,i)=>`<label><input type="checkbox" name="weekday" value="${i+1}" ${days.includes(i+1)?'checked':''}>${name}</label>`).join('')}</div></fieldset><button class="primary">Arbeitstage speichern</button><p class="workweek-help wide" data-workweek-result role="status"></p></form></section>`;
+  };
+  root.addEventListener('submit',event=>{
+    const form=event.target.closest('[data-form="employee-workweek"]');if(!form)return;event.preventDefault();
+    if(!isBusiness())return;const weekdays=[...form.querySelectorAll('[name="weekday"]:checked')].map(el=>Number(el.value)),effective=form.elements.effective_from.value;
+    if(!weekdays.length||!reportDateValid(effective)){form.querySelector('[data-workweek-result]').textContent='Bitte mindestens einen Arbeitstag und ein gültiges Datum auswählen.';return;}
+    const employee=workerId();return perform('Arbeitstage gespeichert. Kalender und Urlaub wurden aktualisiert.',()=>api('/rest/v1/employee_workweeks_v905?on_conflict=employee_id,effective_from',{method:'POST',headers:{Prefer:'resolution=merge-duplicates,return=representation'},body:{employee_id:employee,effective_from:effective,weekdays,updated_at:new Date().toISOString()}}));
+  });
 })();

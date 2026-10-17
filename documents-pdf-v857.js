@@ -115,7 +115,16 @@
       pdf.setTitle(safe(title));pdf.setAuthor(safe(data.company||'Zeiterfassung'));pdf.setCreator('Zeiterfassung v861');return pdf.save();
     }
     newPage();
-    return {pdf,colors,draw,wrap,lines,heading,cards,table,offerTotals,amountTotal,signature,room,finish,get y(){return y;},set y(value){y=value;},set context(value){context=value;},margin,content};
+    function invoiceTotals(tax){
+      const rows=[{label:'Nettobetrag',amount:tax.net},...tax.groups.flatMap(group=>[...(tax.groups.length>1?[{label:'Nettobasis '+(group.code==='reverse'?'§ 13b':group.code==='small'||group.code==='exempt'?'steuerfrei':count(group.rate)+' %'),amount:group.net}]:[]),{label:group.code==='reverse'?'Steuer schuldet Empfänger':group.code==='small'||group.code==='exempt'?'Steuerbefreit': 'Umsatzsteuer '+count(group.rate)+' %',amount:group.vat}]),{label:'Rechnungsbetrag',amount:tax.gross,final:true}];
+      const height=rows.length*27+20;room(height+12);const x=margin+content-330,right=margin+content-10,top=y;
+      page.drawRectangle({x,y:top-height,width:330,height,color:colors.pale});
+      rows.forEach((row,index)=>{const text=money(row.amount/100),font=row.final?bold:normal,labelSize=10,available=right-x-24-font.widthOfTextAtSize(safe(row.label),labelSize),size=Math.min(row.final?13:11,available/font.widthOfTextAtSize(safe(text),1)),at=top-23-index*27;
+        if(row.final)page.drawLine({start:{x:x+10,y:at+16},end:{x:right,y:at+16},thickness:1,color:colors.line});
+        draw(row.label,x+10,at,labelSize,font,row.final?colors.teal:colors.ink);draw(text,right-font.widthOfTextAtSize(safe(text),size),at,size,font,row.final?colors.teal:colors.ink);
+      });y-=height+14;
+    }
+    return {pdf,colors,draw,wrap,lines,heading,cards,table,offerTotals,amountTotal,invoiceTotals,signature,room,finish,get y(){return y;},set y(value){y=value;},set context(value){context=value;},margin,content};
   }
   async function createTimeAccount(data){
     const year=data.year,e=await layout(data,'Jahresübersicht '+year.year,'Arbeitsstunden, Urlaub, Krankheit und NRW-Feiertage','Arbeitszeiten und Abwesenheiten');
@@ -130,7 +139,7 @@
       e.lines('Monatssumme: '+hours(month.hours)+' | Krankheit: '+count(month.sickDays)+' Tage | Urlaub genehmigt: '+count(month.approvedDays)+' Tage | Urlaub beantragt: '+count(month.requestedDays)+' Tage | Feiertage: '+month.holidays,{size:8,color:e.colors.muted,gap:12});e.y-=10;
     }
     e.context='';e.heading('Hinweise',85);
-    e.lines('Urlaubssummen zählen Arbeitstage ohne NRW-Feiertage und Krankheit. Krankmeldungen haben bei gleichzeitigem Urlaub Vorrang. Beantragter Urlaub ist noch nicht genehmigt. Tage ohne Arbeitsbuchung erzeugen keine Minusstunden.',{size:8,color:e.colors.muted,gap:12});
+    e.lines('Urlaubssummen zählen die individuell festgelegten Arbeitstage ohne NRW-Feiertage und Krankheit. Die Feiertagssumme zählt nur Feiertage an regelmäßigen Arbeitstagen; weitere NRW-Feiertage werden zur Information angezeigt. Krankmeldungen haben Vorrang. Beantragter Urlaub ist noch nicht genehmigt. Tage ohne Arbeitsbuchung erzeugen keine Minusstunden.',{size:8,color:e.colors.muted,gap:12});
     return e.finish();
   }
   async function createOffer(data){
@@ -148,6 +157,7 @@
     return e.finish();
   }
   async function createInvoice(data){
+    if(!data.tax||data.tax.version!==905||data.tax.lines?.length!==data.items.length)throw new Error('Bitte vor der Rechnungserstellung die Umsatzsteuer prüfen.');
     const e=await layout(data,'Rechnung',data.number,'Rechnungsvorschau - Abrechnung erfolgt separat');
     e.heading('Rechnung an',75);e.lines(data.customer,{size:13,gap:18});
     if(data.address?.length)e.lines(data.address.join('\n'),{gap:13});e.y-=8;
@@ -158,9 +168,11 @@
       e.table(['Mitarbeiter','Von','Bis','Pause','Stunden'],day.periods.map(p=>({numeric:[3,4],cells:[p.name,time(p.start),time(p.end),hours(p.pause),hours(p.hours)]})),[217.28,75,75,74,74]);
     }
     e.context='';e.heading('Leistungen und Material',90);e.context='Leistungen und Material';
-    e.table(['Pos.','Position / Ausführung','Menge','Einheit','Einzelpreis','Gesamt'],data.items.map((item,index)=>({numeric:[0,2,4,5],cells:[String(index+1),[item.name,date(item.date),item.execution,item.description].filter(Boolean).join('\n'),count(item.quantity),item.unit,money(item.price),money(item.quantity*item.price)]})),[32,175,68,44,93,103.28],{numericHeaders:[0,2,4,5],lastRowReserve:72});
-    e.context='';e.amountTotal('Rechnungsbetrag',data.total);
-    e.lines('Die Preise entsprechen dem Stand der ausgewählten Arbeitsscheine. Durch Vorschau, Download oder Drucken werden keine Arbeitsscheine als abgerechnet markiert.',{size:8,color:e.colors.muted,gap:12});
+    e.lines('Einzelpreise '+(data.tax.basis==='net'?'netto':'brutto')+' gemäß Auswahl. Positionsbeträge werden auf Cent gerundet.',{size:8,color:e.colors.muted,gap:12});
+    e.table(['Pos.','Position / Ausführung','Menge','Einheit','Einzelpreis','Gesamt'],data.items.map((item,index)=>{const line=data.tax.lines[index],rule=window.WorktimeInvoiceTax?.rules[line.code];return {numeric:[0,2,4,5],cells:[String(index+1),[item.name,date(item.date),item.execution,item.description,'Steuer: '+(rule?.label||line.rate+' %')].filter(Boolean).join('\n'),count(item.quantity),item.unit,money(item.price),money((data.tax.basis==='net'?line.net:line.gross)/100)]};}),[32,175,68,44,93,103.28],{numericHeaders:[0,2,4,5],lastRowReserve:100});
+    e.context='';const summaryRows=2+data.tax.groups.length*(data.tax.groups.length>1?2:1),notesHeight=data.tax.notes.reduce((sum,note)=>sum+32+e.wrap(note.text+'\nRechtsgrundlage: '+note.law+'\nAngabe des Ausstellers: '+note.detail,e.content,9).length*14,0);e.room(Math.min(500,summaryRows*27+48+notesHeight));e.invoiceTotals(data.tax);
+    for(const note of data.tax.notes){e.heading('Steuerhinweis',65);e.lines(note.text+'\nRechtsgrundlage: '+note.law+'\nAngabe des Ausstellers: '+note.detail,{size:9,gap:14});}
+    e.lines('Vorschau / Download schließen die Abrechnung nicht automatisch ab.',{size:8,color:e.colors.muted,gap:12});
     return e.finish();
   }
   async function createWorkReport(data){
@@ -175,7 +187,7 @@
       if(day.items.length)e.table(['Leistung / Material','Menge','Einheit','Einzelpreis','Gesamt'],day.items.map(item=>({numeric:[1,3,4],cells:[[item.name,item.description].filter(Boolean).join('\n'),count(item.quantity),item.unit,money(item.price),money(item.quantity*item.price)]})),[218,65,45,87,100.28],{numericHeaders:[1,3,4]});
       for(const entry of day.signatures||[])await e.signature(entry.image,entry.signer);
     }
-    e.context='';e.amountTotal('Gesamtsumme',data.total);return e.finish();
+    e.context='';e.amountTotal('Gesamtsumme',data.total);e.lines('Arbeitsnachweis - keine Rechnung. Die Umsatzsteuer wird bei der Rechnungserstellung separat geprüft.',{size:8,color:e.colors.muted,gap:12});return e.finish();
   }
   async function createTimeAccountBundle(data){
     const pdf=await window.PDFLib.PDFDocument.create();

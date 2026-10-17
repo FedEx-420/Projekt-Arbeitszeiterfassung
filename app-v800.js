@@ -2029,6 +2029,14 @@
     reload=async()=>{await reloadBeforeLegalV900();await legalFeature.load();};
     homeView=()=>homeBeforeLegalV900()+legalFeature.setupPanel();
   }
+  const datevFeature=window.WorktimeDatev?.create({root,state,api,allRows,render:()=>render(),escape,isManager,businessId,managerBusiness,today});
+  if(datevFeature){
+    const menuBeforeDatev=menuItems,viewBeforeDatev=viewHtml,reloadBeforeDatev=reload,renderBeforeDatev=render;
+    menuItems=()=>{const items=menuBeforeDatev();if(isManager())items.splice(items.findIndex(row=>row[0]==='settings'),0,['datev','Steuer & DATEV',true]);return items;};
+    viewHtml=()=>state.view==='datev'?datevFeature.view():viewBeforeDatev();
+    reload=async()=>{await reloadBeforeDatev();await datevFeature.load();};
+    render=()=>{datevFeature.afterRender();renderBeforeDatev();};
+  }
   const renderBeforeNavigationV901=render;
   render=()=>{renderBeforeNavigationV901();navigationFeature?.afterRender();};
   // Real PDF snapshots replace the old reflowing HTML popups; no booking/finalization writes.

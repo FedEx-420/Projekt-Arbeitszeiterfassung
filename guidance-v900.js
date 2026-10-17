@@ -1,4 +1,4 @@
-import {helpTopic} from './help-topics-v900.js';
+import {helpTopic} from './help-topics-v900.js?v=907';
 const root=document.getElementById('app');
 const dialog=document.createElement('dialog');dialog.className='field-help-dialog';dialog.setAttribute('aria-label','Hilfe zur Eingabe');document.body.append(dialog);
 let origin=null;

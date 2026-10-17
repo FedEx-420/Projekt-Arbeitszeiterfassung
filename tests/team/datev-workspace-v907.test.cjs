@@ -1,0 +1,24 @@
+// Actual workspace module; no browser automation, production access or DATEV calls.
+const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),crypto=require('node:crypto'),assert=require('node:assert/strict');
+const code=fs.readFileSync(path.join(__dirname,'../../datev-v907.js'),'utf8'),format=require('../../datev-format-v907.js');
+function fixture(){
+ const state={profile:{id:'manager',role:'business'},company:'A'},calls=[],revoked=[],handlers={},urlFiles=[];
+ const datasets={A:{settings:[{revision:1,config:{consultant:'1001',client:'1',fiscal_start:'2026-01-01',account_length:4,chart:'03',posting:'0'}}],bookings:[],exports:[],artifacts:[]},B:{settings:[],bookings:[],exports:[],artifacts:[]}};
+ let override=null;
+ const allRows=async(table,query)=>{calls.push({table,query});const company=new URLSearchParams(query).get('company_id').slice(3),key={company_datev_settings_v907:'settings',datev_bookings_v907:'bookings',datev_exports_v907:'exports',datev_export_artifacts_v907:'artifacts'}[table];return override?override(company,key):structuredClone(datasets[company][key]);};
+ const root={addEventListener(name,fn){handlers[name]=fn;},querySelectorAll:()=>[],querySelector:()=>null},window={WorktimeDatevFormat:format};
+ class FakeFile{constructor(contents,name,opts){this.contents=contents;this.name=name;this.type=opts.type;}}
+ vm.runInNewContext(code,{window,URL:{createObjectURL(file){urlFiles.push(file);return 'blob:synthetic/'+urlFiles.length;},revokeObjectURL(value){revoked.push(value);}},File:FakeFile,atob,crypto:crypto.webcrypto,Uint8Array,Date,Intl,Map,Set,Promise,console});
+ const feature=window.WorktimeDatev.create({root,state,api:async()=>{throw Error('No writes in lifecycle checks');},allRows,render(){},escape:value=>String(value??'').replace(/[<>&"]/g,'_'),isManager:()=>['business','administrator'].includes(state.profile?.role),businessId:()=>state.company,managerBusiness:()=>({company_name:'Testfirma '+state.company}),today:()=> '2026-10-17'});
+ return {state,calls,revoked,handlers,urlFiles,datasets,feature,setOverride(fn){override=fn;}};
+}
+async function main(){let passed=0;const test=async(name,fn)=>{await fn();passed++;console.log('PASS '+name);};
+ await test('Employees and logged-out users make no accounting queries',async()=>{const f=fixture();f.state.profile.role='employee';await f.feature.load();assert.equal(f.calls.length,0);assert.match(f.feature.view(),/Nur die Geschäftsverwaltung/);f.state.profile=null;await f.feature.load();assert.equal(f.calls.length,0);});
+ await test('Every accounting read is explicitly restricted to the current business',async()=>{const f=fixture();await f.feature.load();assert.equal(f.calls.length,4);assert.ok(f.calls.every(c=>c.query.includes('company_id=eq.A')));assert.match(f.feature.view(),/Berater 1001/);});
+ await test('A late response from an old company cannot replace current data',async()=>{const f=fixture(),waiting=[];f.setOverride((company,key)=>company==='A'?new Promise(resolve=>waiting.push(()=>resolve(f.datasets.A[key]))):Promise.resolve(f.datasets.B[key]));const old=f.feature.load();f.state.company='B';await f.feature.load();waiting.forEach(resolve=>resolve());await old;assert.match(f.feature.view(),/Testfirma B/);assert.doesNotMatch(f.feature.view(),/Berater 1001/);});
+ await test('Stored file bytes are used, checked and revoked on company switch',async()=>{const f=fixture(),bytes=Buffer.from('synthetic CSV\r\n');f.datasets.A.exports=[{id:'export-a',period:'2026-10-01',created_at:'2026-10-17T10:00:00Z',settings_revision:1,entries:[]}];f.datasets.A.artifacts=[{export_id:'export-a',filename:'EXTF_Test.csv',content_base64:bytes.toString('base64'),byte_count:bytes.length,sha256:crypto.createHash('sha256').update(bytes).digest('hex')}];await f.feature.load();assert.match(f.feature.view(),/DATEV-Datei herunterladen/);assert.equal(f.urlFiles.length,1);assert.equal(Buffer.from(f.urlFiles[0].contents[0]).toString(),bytes.toString());f.state.company='B';f.feature.afterRender();assert.deepEqual(f.revoked,['blob:synthetic/1']);assert.doesNotMatch(f.feature.view(),/DATEV-Datei herunterladen/);});
+ await test('Corrupted artifact checksums do not produce download links',async()=>{const f=fixture();f.datasets.A.artifacts=[{export_id:'wrong',content_base64:'YQ==',byte_count:1,sha256:'0'.repeat(64)}];await f.feature.load();assert.match(f.feature.view(),/konnte nicht geladen werden/);assert.equal(f.urlFiles.length,0);});
+ await test('Accounting load failures remain isolated and can recover',async()=>{const f=fixture();f.setOverride(()=>Promise.reject(Error('temporary')));await f.feature.load();assert.match(f.feature.view(),/sonstigen Arbeitsdaten sind davon nicht betroffen/);f.setOverride(null);await f.feature.load();assert.match(f.feature.view(),/Berater 1001/);});
+ console.log(JSON.stringify({passed,productionWrites:0,onlineRequests:0}));
+}
+main().catch(error=>{console.error(error.stack);process.exitCode=1;});

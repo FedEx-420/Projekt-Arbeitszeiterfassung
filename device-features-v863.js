@@ -51,7 +51,7 @@
       } else clearField(field);
     }
     const signature=form.querySelector('.signature-pad'), data=form.elements.signature_data?.value;
-    if(signature && (!data?.startsWith('data:image/png;base64,') || data.length<200)) {markField(signature,'Bitte unterschreiben.');missing.push(signature);}
+    if(signature && (!form.elements.work_kind?.value||form.elements.work_kind.value==='customer') && (!data?.startsWith('data:image/png;base64,') || data.length<200)) {markField(signature,'Bitte unterschreiben.');missing.push(signature);}
     else if(signature)clearField(signature);
     form.querySelector(':scope > .form-error-summary')?.remove();
     if(missing.length){const summary=document.createElement('p');summary.className='form-error-summary';summary.setAttribute('role','alert');summary.textContent='Bitte die rot markierten Felder vervollständigen oder korrigieren.';form.prepend(summary);missing[0].scrollIntoView({block:'center'});missing[0].focus({preventScroll:true});}
@@ -260,8 +260,10 @@
     function openScanner(button) {
       if(dialog)return;scanForm=button.parentElement.nextElementSibling?.matches('form')?button.parentElement.nextElementSibling:null;
       const order=button.dataset.order||'';scanFile=null;scanPath='';savedScan=null;scanId=crypto.randomUUID();
-      dialog=document.createElement('dialog');dialog.className='device-dialog';dialog.dataset.order=order;
+      dialog=document.createElement('dialog');dialog.className='device-dialog';dialog.dataset.order=order;dialog.dataset.mail=button.dataset.mail==='yes'?'yes':'';
+      if(dialog.dataset.mail){dialog.dataset.mailScope=button.dataset.mailScope||'';dialog.dataset.mailDraft=button.dataset.mailDraft||'';}
       dialog.innerHTML=`<header><h2>Beleg scannen</h2><button type="button" class="secondary small" data-device-action="scan-close">Schließen</button></header><p class="device-help">Fotografiere den Beleg oder füge eine PDF vom Gerät ein. Auch gescannte PDF-Seiten werden auf deinem Gerät gelesen. Alle Vorschläge bitte prüfen; nichts wird in die Materialliste übernommen.</p><form data-form="receipt-scan"><label>Foto aufnehmen oder auswählen<input name="scan_photo" type="file" accept="image/*" capture="environment"></label><label>PDF vom Gerät einfügen<input name="scan_pdf" type="file" accept="application/pdf,.pdf"></label><p class="device-help">Fotos bis 12 MB · PDF bis 20 MB und 20 Seiten. Mehrseitige PDFs werden vollständig geprüft.</p><img class="scan-preview" hidden alt="Vorschau des ausgewählten Belegs"><p class="scan-file-info" role="status"></p><label class="scan-pdf-options" hidden><input name="scan_force_ocr" type="checkbox"> PDF vollständig per Texterkennung prüfen (langsamer)</label><div class="device-tools"><button type="button" class="secondary" data-device-action="scan-recognize">Text erkennen</button></div><p class="scan-status" role="status"></p><label>Bezeichnung<input name="title" maxlength="160" required placeholder="z. B. Tankbeleg"></label><label>Datum<input name="receipt_date" type="date" required value="${esc(state.date)}"></label><label>Kategorie<select name="category"><option value="fuel">Tankbeleg</option><option value="receipt" ${order?'selected':''}>Quittung</option><option value="training">Schulung</option></select></label><div data-scan-lines>${lineHtml()}</div><button type="button" class="secondary" data-device-action="scan-add-line">Position hinzufügen</button><div class="scan-totals"><label>Brutto gesamt (€)<input name="gross_total" inputmode="decimal"></label><label>Netto gesamt (€)<input name="net_total" inputmode="decimal"></label></div><details><summary>Erkannten Text prüfen</summary><label>Text<textarea name="ocr_text" rows="6" maxlength="30000"></textarea></label></details><p class="device-help">Beim Speichern wird das Originalfoto oder die Original-PDF als privater Beleg hochgeladen. Artikel und Beträge bleiben ausschließlich bei diesem Beleg.${order?' Zugeordnet zum geöffneten Arbeitsschein.':' Neue Arbeitsscheine: Der Beleg wird beim Abschließen mit diesem Formular verbunden.'}</p><button class="primary" type="submit">Geprüften Beleg speichern</button></form>`;
+      if(dialog.dataset.mail){dialog.querySelector('.device-help:last-of-type').textContent='Nach Prüfung wird das Original als Anhang in deine Nachricht übernommen. Erst mit „Nachricht senden“ wird es übertragen. Es werden keine Artikel zur Materialliste hinzugefügt.';dialog.querySelector('button[type="submit"]').textContent='Geprüften Beleg in Nachricht übernehmen';}
       document.body.append(dialog);dialog.showModal();
       dialog.addEventListener('click',handleClick);dialog.addEventListener('submit',handleSubmit);
       dialog.addEventListener('cancel',()=>closeScanner());dialog.addEventListener('change',handlePhoto);
@@ -321,6 +323,16 @@
       const items=[...form.querySelectorAll('.scan-line')].map(line=>({name:line.querySelector('[name="scan_name"]').value.trim(),gross:amount(line.querySelector('[name="scan_gross"]').value),net:amount(line.querySelector('[name="scan_net"]').value)}));
       const numeric=[...form.querySelectorAll('[name="scan_gross"],[name="scan_net"],[name="gross_total"],[name="net_total"]')];
       for(const field of numeric)if(field.value.trim()&&amount(field.value)==null){markField(field,'Bitte einen gültigen Betrag eingeben.');throw Error('Bitte die rot markierten Beträge korrigieren.');}
+      if(dialog.dataset.mail){
+        const context=JSON.stringify([state.session?.user?.id,state.profile?.id,businessId()]),button=root.querySelector('[data-mail="yes"]');
+        if(dialog.dataset.mailScope!==context||!dialog.dataset.mailDraft||button?.dataset.mailDraft!==dialog.dataset.mailDraft)throw Error('Das Konto oder der Nachrichtenentwurf wurde gewechselt. Bitte den Scanner im richtigen Entwurf erneut öffnen.');
+        checkScanFile(scanFile);
+        const scan={title:form.elements.title.value.trim(),receipt_date:form.elements.receipt_date.value,items,gross_total:amount(form.elements.gross_total.value),net_total:amount(form.elements.net_total.value)};
+        root.dispatchEvent(new CustomEvent('worktime:receipt-saved',{detail:{scan,file:scanFile,scope:context,draftId:dialog.dataset.mailDraft}}));
+        announce(dialog.querySelector('.scan-status'),'Beleg geprüft und in den Nachrichtenentwurf übernommen. Fenster schließen, Empfänger prüfen und Nachricht senden.');
+        form.querySelectorAll('input,select,textarea,button').forEach(field=>field.disabled=true);dialog.querySelector('[data-device-action="scan-close"]').disabled=false;
+        return;
+      }
       const actor=state.profile.id,employee=workerId(),order=dialog.dataset.order||null;
       if(!scanPath&&scanFile){const path=`${actor}/receipt-${scanId}-${scanFile.name.replace(/[^a-z0-9._-]/gi,'_')}`;await upload('work-order-documents',path,scanFile);scanPath=path;}
       const payload={id:scanId,business_id:businessId(),employee_id:employee,work_order_id:order,title:form.elements.title.value.trim(),receipt_date:form.elements.receipt_date.value,category:form.elements.category.value,items,gross_total:amount(form.elements.gross_total.value),net_total:amount(form.elements.net_total.value),ocr_text:form.elements.ocr_text.value.slice(0,30000),file_path:scanPath||null,file_name:scanFile?.name||null};

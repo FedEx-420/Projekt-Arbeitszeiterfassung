@@ -1,4 +1,4 @@
-import { withSupabase } from 'npm:@supabase/server'
+import { withSupabase } from 'npm:@supabase/server@1.9.2'
 
 const APP_ORIGIN = 'https://fedex-420.github.io'
 const EMPLOYEE_MENUS = ['time', 'customers', 'orders', 'calendar'] as const
@@ -166,11 +166,11 @@ Deno.serve(withSupabase({ auth: 'user' }, async (request, ctx) => {
 
     const canManageEmployee = (target: Profile) =>
       actor.role === 'administrator' ||
-      (actor.role === 'business' && target.role === 'employee' && target.business_id === actor.id)
+      (actor.role === 'business' && (target.role === 'employee' && target.business_id === actor.id || target.role === 'business' && target.id === actor.id))
 
-    const requireEmployee = async () => {
+    const requireEmployee = async (allowBusiness = false) => {
       const target = await findProfile(payload.employeeId)
-      if (target.role !== 'employee' || !canManageEmployee(target)) return response(request, { error: 'Dieses Mitarbeiterkonto darf nicht verwaltet werden.' }, 403)
+      if (!(target.role === 'employee' || allowBusiness && target.role === 'business') || !canManageEmployee(target)) throw new Error('Dieses Arbeitskonto darf nicht verwaltet werden.')
       return target
     }
 
@@ -275,13 +275,10 @@ Deno.serve(withSupabase({ auth: 'user' }, async (request, ctx) => {
       if (actor.role !== 'administrator') return response(request, { error: 'Nur der Administrator kann Geschäftskonten löschen.' }, 403)
       const business = await findProfile(payload.businessId)
       if (business.role !== 'business') throw new Error('Das ausgewählte Konto ist kein Geschäftskonto.')
-      const { data: workers, error: workersError } = await ctx.supabaseAdmin.from('profiles').select('id').eq('role', 'employee').eq('business_id', business.id)
-      if (workersError) throw workersError
-      for (const worker of workers || []) {
-        await deleteAuthUser(worker.id)
-      }
-      await deleteAuthUser(business.id)
-      return response(request, { ok: true })
+      const { data: deleted, error: deletionError } = await ctx.supabaseAdmin.rpc('delete_account_v908', { p_actor: actor.id, p_target: business.id, p_kind: 'business' })
+      if (deletionError) throw deletionError
+      if (!deleted?.ok) throw new Error('Die vollständige Löschung wurde noch nicht bestätigt. Bitte erneut laden.')
+      return response(request, deleted)
     }
 
     if (action === 'employee-create') {
@@ -313,14 +310,14 @@ Deno.serve(withSupabase({ auth: 'user' }, async (request, ctx) => {
     }
 
     if (action === 'employee-labor-type-update') {
-      const employee = await requireEmployee()
+      const employee = await requireEmployee(true)
       const laborType = cleanLaborType(payload.laborType)
       await updateProfile(employee.id, { labor_type: laborType })
       return response(request, { ok: true, laborType })
     }
 
     if (action === 'employee-vacation-update') {
-      const employee = await requireEmployee()
+      const employee = await requireEmployee(true)
       const vacationAllowance = cleanAllowance(payload.vacationAllowance)
       await updateProfile(employee.id, { vacation_allowance: vacationAllowance })
       return response(request, { ok: true, vacationAllowance })
@@ -340,8 +337,10 @@ Deno.serve(withSupabase({ auth: 'user' }, async (request, ctx) => {
 
     if (action === 'employee-delete') {
       const employee = await requireEmployee()
-      await deleteAuthUser(employee.id)
-      return response(request, { ok: true })
+      const { data: deleted, error: deletionError } = await ctx.supabaseAdmin.rpc('delete_account_v908', { p_actor: actor.id, p_target: employee.id, p_kind: 'employee' })
+      if (deletionError) throw deletionError
+      if (!deleted?.ok) throw new Error('Die Löschung wurde noch nicht bestätigt. Bitte erneut laden.')
+      return response(request, deleted)
     }
 
     if (action === 'self-update') {

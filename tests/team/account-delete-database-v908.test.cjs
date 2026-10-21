@@ -25,7 +25,8 @@ async function main(){
  alter table customers drop constraint customers_employee_id_fkey;
  alter table customers add constraint customers_employee_id_fkey foreign key(employee_id) references profiles(id) on delete cascade;
  alter table time_entries drop constraint time_entries_employee_id_fkey;
- alter table time_entries add constraint time_entries_employee_fk foreign key(employee_id) references profiles(id) on delete cascade;`);
+ alter table time_entries add constraint time_entries_employee_fk foreign key(employee_id) references profiles(id) on delete cascade;
+ alter table storage.objects add column owner uuid;alter table storage.objects add column owner_id text;`);
  for(const filename of ['20261016195754_employee_workweek_v905.sql','20261017153757_business_workflow_core_v908.sql'])await db.exec(fs.readFileSync(path.resolve(__dirname,'../../supabase/migrations',filename),'utf8'));
  await db.exec(`alter table profiles add column company_name text;alter table work_orders add column updated_at timestamptz default now();
  create function app_private.customer_labor_price_v868(p_customer uuid,p_name text,p_price numeric) returns numeric language sql stable set search_path='' as $$select p_price$$;
@@ -60,6 +61,33 @@ async function main(){
   const target=uuid(12);await add(target,'unbilled-worker');await f.actor('business');const order=await f.save({...f.order,employee_id:target},[{key:uuid(13),employee_id:target,start_time:'08:00',end_time:'10:00',pause_hours:0}]);
   await remove(ids.business,target,'employee');await superuser();assert.equal((await db.query('select count(*) n from auth.users where id=$1',[target])).rows[0].n,0);assert.equal((await db.query('select count(*) n from work_orders where id=$1',[order.id])).rows[0].n,0);assert.equal((await db.query('select count(*) n from time_entries where employee_id=$1 or team_work_order_id=$2',[target,order.id])).rows[0].n,0);
  });
+ await test('employee-created shared customers survive deletion with unchanged IDs, details and references',async()=>{
+  const target=uuid(40),customer=uuid(41),plan=uuid(42);await add(target,'customer-creator');await superuser();
+  await db.query('insert into customers(id,employee_id,name,custom_fields) values($1,$2,$3,$4::jsonb)',[customer,target,'Synthetic shared customer',JSON.stringify({email:'synthetic@example.test',street:'Test street'})]);
+  await db.query('insert into appointments(id,employee_id,event_date,customer_id,customer_name) values($1,$2,$3,$4,$5)',[plan,ids.max,'2026-10-20',customer,'Synthetic shared customer']);
+  const before=(await db.query('select to_jsonb(c) data from customers c where id=$1',[customer])).rows[0].data;
+  await remove(ids.business,target,'employee');await superuser();
+  const after=(await db.query('select to_jsonb(c) data from customers c where id=$1',[customer])).rows[0].data;
+  assert.deepEqual(after,{...before,employee_id:ids.business});assert.equal((await db.query('select customer_id from appointments where id=$1',[plan])).rows[0].customer_id,customer);
+ });
+ await test('Storage-owned identities are refused for both ownership columns and ownerless user-prefix paths',async()=>{
+  for(const [index,column] of ['owner','owner_id','path'].entries()){const target=uuid(60+index),object=uuid(70+index);await add(target,'storage-'+column);await superuser();
+   if(column==='path')await db.query('insert into storage.objects(id,bucket_id,name) values($1,$2,$3)',[object,'synthetic',target+'/safe-file.pdf']);
+   else await db.query('insert into storage.objects(id,bucket_id,name,'+column+') values($1,$2,$3,$4)',[object,'synthetic','safe-file-'+column,target]);
+   const before=await snapshot();await assert.rejects(remove(ids.admin,target,'employee'),/gespeicherte Dateien/);assert.deepEqual(await snapshot(),before);
+   await superuser();assert.equal((await db.query('select count(*) n from storage.objects where id=$1',[object])).rows[0].n,1);await db.query('delete from storage.objects where id=$1',[object]);await remove(ids.admin,target,'employee');
+  }
+ });
+ await test('shared planning and documents contributed to other employees cannot be lost by identity deletion',async()=>{
+  const target=uuid(47),plan=uuid(48);await add(target,'shared-plan-worker');await superuser();
+  await db.query('insert into appointments(id,employee_id,event_date,team_employee_ids) values($1,$2,$3,$4::uuid[])',[plan,target,'2026-10-21',[ids.max]]);
+  let before=await snapshot();await assert.rejects(remove(ids.business,target,'employee'),/gemeinsamen Planungen/);assert.deepEqual(await snapshot(),before);
+  await superuser();await db.query('update appointments set employee_id=$1,team_employee_ids=$2::uuid[] where id=$3',[ids.max,[target],plan]);
+  await assert.rejects(remove(ids.business,target,'employee'),/gemeinsamen Planungen/);await superuser();await db.query('delete from appointments where id=$1',[plan]);
+  await f.actor('business');const order=await f.save({...f.order,employee_id:ids.max,work_date:'2026-10-22'},[{key:uuid(49),employee_id:ids.max,start_time:'08:00',end_time:'10:00',pause_hours:0}]);await superuser();
+  await db.query('insert into work_order_documents(work_order_id,employee_id,file_path,file_name) values($1,$2,$3,$4)',[order.id,target,'synthetic/document.pdf','synthetic.pdf']);
+  before=await snapshot();await assert.rejects(remove(ids.business,target,'employee'),/Dokumente/);assert.deepEqual(await snapshot(),before);
+ });
  let issued;
  await test('a real synthetic invoice protects both source employee and another billed team participant',async()=>{
   await f.actor('business');const order=await f.save();const prepared=(await db.query('select public.prepare_invoice_batch_v908($1,$2::jsonb) data',[ids.business,JSON.stringify([order.id])])).rows[0].data;
@@ -78,6 +106,15 @@ async function main(){
   await superuser();await db.exec(`create function app_private.fixture_refuse_auth_delete_v908() returns trigger language plpgsql set search_path='' as $$begin if old.id='${second}'::uuid then raise exception 'Synthetic provider failure';end if;return old;end;$$;create trigger refuse_auth_delete_v908 before delete on auth.users for each row execute function app_private.fixture_refuse_auth_delete_v908();`);
   const before=await snapshot();await assert.rejects(remove(ids.admin,company,'business'),/Synthetic provider failure/);assert.deepEqual(await snapshot(),before);
   await superuser();await db.exec('drop trigger refuse_auth_delete_v908 on auth.users;drop function app_private.fixture_refuse_auth_delete_v908();');
+ });
+ await test('a provider failure rolls employee customer reassignment back with the identity',async()=>{
+  const target=uuid(50),customer=uuid(51);await add(target,'rollback-customer-creator');await superuser();
+  await db.query('insert into customers(id,employee_id,name,custom_fields) values($1,$2,$3,$4::jsonb)',[customer,target,'Synthetic preserved customer',JSON.stringify({city:'Synthetic city'})]);
+  await db.exec(`create function app_private.fixture_refuse_customer_delete_v908() returns trigger language plpgsql as $$begin if old.id='${target}'::uuid then raise exception 'Synthetic customer provider failure';end if;return old;end;$$;create trigger refuse_customer_delete_v908 before delete on auth.users for each row execute function app_private.fixture_refuse_customer_delete_v908();`);
+  const before=await snapshot(),beforeCustomer=(await db.query('select to_jsonb(c) data from customers c where id=$1',[customer])).rows[0].data;
+  await assert.rejects(remove(ids.business,target,'employee'),/Synthetic customer provider failure/);assert.deepEqual(await snapshot(),before);await superuser();
+  assert.deepEqual((await db.query('select to_jsonb(c) data from customers c where id=$1',[customer])).rows[0].data,beforeCustomer);
+  await db.exec('drop trigger refuse_customer_delete_v908 on auth.users;drop function app_private.fixture_refuse_customer_delete_v908();');
  });
  await test('a permitted company deletion removes all its identities atomically and not a foreign company',async()=>{
   const company=uuid(30),first=uuid(31),second=uuid(32);await remove(ids.admin,company,'business');await superuser();

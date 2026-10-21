@@ -24,6 +24,7 @@ begin
     or actor.role not in ('administrator','business')
     or (p_kind='business' and actor.role<>'administrator')
     or (p_kind='employee' and (target.business_id is distinct from company or actor.role<>'administrator' and target.business_id is distinct from actor.id)) then raise exception 'Die Kontoberechtigung wurde inzwischen geändert.' using errcode='42501';end if;
+ if not exists(select 1 from public.profiles where id=company and role='business') then raise exception 'Die Betriebszuordnung ist ungültig. Kein Konto wurde gelöscht.';end if;
  if p_kind='business' then
   if exists(select 1 from public.invoice_batches_v908 where company_id=company) then raise exception 'Dieser Betrieb besitzt ausgestellte Rechnungen. Das Rechnungsarchiv bleibt erhalten; kein Konto wurde gelöscht.';end if;
   perform 1 from public.profiles where id=company or (role='employee' and business_id=company) order by id for update;
@@ -37,9 +38,30 @@ begin
   if exists(select 1 from public.work_orders w where (w.employee_id=target.id or exists(select 1 from jsonb_array_elements(coalesce(w.team_periods,'[]'::jsonb)) p where p->>'employee_id'=target.id::text)) and exists(select 1 from jsonb_array_elements(coalesce(w.team_periods,'[]'::jsonb)) p where p->>'employee_id'<>target.id::text)) then
    raise exception 'Das Arbeitskonto ist an gemeinsamen Arbeitsscheinen beteiligt. Zum Schutz der Zeiten anderer Mitarbeiter wurde nichts gelöscht. Diese Zuordnung muss zuerst geprüft werden.';
   end if;
+  if exists(select 1 from public.appointments a where
+    (a.employee_id=target.id or coalesce(to_jsonb(a)->'team_employee_ids','[]'::jsonb) ? target.id::text)
+    and (a.employee_id<>target.id or exists(select 1 from jsonb_array_elements_text(coalesce(to_jsonb(a)->'team_employee_ids','[]'::jsonb)) p where p<>target.id::text))) then
+   raise exception 'Das Arbeitskonto ist an gemeinsamen Planungen beteiligt. Zum Schutz der anderen Mitarbeiter wurde nichts gelöscht. Die Planung muss zuerst geprüft werden.';
+  end if;
+  if exists(select 1 from public.work_order_documents d join public.work_orders w on w.id=d.work_order_id where d.employee_id=target.id and w.employee_id<>target.id) then
+   raise exception 'Das Arbeitskonto hat Dokumente zu Arbeitsscheinen anderer Mitarbeiter beigetragen. Zum Schutz dieser Unterlagen wurde nichts gelöscht.';
+  end if;
  end if;
  if exists(select 1 from public.work_orders w where coalesce(w.invoiced,false) and w.employee_id=any(targets)) then raise exception 'Abgerechnete Arbeitsscheine bleiben erhalten; kein Konto wurde gelöscht.';end if;
+ -- Storage ownership is not an Auth FK in this project. A direct identity
+ -- deletion must not bypass the Storage ownership refusal of the Auth API.
+ if exists(select 1 from storage.objects o where o.owner=any(targets)
+   or o.owner_id in (select id::text from unnest(targets) id)
+   or pg_catalog.split_part(o.name,'/',1) in (select id::text from unnest(targets) id)) then
+  raise exception 'Zu diesem Zugang gehören gespeicherte Dateien. Kein Konto und keine Datei wurde gelöscht. Die Datei-Zuordnung oder eine Deaktivierung muss zuerst geprüft werden.';
+ end if;
  perform pg_catalog.set_config('app.team_order_rpc','yes',true);
+ -- Customers are shared company records, although older clients stored the
+ -- creating employee as owner. Preserve IDs, details, rates and every foreign
+ -- customer's reference when an employee identity is explicitly removed.
+ if p_kind='employee' then
+  update public.customers set employee_id=company where employee_id=target.id;
+ end if;
  -- Auth users is the documented identity deletion boundary. Sessions and
  -- profile-dependent app rows cascade; a storage/FK/trigger error rolls back
  -- every identity in this transaction, including already visited workers.

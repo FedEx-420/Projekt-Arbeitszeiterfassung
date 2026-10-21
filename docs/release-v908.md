@@ -16,13 +16,13 @@ Dieser Stand erweitert v907. Die sechs zugehörigen Datenbankmigrationen und zwe
 
 ## Nachweis und Grenzen
 
-59 lokale Node-/VM-/PGlite-Testsuiten bestanden, 760 PASS-Prüfzeilen. Dazu synthetische Browserprüfungen auf schmalem Handy, Querformat und Desktop sowie gerenderte, visuell geprüfte Rechnungs-/Storno- und Angebots-PDFs. Keine realen Konten, Aufträge, Nachrichten oder Finanzbuchungen wurden als Test angelegt oder gelöscht. Das ist keine physische iPhone-Prüfung und keine Zusage vollständiger Fehlerfreiheit.
+59 lokale Node-/VM-/PGlite-Testsuiten bestanden, 764 PASS-Prüfzeilen. Dazu synthetische Browserprüfungen auf schmalem Handy, Querformat und Desktop sowie gerenderte, visuell geprüfte Rechnungs-/Storno- und Angebots-PDFs. Keine realen Konten, Aufträge, Nachrichten oder Finanzbuchungen wurden als Test angelegt oder gelöscht. Das ist keine physische iPhone-Prüfung und keine Zusage vollständiger Fehlerfreiheit.
 
 Unterstützte Katalogdateien sind CSV, TSV und einfache JSON-Artikeltabellen, maximal 2 MB und 1000 Artikel. XLSX, DATANORM, ZIP und XML brauchen separate Parser und anonymisierte Musterdateien mit eindeutiger Preis-/Rabattbeschreibung; sie werden nicht als unterstützt ausgegeben.
 
 Persönliche iOS-Automationen und Gerätefreigaben benötigen Bestätigung auf dem jeweiligen iPhone. Ein garantiertes Öffnen bei gesperrtem Gerät oder eine ferngesteuerte Installation wird nicht zugesagt. Die neue Anleitung ist noch kein installierter Kurzbefehl.
 
-Eine Kontolöschung läuft serverseitig vollständig in einer Transaktion oder gar nicht. Ausgestellte Rechnungen beziehungsweise gemeinsame Arbeitsnachweise sperren die Löschung zum Schutz der Historie und anderer Beschäftigter. Eine separate Zugangssperre mit erhaltenem Archiv ist noch nicht implementiert; ein abgewiesener Löschvorgang wird nicht als erfolgreich ausgegeben.
+Eine Kontolöschung läuft serverseitig vollständig in einer Transaktion oder gar nicht. Ausgestellte Rechnungen, gemeinsame Arbeitsnachweise und Planungen sowie beigetragene Unterlagen anderer Beschäftigter sperren die Löschung zum Schutz der Historie. Vom Mitarbeiter angelegte Kunden bleiben mit ihren IDs und Stammdaten im Betrieb erhalten. Gespeicherte Dateien mit Nutzerzuordnung oder Nutzer-Pfad werden nicht durch eine direkte Identitätslöschung verwaist: Die Löschung wird stattdessen klar abgewiesen. Bei einem Fehler wird auch eine Kunden-Neuzuordnung zurückgerollt. Diese zusätzlichen Fälle sind durch 14 synthetische Löschtests abgesichert. Eine separate Zugangssperre mit erhaltenem Archiv ist noch nicht implementiert; ein abgewiesener Löschvorgang wird nicht als erfolgreich ausgegeben.
 
 Die App ist keine steuerliche Beratung, vollständige Finanzbuchhaltung, E-Rechnungs- oder GoBD-Zertifizierung. Originalbelege und ausgestellte Dokumente sind zusätzlich geeignet aufzubewahren. Der DATEV-Dateiexport aus v907 bleibt ein vorbereiteter Übergabeweg; die DATEV-Online-Anbindung ist weiterhin weder implementiert noch verbunden.
 

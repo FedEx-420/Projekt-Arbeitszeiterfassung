@@ -57,6 +57,11 @@
   }
   function mount(){
    const current=ensureScope();
+   for(const button of root.querySelectorAll('[data-action="delete-employee"], [data-action="delete-business"]')){
+    button.disabled=true;button.setAttribute('aria-disabled','true');
+    button.textContent=button.dataset.action==='delete-business'?'Geschäftskonto löschen · pausiert':'Mitarbeiter löschen · pausiert';
+    if(!button.parentElement?.querySelector('[data-account-delete-paused]'))button.insertAdjacentHTML('afterend','<p class="device-help" role="status" data-account-delete-paused>Kontolöschungen sind vorübergehend gesperrt. Konten bleiben aktiv und ihre Daten erhalten. Andere Kontoeinstellungen können weiterhin bearbeitet werden.</p>');
+   }
    for(const form of root.querySelectorAll('form[data-form="worker-rule"]')){if(form.elements.targets_enabled){const noTargets=form.elements.targets_enabled.value==='no',group=form.querySelector('.rule-hours');group.hidden=noTargets;for(const input of group.querySelectorAll('input'))input.disabled=!ready||noTargets;}}
    for(const input of root.querySelectorAll('input[type="password"]')){
     if(input.parentElement.querySelector('[data-core-action="password-eye"]'))continue;

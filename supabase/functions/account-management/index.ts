@@ -1,11 +1,50 @@
-import { withSupabase } from 'npm:@supabase/server'
+import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.118.0'
 
 const APP_ORIGIN = 'https://fedex-420.github.io'
+const ACCOUNT_DELETION_PAUSED = 'Das Löschen von Konten ist vorübergehend pausiert. Es wurden keine Daten und keine Zugänge geändert. Das Konto kann weiterhin verwendet werden.'
 const EMPLOYEE_MENUS = ['time', 'customers', 'orders', 'calendar'] as const
 type EmployeeMenu = typeof EMPLOYEE_MENUS[number]
 type Role = 'administrator' | 'business' | 'employee'
 type LaborType = 'monteur' | 'meister' | 'aushilfe' | 'azubi'
 type Profile = { id: string; username: string; role: Role; business_id: string | null; company_name: string | null; company_logo_path: string | null }
+type AccountContext = { supabaseAdmin: SupabaseClient; userClaims: { id: string } }
+type EnvReader = (name: string) => string | undefined
+
+// Both current hosted keys and the legacy Edge environment are supported.
+// Fail closed for malformed/ambiguous dictionaries rather than selecting an
+// arbitrary key. Neither configuration values nor Auth errors reach clients.
+function environmentKey(read: EnvReader, plural: string, singular: string, legacy: string) {
+  const raw = read(plural)?.trim()
+  if (raw) {
+    let parsed: unknown
+    try { parsed = JSON.parse(raw) } catch { throw new Error('Invalid server configuration') }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('Invalid server configuration')
+    const keys = parsed as Record<string, unknown>
+    if (Object.hasOwn(keys, 'default')) {
+      if (typeof keys.default !== 'string' || !keys.default.trim()) throw new Error('Invalid server configuration')
+      return keys.default.trim()
+    }
+    const values = Object.values(keys)
+    if (values.length === 1 && typeof values[0] === 'string' && values[0].trim()) return values[0].trim()
+    if (values.length) throw new Error('Invalid server configuration')
+  }
+  const key = read(singular)?.trim() || read(legacy)?.trim()
+  if (!key) throw new Error('Missing server configuration')
+  return key
+}
+
+function accountEnvironment(read: EnvReader) {
+  const url = read('SUPABASE_URL')?.trim()
+  if (!url) throw new Error('Missing server configuration')
+  const parsed = new URL(url)
+  const local = ['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname)
+  if ((parsed.protocol !== 'https:' && !(local && parsed.protocol === 'http:')) || parsed.username || parsed.password) throw new Error('Invalid server configuration')
+  return {
+    url,
+    publishableKey: environmentKey(read, 'SUPABASE_PUBLISHABLE_KEYS', 'SUPABASE_PUBLISHABLE_KEY', 'SUPABASE_ANON_KEY'),
+    secretKey: environmentKey(read, 'SUPABASE_SECRET_KEYS', 'SUPABASE_SECRET_KEY', 'SUPABASE_SERVICE_ROLE_KEY'),
+  }
+}
 
 function cors(request: Request) {
   const origin = request.headers.get('origin') || APP_ORIGIN
@@ -79,9 +118,37 @@ function accountEmail(name: string, companyName?: string | null) {
   return companyName?.trim() ? `${username}--${companyKey(companyName.trim())}@arbeitszeit.local` : `${username}@arbeitszeit.local`
 }
 
-Deno.serve(withSupabase({ auth: 'user' }, async (request, ctx) => {
+Deno.serve(async (request: Request) => {
+  const origin = request.headers.get('origin')
+  if (origin && origin !== APP_ORIGIN) return response(request, { error: 'Herkunft nicht erlaubt.' }, 403)
   if (request.method === 'OPTIONS') return new Response('ok', { headers: cors(request) })
   if (request.method !== 'POST') return response(request, { error: 'Methode nicht erlaubt.' }, 405)
+
+  const token = /^Bearer\s+(\S+)\s*$/i.exec(request.headers.get('authorization') || '')?.[1]
+  if (!token) return response(request, { error: 'Anmeldung erforderlich.' }, 401)
+
+  let configuration: ReturnType<typeof accountEnvironment>
+  try { configuration = accountEnvironment(name => Deno.env.get(name)) } catch {
+    return response(request, { error: 'Die Kontoverwaltung ist serverseitig noch nicht vollständig eingerichtet.' }, 500)
+  }
+
+  let ctx: AccountContext
+  try {
+    const options = { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } }
+    const userClient = createClient(configuration.url, configuration.publishableKey, options)
+    // getUser calls this project's Auth server: it verifies legacy HS256 and
+    // current signing-key JWTs, and refuses deleted users. Never decode a JWT
+    // locally or trust editable user_metadata for identity/authorization.
+    const { data, error } = await userClient.auth.getUser(token)
+    if (error || !data.user?.id) return response(request, { error: 'Anmeldung erforderlich.' }, 401)
+    ctx = {
+      userClaims: { id: data.user.id },
+      // This client is never supplied the user's Authorization header.
+      supabaseAdmin: createClient(configuration.url, configuration.secretKey, options),
+    }
+  } catch {
+    return response(request, { error: 'Anmeldung konnte nicht geprüft werden. Bitte erneut anmelden.' }, 401)
+  }
 
   try {
     const payload = await request.json() as Record<string, unknown>
@@ -93,6 +160,14 @@ Deno.serve(withSupabase({ auth: 'user' }, async (request, ctx) => {
       .single()
     if (actorError || !actorRow) return response(request, { error: 'Anmeldung erforderlich.' }, 401)
     const actor = actorRow as Profile
+
+    // A stale frontend must not bypass the user-approved temporary suspension.
+    // No RPC, Auth deletion, cleanup or fallback is attempted for either action.
+    if (action === 'employee-delete' || action === 'business-delete') {
+      const allowed = action === 'business-delete' ? actor.role === 'administrator' : ['administrator', 'business'].includes(actor.role)
+      if (!allowed) return response(request, { error: 'Dieses Konto darf keine Zugänge löschen.' }, 403)
+      return response(request, { error: ACCOUNT_DELETION_PAUSED, code: 'ACCOUNT_DELETION_PAUSED' }, 409)
+    }
 
     const findProfile = async (value: unknown) => {
       const id = typeof value === 'string' ? value : ''
@@ -117,38 +192,6 @@ Deno.serve(withSupabase({ auth: 'user' }, async (request, ctx) => {
       if (error) throw error
     }
 
-    const deleteAuthUser = async (id: string) => {
-      const { error } = await ctx.supabaseAdmin.auth.admin.deleteUser(id)
-      if (error) throw error
-    }
-
-    const findAuthUserByEmail = async (email: string) => {
-      for (let page = 1; page <= 10; page += 1) {
-        const { data, error } = await ctx.supabaseAdmin.auth.admin.listUsers({ page, perPage: 1000 })
-        if (error) throw error
-        const user = data?.users?.find(candidate => String(candidate.email || '').toLocaleLowerCase('de-DE') === email.toLocaleLowerCase('de-DE'))
-        if (user) return user
-        if ((data?.users?.length || 0) < 1000) break
-      }
-      return null
-    }
-
-    const removeOrphanedAuthIdentity = async (email: string) => {
-      const user = await findAuthUserByEmail(email)
-      if (!user) return false
-      const { data: profiles, error } = await ctx.supabaseAdmin
-        .from('profiles')
-        .select('id, role, business_id')
-        .eq('id', user.id)
-      if (error) throw error
-      const profile = profiles?.[0] as Pick<Profile, 'id' | 'role' | 'business_id'> | undefined
-      // An account without a profile, or an employee without a business, is a
-      // disconnected remainder of an earlier deletion. It must not block reuse.
-      if (profile && !(profile.role === 'employee' && !profile.business_id)) return false
-      await deleteAuthUser(user.id)
-      return true
-    }
-
     const createEmployeeAuthUser = async (business: Profile, username: string, password: string) => {
       const email = accountEmail(username, business.company_name?.trim() || business.username)
       const create = () => ctx.supabaseAdmin.auth.admin.createUser({
@@ -158,19 +201,20 @@ Deno.serve(withSupabase({ auth: 'user' }, async (request, ctx) => {
         app_metadata: { app_role: 'employee' },
         user_metadata: { username, display_name: username },
       })
-      let result = await create()
-      if ((result.error || !result.data.user) && /already|exists|registered|duplicate|unique/i.test(result.error?.message || '') && await removeOrphanedAuthIdentity(email)) result = await create()
+      const result = await create()
+      // Never erase an older identity automatically to make a name available.
+      if (result.error && /already|exists|registered|duplicate|unique/i.test(result.error.message || '')) throw new Error('Dieser Benutzername ist in diesem Betrieb bereits belegt. Ein älterer Zugang wird nicht automatisch gelöscht. Bitte den vorhandenen Zugang prüfen oder einen anderen Benutzernamen wählen.')
       if (result.error || !result.data.user) throw result.error || new Error('Das Mitarbeiterkonto konnte nicht angelegt werden.')
       return result.data.user
     }
 
     const canManageEmployee = (target: Profile) =>
       actor.role === 'administrator' ||
-      (actor.role === 'business' && target.role === 'employee' && target.business_id === actor.id)
+      (actor.role === 'business' && (target.role === 'employee' && target.business_id === actor.id || target.role === 'business' && target.id === actor.id))
 
-    const requireEmployee = async () => {
+    const requireEmployee = async (allowBusiness = false) => {
       const target = await findProfile(payload.employeeId)
-      if (target.role !== 'employee' || !canManageEmployee(target)) return response(request, { error: 'Dieses Mitarbeiterkonto darf nicht verwaltet werden.' }, 403)
+      if (!(target.role === 'employee' || allowBusiness && target.role === 'business') || !canManageEmployee(target)) throw new Error('Dieses Arbeitskonto darf nicht verwaltet werden.')
       return target
     }
 
@@ -271,19 +315,6 @@ Deno.serve(withSupabase({ auth: 'user' }, async (request, ctx) => {
       return response(request, { ok: true, companyLogoPath })
     }
 
-    if (action === 'business-delete') {
-      if (actor.role !== 'administrator') return response(request, { error: 'Nur der Administrator kann Geschäftskonten löschen.' }, 403)
-      const business = await findProfile(payload.businessId)
-      if (business.role !== 'business') throw new Error('Das ausgewählte Konto ist kein Geschäftskonto.')
-      const { data: workers, error: workersError } = await ctx.supabaseAdmin.from('profiles').select('id').eq('role', 'employee').eq('business_id', business.id)
-      if (workersError) throw workersError
-      for (const worker of workers || []) {
-        await deleteAuthUser(worker.id)
-      }
-      await deleteAuthUser(business.id)
-      return response(request, { ok: true })
-    }
-
     if (action === 'employee-create') {
       if (!['administrator', 'business'].includes(actor.role)) return response(request, { error: 'Nur Administrator oder Geschäftskonto können Mitarbeiter anlegen.' }, 403)
       const business = await requestedBusiness()
@@ -313,14 +344,14 @@ Deno.serve(withSupabase({ auth: 'user' }, async (request, ctx) => {
     }
 
     if (action === 'employee-labor-type-update') {
-      const employee = await requireEmployee()
+      const employee = await requireEmployee(true)
       const laborType = cleanLaborType(payload.laborType)
       await updateProfile(employee.id, { labor_type: laborType })
       return response(request, { ok: true, laborType })
     }
 
     if (action === 'employee-vacation-update') {
-      const employee = await requireEmployee()
+      const employee = await requireEmployee(true)
       const vacationAllowance = cleanAllowance(payload.vacationAllowance)
       await updateProfile(employee.id, { vacation_allowance: vacationAllowance })
       return response(request, { ok: true, vacationAllowance })
@@ -336,12 +367,6 @@ Deno.serve(withSupabase({ auth: 'user' }, async (request, ctx) => {
       if (payload.laborType !== undefined) changes.labor_type = cleanLaborType(payload.laborType)
       await updateProfile(employee.id, changes)
       return response(request, { ok: true, username })
-    }
-
-    if (action === 'employee-delete') {
-      const employee = await requireEmployee()
-      await deleteAuthUser(employee.id)
-      return response(request, { ok: true })
     }
 
     if (action === 'self-update') {
@@ -383,4 +408,4 @@ Deno.serve(withSupabase({ auth: 'user' }, async (request, ctx) => {
     const message = error instanceof Error ? error.message : 'Die Änderung konnte nicht gespeichert werden.'
     return response(request, { error: message }, /already|bereits|unique/i.test(message) ? 409 : 400)
   }
-}))
+})

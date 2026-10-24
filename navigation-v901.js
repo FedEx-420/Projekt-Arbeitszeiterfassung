@@ -32,6 +32,7 @@
         const link = [route, remaining.get(route)]; remaining.delete(route); return link;
       });
       if (!links.length) return null;
+      if(id==='work'&&links.length===1&&links[0][0]==='orders'){label=links[0][1];description='Kundenaufträge und interne Tätigkeiten';}
       if (id === 'office' && links.length === 1 && links[0][0] === 'mailbox') {
         label = 'Postfach'; description = 'Nachrichten und Anhänge';
       }

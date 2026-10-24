@@ -7,7 +7,7 @@
   const key = String(cfg.supabasePublishableKey || '');
   const root = document.getElementById('app');
   const storage = 'zeiterfassung-v800-session';
-  const today = () => new Date().toISOString().slice(0, 10);
+  const today = () => new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Berlin',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
   const state = {
     session: null, profile: null, people: [], view: 'home', date: today(), month: today().slice(0, 7),
     businessId: '', businessBrand: null, employeeId: '', customerId: '', customerSearch: '', materialId: '', orderId: '', timeEntryId: '', orderCustomer: '', orderOrigin: 'orders', billingKey: '', billingMode: 'open', menu: false, vacationForm: false, appointmentForm: false, composeMessage: false, mailboxFolder: 'received', notice: null, busy: false,
@@ -237,7 +237,7 @@
   function workers() {
     if (!state.profile) return [];
     if (!isManager()) return [state.profile];
-    return state.people.filter(person => person.role === 'employee' && same(person.business_id, businessId()));
+    return state.people.filter(person => person.role === 'business' && same(person.id,businessId()) || person.role === 'employee' && same(person.business_id, businessId())).sort((a,b)=>Number(b.role==='business')-Number(a.role==='business')||personName(a).localeCompare(personName(b),'de'));
   }
   function worker() { return workers().find(person => same(person.id, state.employeeId)) || workers()[0] || state.profile; }
   function workerId() { return worker()?.id || ''; }
@@ -285,7 +285,8 @@
   function isWorkingDay(id,date) { const schedule=(state.rows.workweeks||[]).filter(row=>same(row.employee_id,id)&&row.effective_from<=date).sort((a,b)=>b.effective_from.localeCompare(a.effective_from))[0]; return (schedule?.weekdays||[1,2,3,4,5]).includes(new Date(date+'T12:00:00Z').getUTCDay()||7); }
   function vacationEligible(id,date) { return isWorkingDay(id,date)&&!nrwHoliday(date)&&!sick(id,date); }
   function vacationRequestCount(request) { let count=0;if(!reportDateValid(request.start_date)||!reportDateValid(request.end_date)||request.end_date<request.start_date)return 0;for(let date=request.start_date;date<=request.end_date;date=addDate(date,1))if(vacationEligible(request.employee_id,date))count++;return count; }
-  function dueHours(date,id=workerId()) { if (nrwHoliday(date)||!isWorkingDay(id,date)) return 0; return new Date(date+'T12:00:00Z').getUTCDay()===5?5:8; }
+  function hasTargets(id=workerId(),date=state.date) { return window.WorktimeBusinessRules?.mode(state.rows.timeRules||[],id,date)!==false; }
+  function dueHours(date,id=workerId()) { if (nrwHoliday(date)||!isWorkingDay(id,date)||!hasTargets(id,date)) return 0; const rule=window.WorktimeBusinessRules?.at(state.rows.timeRules||[],id,date);return rule?n(rule.target_hours[(new Date(date+'T12:00:00Z').getUTCDay()||7)-1]):new Date(date+'T12:00:00Z').getUTCDay()===5?5:8; }
   function sick(id = workerId(), date = state.date) { return state.rows.days.some(row => same(row.employee_id, id) && row.work_date === date && n(row.sick) > 0); }
   function vacation(id = workerId(), date = state.date) { return vacationEligible(id,date)&&state.rows.vacations.find(row => same(row.employee_id, id) && row.status === 'approved' && row.start_date <= date && row.end_date >= date); }
   function locked(id = workerId(), date = state.date) { return sick(id, date) || vacation(id, date) || Boolean(nrwHoliday(date)); }
@@ -317,7 +318,7 @@
   function appView() {
     const title = managerBusiness()?.company_name || 'Zeiterfassung';
     const headerLogo = companyLogoUrl(managerBusiness()), roleName = isAdmin() ? 'Administrator' : isBusiness() ? 'Geschäftsleitung' : 'Mitarbeiter';
-    const current = state.view === 'order-detail' ? (['invoices','invoices-paid','customers','planning'].includes(state.orderOrigin) ? state.orderOrigin : 'orders') : state.view === 'billing-detail' ? (state.billingMode === 'paid' ? 'invoices-paid' : 'invoices') : state.view;
+    const current = state.view === 'invoice-draft'?'invoices':state.view === 'order-detail' ? (['invoices','invoices-paid','customers','planning'].includes(state.orderOrigin) ? state.orderOrigin : 'orders') : state.view === 'billing-detail' ? (state.billingMode === 'paid' ? 'invoices-paid' : 'invoices') : state.view;
     const items = menuItems(), navigation = window.WorktimeNavigation?.markup({items,current,open:state.menu}) || `<button type="button" class="menu-toggle" data-action="menu" aria-expanded="${state.menu}">Menü ⌄</button>${state.menu ? `<section class="app-menu-sheet"><header><b>Menü auswählen</b><button type="button" class="secondary small" data-action="menu">Schließen</button></header><nav>${items.map(([id,text])=>`<button type="button" data-action="nav" data-view="${id}" class="${current===id?'active':''}">${text}</button>`).join('')}<hr><button type="button" data-action="logout">Abmelden</button></nav></section>` : ''}`;
     const context = `<section class="workspace-context" aria-label="Aktueller Bereich und Arbeitskonto"><div class="workspace-location"><span aria-hidden="true"></span><strong>${escape(window.WorktimeNavigation?.currentLabel(items,current) || 'Übersicht')}</strong></div>${selector()}</section>`;
     return `<div class="app-shell"><header class="topbar"><div class="brand-identity">${headerLogo ? `<img src="${escape(headerLogo)}" alt="Firmenlogo von ${escape(title)}">` : '<div class="brand-mark" aria-hidden="true">ZE</div>'}<div class="brand-caption"><h1>${escape(title)}</h1><p>${escape(state.profile?.username || '')} · ${roleName}</p></div></div><div class="top-actions">${navigation}</div></header><main class="content">${context}${viewHtml()}${noticeHtml()}</main></div>`;
@@ -334,7 +335,7 @@
       ...manualEntries.map(row => `<article class="row-card"><button type="button" class="row-main" data-action="open-time" data-id="${row.id}"><b>${escape(row.customer_name || 'Ohne Kunde')}</b><span>${timeText(row.start_time)} – ${timeText(row.end_time)} · Zeiterfassung öffnen</span></button></article>`)
     ].join('');
     const activities = activityCards ? `<section class="list-section"><h3>Kunden des ausgewählten Tages</h3>${activityCards}</section>` : '';
-    return `${companyBanner}<section class="page-head"><div><span class="eyebrow">Willkommen, ${escape(worker()?.username || '')}</span><h2>${dateText(state.date)}</h2></div>${dayPicker()}</section><section class="stat-grid"><article><span>Überstunden ${state.date.slice(0, 4)}</span><strong class="${extra > 0 ? 'positive' : extra < 0 ? 'negative' : ''}">${extra ? h(extra) : '—'}</strong></article><article><span>Urlaub übrig</span><strong>${vacationLeft(id)} Tage</strong></article><article><span>Krankheitstage</span><strong>${annualSick(id)} Tage</strong></article></section><section class="panel"><h3>Ausgewählter Arbeitstag</h3><p>${locked(id) ? lockedText(id) : dayEntries(id).length ? `${h(dayHours(id))} Arbeitszeit erfasst.` : 'Für diesen Tag wurde noch keine Arbeitszeit erfasst.'}</p></section>${activities}`;
+    return `${companyBanner}<section class="page-head"><div><span class="eyebrow">Willkommen, ${escape(worker()?.username || '')}</span><h2>${dateText(state.date)}</h2></div>${dayPicker()}</section><section class="stat-grid"><article><span>Überstunden ${state.date.slice(0, 4)}</span><strong class="${extra > 0 ? 'positive' : extra < 0 ? 'negative' : ''}">${extra ? h(extra) : '—'}</strong></article><article><span>Urlaub übrig</span><strong>${vacationLeft(id)} Tage</strong></article><article><span>Krankheitstage</span><strong>${annualSick(id)} Tage</strong></article></section><section class="panel"><h3>Ausgewählter Arbeitstag</h3><p>${locked(id) ? lockedText(id) : dayHours(id)>0 ? `${h(dayHours(id))} Arbeitszeit erfasst beziehungsweise gutgeschrieben.` : 'Für diesen Tag wurde noch keine Arbeitszeit erfasst.'}</p></section>${activities}`;
   }
   function timeInput(name, value) { return `<input name="${name}" type="time" step="900" value="${value || ''}">`; }
   function customerList() { return `<datalist id="customers">${state.rows.customers.map(row => `<option value="${escape(row.name)}"></option>`).join('')}</datalist>`; }
@@ -372,7 +373,7 @@
     const items = state.rows.items.filter(item => same(item.work_order_id, order.id) && !isHourlyMaterial(item.position_name));
     const documents = state.rows.documents.filter(document => same(document.work_order_id, order.id));
     const rows = items.length ? items.map(materialRow).join('') : materialRow();
-    const invoiceButton = isManager() && !order.invoiced ? `<button type="button" class="primary small" data-action="invoice-order" data-id="${order.id}">Rechnung erstellen</button><button type="button" class="secondary small" data-action="mark-invoice-order" data-id="${order.id}">Als abgerechnet markieren</button>` : order.invoiced ? '<span class="badge">Bereits abgerechnet</span>' : '';
+    const invoiceButton = isManager() && !order.invoiced && (!order.work_kind||order.work_kind==='customer') ? `<button type="button" class="primary small" data-action="invoice-order" data-id="${order.id}">Rechnung erstellen</button><button type="button" class="secondary small" data-action="mark-invoice-order" data-id="${order.id}">Als abgerechnet markieren</button>` : order.invoiced ? '<span class="badge">Bereits abgerechnet</span>' : '';
     return `<section class="panel"><div class="page-head"><div><span class="eyebrow">Arbeitsschein bearbeiten</span><h3>${escape(order.customer_name || 'Ohne Kunde')}</h3></div><div class="actions">${invoiceButton}<button type="button" class="secondary small" data-action="order-pdf" data-id="${order.id}">PDF drucken / speichern</button><button type="button" class="danger small" data-action="delete-order" data-id="${order.id}">Arbeitsschein löschen</button><button type="button" class="secondary small" data-action="close-order">Schließen</button></div></div><form data-form="order-edit" class="entry-form"><input type="hidden" name="id" value="${order.id}">${orderDatePicker(order.work_date)}<label class="wide">Kunde<input name="customer" required list="customers" value="${escape(order.customer_name || '')}"></label><label class="wide">Beschreibung<input name="title" value="${escape(order.title || '')}"></label><div class="wide" id="material-lines">${rows}</div><button type="button" class="secondary wide" data-action="more-material">Weiteres Material</button>${teamEnabled() ? '' : `<p class="wide">Arbeitsstunden werden beim Speichern automatisch als <b>${escape(hourlyNameForEmployee(order.employee_id))}</b> mit dem Preis aus der Materialliste ergänzt.</p>`}${teamOrderTimeFields(order.employee_id,orderPeriods(order),`<label>Arbeitsbeginn${timeInput('start', order.start_time?.slice(0, 5))}</label><label>Arbeitsende${timeInput('end', order.end_time?.slice(0, 5))}</label><label>Pause in Stunden<input name="pause" type="number" min="0" step="0.25" value="${n(order.pause_hours)}"></label><label>Ausgeführte Stunden<input name="hours" type="number" min="0.25" step="0.25" value="${n(order.executed_hours)}" required></label>`)}${noteTemplates()}<label class="wide">Notiz / Dokumentation<textarea name="documentation" rows="4">${escape(order.documentation || '')}</textarea></label><label class="wide">Weitere Dokumente hochladen<input name="documents" type="file" multiple accept="image/*,.pdf,.doc,.docx"></label>${documents.length ? `<p class="wide">Vorhandene Dokumente: ${documents.map(document => escape(document.file_name)).join(', ')}</p>` : ''}${signatureFields(order)}<button class="primary wide" data-signature-submit>Änderungen speichern</button></form>${customerList()}${materialList()}</section>`;
   }
   function orderDetailView() { const order = state.rows.orders.find(row => same(row.id, state.orderId)); return order ? orderEditor(order) : `<section class="panel"><h2>Arbeitsschein nicht gefunden</h2><p>Der Arbeitsschein ist nicht mehr verfügbar.</p><button type="button" class="secondary" data-action="close-order">Zurück</button></section>`; }
@@ -507,10 +508,10 @@
       : '';
     return '<section class="page-head"><div><span class="eyebrow">Material</span><h2>Materialliste</h2></div></section>' + hourlyCards + '<section class="panel"><h3>Neues Material</h3><form data-form="material" class="entry-form"><label>Artikel<input name="name" required></label><label>Preis in €<input name="price" type="number" min="0" step="0.01" value="0"></label>' + unitSelect('unit','Stk') + '<button class="primary">Artikel speichern</button></form></section><section class="list-section"><h3>Vorhandene Materialien</h3>' + list + '</section>' + editor;
   }
-  function orderInCurrentBusiness(order) { return same(state.rows.people.find(person => same(person.id, order.employee_id))?.business_id, businessId()); }
+  function orderInCurrentBusiness(order) { const person=state.rows.people.find(person=>same(person.id,order.employee_id))||teamEmployees().find(person=>same(person.id,order.employee_id));return Boolean(person)&&same(person.role==='business'?person.id:person.business_id,businessId()); }
   function invoiceGroups(invoiced) {
     const groups = {};
-    state.rows.orders.filter(row => orderInCurrentBusiness(row) && Boolean(row.invoiced) === invoiced).forEach(row => { const key = row.customer_id || `name:${lower(row.customer_name || 'Ohne Kunde')}`; (groups[key] ||= { key, customerName: row.customer_name || 'Ohne Kunde', orders: [] }).orders.push(row); });
+    state.rows.orders.filter(row => orderInCurrentBusiness(row) && (!row.work_kind||row.work_kind==='customer') && Boolean(row.invoiced) === invoiced).forEach(row => { const key = !invoiced&&row.invoice_reopened_from_v908?'reopened:'+row.id:row.customer_id || `name:${lower(row.customer_name || 'Ohne Kunde')}`; (groups[key] ||= { key, customerName: row.customer_name || 'Ohne Kunde', orders: [] }).orders.push(row); });
     return Object.values(groups).map(group => ({ ...group, hours: group.orders.reduce((sum, row) => sum + orderHours(row), 0) })).sort((a, b) => String(a.customerName).localeCompare(String(b.customerName), 'de'));
   }
   let billingSelectionScope = '', billingSelections = new Map();
@@ -527,7 +528,7 @@
     return selected;
   }
   function billingListView(invoiced) {
-    const groups = invoiceGroups(invoiced), title = invoiced ? 'Abgerechnete Arbeitsscheine' : 'Abrechnungen Kunden';
+    const groups = invoiceGroups(invoiced), title = invoiced ? 'Erstellte Rechnungen' : 'Noch offene Arbeitsscheine';
     const empty = invoiced ? 'Noch keine Arbeitsscheine abgerechnet.' : 'Alle Arbeitsscheine sind abgerechnet.';
     return `<section class="page-head"><div><span class="eyebrow">Abrechnung</span><h2>${title}</h2></div></section><section class="list-section">${groups.map(group => `<article class="row-card"><button type="button" class="row-main" data-action="open-billing" data-key="${escape(group.key)}" data-mode="${invoiced ? 'paid' : 'open'}"><b>${escape(group.customerName)}</b><span>${group.orders.length} ${invoiced ? 'abgerechnete' : 'offene'} Arbeitsscheine · ${h(group.hours)} · Zusammengefasst öffnen</span></button></article>`).join('') || `<p class="empty">${empty}</p>`}</section>`;
   }
@@ -541,7 +542,7 @@
     return `<section class="page-head"><div><span class="eyebrow">${invoiced ? 'Bereits abgerechnet' : 'Ein gemeinsamer offener Arbeitsschein'}</span><h2>${escape(group.customerName)}</h2><p>${group.orders.length} zusammengefügte Einträge · ${h(total)}</p></div><div class="actions">${invoiced ? '' : '<button type="button" class="primary" data-action="invoice-group">Rechnung erstellen</button><button type="button" class="secondary" data-action="mark-invoice-group">Als abgerechnet markieren</button>'}<button type="button" class="secondary" data-action="billing-pdf">Arbeitsnachweis als PDF</button><button type="button" class="secondary" data-action="close-billing">Zurück</button></div></section><section class="panel"><h3>Gesamter Arbeitsschein</h3>${combinedDetails}</section>`;
   }
 
-  function permissionFields(person) { return [['time','Zeiterfassung'],['customers','Kunden'],['orders','Arbeitsscheine'],['calendar','Kalender']].map(([id, title]) => `<label><input type="checkbox" name="perm-${id}" ${person?.menu_permissions?.[id] !== false ? 'checked' : ''}> ${title}</label>`).join(''); }
+  function permissionFields(person) { return [['customers','Kunden'],['orders','Arbeitsscheine'],['calendar','Kalender']].map(([id, title]) => `<label><input type="checkbox" name="perm-${id}" ${person?.menu_permissions?.[id] !== false ? 'checked' : ''}> ${title}</label>`).join(''); }
   function settingsView() {
     if (!isManager()) return `<section class="page-head"><div><span class="eyebrow">Mein Konto</span><h2>Einstellungen</h2></div></section><section class="panel"><p>Benutzername und Passwort werden durch die Geschäftsverwaltung festgelegt.</p><button type="button" class="secondary" data-action="pdf">Daten als PDF drucken</button></section>`;
     const person = worker(), business = managerBusiness();
@@ -714,6 +715,7 @@
     await remove('work_orders', `id=eq.${encodeURIComponent(id)}`);
   }
   function signatureValues(form) {
+    if(form.elements.work_kind?.value && form.elements.work_kind.value!=='customer'){if(!teamEnabled())throw new Error('Die Auftragsfunktion ist momentan nicht vollständig geladen. Bitte aktualisieren, bevor eine interne Tätigkeit gespeichert wird.');return {signed_by:'',signature_data:''};}
     const signedBy = String(form.elements.signed_by?.value || '').trim(), signatureData = String(form.elements.signature_data?.value || '');
     if (!signedBy) throw new Error('Bitte eintragen, wer unterschrieben hat.');
     if (!signatureData.startsWith('data:image/png;base64,') || signatureData.length < 200) throw new Error('Bitte zuerst im Unterschriftsfeld unterschreiben.');
@@ -723,7 +725,7 @@
   function syncSignatureSubmit(form) {
     if (!form) return;
     const button = form.querySelector('[data-signature-submit]'), signedBy = String(form.elements.signed_by?.value || '').trim(), signatureData = String(form.elements.signature_data?.value || '');
-    if (button) { button.disabled = state.busy; button.dataset.signatureReady=String(!!signedBy && signatureData.startsWith('data:image/png;base64,') && signatureData.length >= 200); }
+    if (button) { button.disabled = state.busy; button.dataset.signatureReady=String((form.elements.work_kind?.value&&form.elements.work_kind.value!=='customer')||!!signedBy && signatureData.startsWith('data:image/png;base64,') && signatureData.length >= 200); }
     if(signatureData.startsWith('data:image/png;base64,') && signatureData.length>=200){const canvas=form.querySelector('.signature-pad');canvas?.classList.remove('field-error');canvas?.removeAttribute('aria-invalid');canvas?.parentElement.querySelector(':scope > .field-error-note')?.remove();}
   }
   function clearSignaturePad(canvas) {
@@ -832,7 +834,7 @@
   }
   async function saveOrder(form) { const id = workerId(); if (locked(id)) throw new Error(lockedText(id)); const customer = await ensureCustomer(form.elements.customer.value, id); const value = timeValues(form), signature = signatureValues(form); const created = await write('work_orders', { employee_id: id, work_date: state.date, customer_id: customer.id, customer_name: customer.name, title: String(form.elements.title.value || '').trim(), start_time: value.start, end_time: value.end, pause_hours: value.pause, executed_hours: value.hours, calculation_mode: 'end_time', documentation: String(form.elements.documentation.value || ''), ...signature }); const order = created?.[0]; if (!order) throw new Error('Der Arbeitsschein konnte nicht gespeichert werden.'); await saveMaterials(form, order); await saveHourlyMaterial(order, value.hours); await saveDocuments(form, order, id); state.orderCustomer = ''; }
   async function updateOrder(form) { if (teamEnabled() || state.rows.orders.find(row => same(row.id, form.elements.id.value))?.team_periods?.length) return saveTeamOrder(form, state.rows.orders.find(row => same(row.id, form.elements.id.value))); const order = state.rows.orders.find(row => same(row.id, form.elements.id.value)); if (!order) throw new Error('Der Arbeitsschein wurde nicht gefunden.'); const id = order.employee_id, workDate = form.elements.work_date.value || order.work_date; if (workDate !== order.work_date && locked(id, workDate)) throw new Error(lockedText(id, workDate)); const customer = await ensureCustomer(form.elements.customer.value, id), value = timeValues(form), signature = signatureValues(form); const changes = { customer_id: customer.id, customer_name: customer.name, title: String(form.elements.title.value || '').trim(), start_time: value.start, end_time: value.end, pause_hours: value.pause, executed_hours: value.hours, calculation_mode: 'end_time', documentation: String(form.elements.documentation.value || ''), ...signature }; if (workDate !== order.work_date) changes.work_date = workDate; await write('work_orders', changes, 'PATCH', `id=eq.${encodeURIComponent(order.id)}`); await saveMaterials(form, order, true); await saveHourlyMaterial(order, value.hours); await saveDocuments(form, order, id); state.orderId = ''; state.view = state.orderOrigin || 'orders'; }
-  function permissions(form) { return Object.fromEntries(['time', 'customers', 'orders', 'calendar'].map(name => [name, form.elements[`perm-${name}`]?.checked !== false])); }
+  function permissions(form) { return {time:form.dataset.form==='employee-permissions'?worker()?.menu_permissions?.time!==false:true,...Object.fromEntries(['customers', 'orders', 'calendar'].map(name => [name, form.elements[`perm-${name}`]?.checked !== false]))}; }
   async function saveCustomer(form) { const id = String(form.elements.id.value || ''); const custom = Object.fromEntries(['first_name','street','house_no','city','postal_code','phone_private','phone_mobile','email'].map(name => [name, String(form.elements[name].value || '').trim()])); String(form.elements.extra.value || '').split('\n').map(value => value.trim()).filter(Boolean).forEach((value, index) => { custom[`extra_${index + 1}`] = value; }); const data = { name: String(form.elements.name.value || '').trim(), custom_fields: custom }; if (!data.name) throw new Error('Bitte einen Kundennamen eingeben.'); if (id) await write('customers', data, 'PATCH', `id=eq.${encodeURIComponent(id)}`); else await write('customers', { ...data, employee_id: workerId() }); state.customerId = ''; }
 
   function revealCustomerProfile() {
@@ -993,8 +995,9 @@
     if (action === 'restore-mail') return perform('Nachricht wurde wiederhergestellt.', () => write('mailbox_messages', { deleted_at: null }, 'PATCH', `id=eq.${encodeURIComponent(button.dataset.id)}`));
     if (action === 'vacation-decision') return perform('Urlaubsantrag wurde entschieden.', async () => { await flow('decide', { requestId: button.dataset.request, status: button.dataset.status }); await write('mailbox_messages', { read_at: new Date().toISOString() }, 'PATCH', `id=eq.${encodeURIComponent(button.dataset.id)}`); });
     if (action === 'sick') return perform(sick() ? 'Krankheitstag wurde entfernt.' : 'Krankheitstag wurde eingetragen.', async () => { const existing = state.rows.days.find(row => same(row.employee_id, workerId()) && row.work_date === state.date); if (sick()) { if (!isManager()) throw new Error('Krankheitstage können nur durch die Verwaltung entfernt werden.'); if (existing) await remove('work_days', `employee_id=eq.${encodeURIComponent(workerId())}&work_date=eq.${state.date}`); } else await api('/rest/v1/work_days?on_conflict=employee_id,work_date', { method: 'POST', body: { employee_id: workerId(), work_date: state.date, sick: 1, vacation: n(existing?.vacation) }, headers: { Prefer: 'resolution=merge-duplicates,return=representation' } }); });
-    if (action === 'delete-employee') return confirm('Mitarbeiterkonto wirklich löschen?') && perform('Mitarbeiterkonto wurde gelöscht.', () => account('employee-delete', { employeeId: button.dataset.id }));
-    if (action === 'delete-business') return confirm('Geschäftskonto inklusive Mitarbeiter wirklich löschen?') && perform('Geschäftskonto wurde gelöscht.', () => account('business-delete', { businessId: button.dataset.id }));
+    if (action === 'delete-employee' || action === 'delete-business') {
+      notice('Kontolöschungen sind vorübergehend pausiert. Bestehende Konten bleiben aktiv; es wurden keine Daten geändert.', true); render(); return;
+    }
   });
 
   root.addEventListener('input', event => {
@@ -1164,15 +1167,20 @@
   function recordedPeriods(id = workerId(), date = '') {
     const entries = effectiveTimeEntries(id, date);
     const orders = state.rows.orders.filter(order => orderForEmployee(order,id) && (!date || order.work_date === date)).flatMap(order => orderPeriods(order).filter(period => same(period.employee_id,id) && !entries.some(entry => (period.key ? same(entry.team_work_order_id,order.id) && same(entry.team_period_key,period.key) : same(entry.work_order_id,order.id)) || sameWorkTime(entry,{...order,...period}))).map(period => ({...order,...period,id:`work-order-${order.id}-${period.key || 'single'}`,work_order_id:order.id})));
-    return [...entries, ...orders];
+    return [...entries, ...orders, ...schoolPeriods(id,date)];
+  }
+  function schoolPeriods(id=workerId(),date='') {
+    const rules=state.rows.schoolRules||[];if(!rules.length||!window.WorktimeBusinessRules)return [];
+    const first=rules.filter(row=>same(row.employee_id,id)).map(row=>row.effective_from).sort()[0];if(!first)return [];
+    const entries=[],end=date||today();for(let from=date||first;from<=end;){const to=from.slice(0,4)+'-12-31'<end?from.slice(0,4)+'-12-31':end;entries.push(...window.WorktimeBusinessRules.schoolEntries({schedules:rules,employee:id,from,to,today:today(),holiday:nrwHoliday,absent:day=>sick(id,day)||state.rows.vacations.some(row=>same(row.employee_id,id)&&row.status==='approved'&&row.start_date<=day&&row.end_date>=day)||state.rows.days.some(row=>same(row.employee_id,id)&&row.work_date===day&&n(row.vacation)>0)}));from=addDate(to,1);}return entries;
   }
   function dayHours(id = workerId(), date = state.date) { return recordedPeriods(id, date).reduce((sum, row) => sum + n(row.executed_hours), 0); }
   function overtime(id = workerId()) {
     const year = state.date.slice(0, 4), days = new Map();
     recordedPeriods(id).filter(row => String(row.work_date || '').startsWith(year)).forEach(row => days.set(row.work_date, n(days.get(row.work_date)) + n(row.executed_hours)));
-    return [...days].reduce((sum, [date, hours]) => sum + hours - dueHours(date,id), 0);
+    return [...days].reduce((sum, [date, hours]) => sum + (hasTargets(id,date)?hours - dueHours(date,id):0), 0);
   }
-  function reportOvertime(entries,id=workerId()) { const days = new Map(); entries.forEach(row => days.set(row.work_date, n(days.get(row.work_date)) + n(row.executed_hours))); return [...days].reduce((sum, [date, hours]) => sum + hours - dueHours(date,id), 0); }
+  function reportOvertime(entries,id=workerId()) { const days = new Map(); entries.forEach(row => days.set(row.work_date, n(days.get(row.work_date)) + n(row.executed_hours))); return [...days].reduce((sum, [date, hours]) => sum + (hasTargets(id,date)?hours - dueHours(date,id):0), 0); }
   function receiptTabs(selected) { return [['fuel','Tankbelege'],['vacations','Urlaubsanträge'],['sick','Krankmeldungen'],['training','Schulungstage']].map(([id,title]) => `<button type="button" class="${id === selected ? 'primary' : 'secondary'} small" data-action="receipt-section" data-section="${id}">${title}</button>`).join(''); }
   function receiptsView() {
     const id = workerId(), section = state.receiptSection || 'fuel';
@@ -1663,7 +1671,7 @@
     if (!saved?.length) throw new Error('Der Auftrag konnte nicht gespeichert werden. Bitte die Berechtigung prüfen.');
     state.planId = ''; state.planForm = false;
     state.planWeek = planningWeekStart(eventDate); state.planSaveWarning = '';
-    for (const recipientId of [employeeId,...participantIds].filter(member => !same(member,state.profile?.id))) {
+    for (const recipientId of (window.WorktimeMailbox ? [] : [employeeId,...participantIds].filter(member => !same(member,state.profile?.id)))) {
       const person = teamPerson(recipientId);
       const action = id ? 'wurde geändert' : 'wurde geplant';
       try { await api('/functions/v1/mailbox-send', { method: 'POST', body: { action: 'send', recipientId, title: `Geplanter Auftrag: ${customer.name}`.slice(0, 160), message: `Hallo ${personName(person)},\n\nder Auftrag „${title}“ bei ${customer.name} am ${dateText(eventDate)} von ${start} bis ${end} Uhr ${action}.\nStatus: ${planningStatusText(meta.status)}.\n\nBitte prüfen Sie die Planungsübersicht.` } }); } catch { state.planSaveWarning = 'Die Planung ist gespeichert. Die Postfach-Benachrichtigung konnte gerade nicht gesendet werden.'; }
@@ -1903,16 +1911,18 @@
     if (!teamEnabled()) throw new Error('Die Mehrpersonen-Buchung ist noch nicht verbunden. Bestehende Daten bleiben erhalten.');
     const planId = String(form.elements.planning_id?.value || ''), owner = existing?.employee_id || form.querySelector('[data-team-times]')?.dataset.teamOwner || workerId();
     const date = existing ? form.elements.work_date.value || existing.work_date : state.date;
-    const periods = collectTeamPeriods(form), signature = signatureValues(form);
-    const customer = await ensureCustomer(form.elements.customer.value,owner,planningCustomers(owner));
-    if (!customer?.id) throw new Error('Der Kunde konnte nicht gespeichert werden.');
+    const periods = collectTeamPeriods(form), signature = signatureValues(form), workKind=window.WorktimeBusinessRules?.kind(form.elements.work_kind?.value)||'customer';
+    if(workKind!=='customer'&&planId)throw new Error('Eine bestätigte Kundenplanung muss als Kundenauftrag abgeschlossen werden. Für interne Tätigkeiten bitte einen eigenen Arbeitsschein anlegen.');
+    const documentation=window.WorktimeBusinessRules?.documentation(workKind,form.elements.documentation.value)||String(form.elements.documentation.value||'');
+    const customerName=String(form.elements.customer.value||'').trim(),customer=customerName?await ensureCustomer(customerName,owner,planningCustomers(owner)):null;
+    if (workKind==='customer'&&!customer?.id) throw new Error('Bitte einen Kunden angeben.');
     const inputs = [...form.querySelectorAll('[name="material"]')], quantities = [...form.querySelectorAll('[name="quantity"]')], units = [...form.querySelectorAll('[name="unit"]')], items = [];
     for (let index=0; index<inputs.length; index++) {
       const material = await ensureMaterial(inputs[index].value,businessId(),units[index]?.value);
       if (material && !isHourlyMaterial(material)) items.push({ material_id:material.id, quantity:Math.max(0.25,n(quantities[index]?.value || 1)), unit:units[index]?.dataset.unitExplicit==='true' ? normalizeUnit(units[index].value) : materialUnit(material) });
     }
     const timerId=form.dataset.timerId,timerDevice=form.dataset.timerDevice;
-    const saved = await api('/rest/v1/rpc/'+(timerId?(timerDevice?'save_team_work_order_from_device_timer':'save_team_work_order_from_timer'):'save_team_work_order'),{method:'POST',body:{...(timerId?{p_timer_id:timerId}:{}),...(timerDevice?{p_device:timerDevice}:{}),p_order:{ ...(existing ? {id:existing.id} : {}),employee_id:owner,work_date:date,customer_id:customer.id,title:String(form.elements.title.value || '').trim(),documentation:String(form.elements.documentation.value || ''),...signature},p_periods:periods,p_items:items,p_plan_id:planId || null}});
+    const saved = await api('/rest/v1/rpc/'+(timerId?(timerDevice?'save_team_work_order_from_device_timer':'save_team_work_order_from_timer'):'save_team_work_order'),{method:'POST',body:{...(timerId?{p_timer_id:timerId}:{}),...(timerDevice?{p_device:timerDevice}:{}),p_order:{ ...(existing ? {id:existing.id} : {}),employee_id:owner,work_date:date,customer_id:customer?.id||null,title:String(form.elements.title.value || '').trim(),documentation,work_kind:workKind,...signature},p_periods:periods,p_items:items,p_plan_id:planId || null}});
     const order = Array.isArray(saved) ? saved[0] : saved;
     if (!order?.id) throw new Error('Der gemeinsame Arbeitsschein konnte nicht gespeichert werden.');
     if (timerId) deviceFeatures?.timerSaved(timerId);
@@ -2098,4 +2108,42 @@
     if(!weekdays.length||!reportDateValid(effective)){form.querySelector('[data-workweek-result]').textContent='Bitte mindestens einen Arbeitstag und ein gültiges Datum auswählen.';return;}
     const employee=workerId();return perform('Arbeitstage gespeichert. Kalender und Urlaub wurden aktualisiert.',()=>api('/rest/v1/employee_workweeks_v905?on_conflict=employee_id,effective_from',{method:'POST',headers:{Prefer:'resolution=merge-duplicates,return=representation'},body:{employee_id:employee,effective_from:effective,weekdays,updated_at:new Date().toISOString()}}));
   });
+  const businessFeature=window.WorktimeBusiness?.create({root,state,allRows,api,perform,escape,isManager,workerId,worker,workers,businessId,today,h,recordedPeriods,schoolPeriods,notice,render:()=>render()});
+  if(businessFeature){
+    const menusBeforeBusiness=menuItems,renderBeforeBusiness=render,reloadBeforeBusiness=reload,planningBeforeBusiness=refreshPlanningData;
+    menuItems=()=>menusBeforeBusiness().filter(item=>!['time','receipts'].includes(item[0])).map(item=>item[0]==='invoices'?[item[0],'Noch offene Arbeitsscheine',item[2]]:item[0]==='invoices-paid'?[item[0],'Erstellte Rechnungen',item[2]]:item);
+    settingsView=()=>businessFeature.settings(settingsBeforeWorkweekV905());
+    reload=async()=>{await reloadBeforeBusiness();await businessFeature.load();};
+    refreshPlanningData=async(...args)=>{const result=await planningBeforeBusiness(...args);if(result!==false)await businessFeature.load();return result;};
+    render=()=>{businessFeature.beforeRender();renderBeforeBusiness();businessFeature.mount();};
+    businessFeature.mount();
+  }
+  const mailboxFeature=window.WorktimeMailbox?.create({root,state,api,allRows,upload,render:()=>render(),reload:()=>reload(),escape,isManager,isAdmin,personName,businessId,notice,openPlan:id=>{state.view='planning';state.planId=id;state.planForm=false;render();}});
+  if(mailboxFeature){
+    const reloadBeforeMail=reload,renderBeforeMail=render,refreshBeforeMail=refreshPlanningData;
+    mailboxView=()=>mailboxFeature.view();
+    reload=async()=>{await reloadBeforeMail();await mailboxFeature.load();};
+    refreshPlanningData=async(...args)=>{const result=await refreshBeforeMail(...args);if(result!==false)await mailboxFeature.load();return result;};
+    render=()=>{renderBeforeMail();mailboxFeature.mount();};
+  }
+  const catalogFeature=window.WorktimeCatalog?.create({root,state,api,reload:()=>reload(),render:()=>render(),businessId,isManager,escape});
+  if(catalogFeature){
+    const materialViewBeforeCatalog=materialsView,renderBeforeCatalog=render;
+    materialsView=()=>materialViewBeforeCatalog()+catalogFeature.view();
+    render=()=>{catalogFeature.afterRender();renderBeforeCatalog();};
+  }
+  const invoiceLedger=window.WorktimeInvoiceLedger?.create({root,state,api,allRows,render:()=>render(),reload:()=>reload(),isManager,businessId,today,escape,askTax:(data,accept)=>window.WorktimeInvoiceTax.ask(data,accept),openPdf:openDocumentPdf,scopeOrder:orderInCurrentBusiness});
+  if(invoiceLedger){
+    const reloadBeforeLedger=reload,viewBeforeLedger=viewHtml,renderBeforeLedger=render;
+    reload=async()=>{await reloadBeforeLedger();await invoiceLedger.load();};
+    paidInvoicesView=()=>invoiceLedger.view();
+    viewHtml=()=>state.view==='invoice-draft'?invoiceLedger.draftView():viewBeforeLedger();
+    printInvoicePdf=group=>invoiceLedger.start(group?.orders||[]);
+    render=()=>{invoiceLedger.afterRender();renderBeforeLedger();for(const button of root.querySelectorAll('[data-action="mark-invoice-order"],[data-action="mark-invoice-group"]'))button.remove();for(const button of root.querySelectorAll('[data-action="open-billing"]')){const group=invoiceGroups(false).find(g=>g.key===button.dataset.key),order=group?.orders.length===1?group.orders[0]:null;if(order?.invoice_reopened_from_v908){button.insertAdjacentHTML('beforeend',invoiceLedger.badge(order));button.dataset.action='open-order';button.dataset.id=order.id;}}};
+    root.addEventListener('click',event=>{const button=event.target.closest('[data-action]');if(!button||!['invoice-order','invoice-group','mark-invoice-order','mark-invoice-group'].includes(button.dataset.action))return;event.preventDefault();event.stopImmediatePropagation();if(state.busy||!isManager())return;
+      const action=button.dataset.action,group=invoiceGroups(false).find(g=>action.endsWith('order')?g.orders.some(o=>o.id===button.dataset.id):g.key===state.billingKey);if(!group)return;
+      chooseBillingOrders(group,'invoice',button.dataset.id||'').then(selected=>selected&&invoiceLedger.start(selected.orders)).catch(error=>{notice(error.message,true);render();});
+    },true);
+    root.addEventListener('click',event=>{const button=event.target.closest('[data-action="nav"]');if(button?.dataset.view==='invoices-paid')invoiceLedger.load().then(()=>{if(state.view==='invoices-paid')render();});});
+  }
 })();

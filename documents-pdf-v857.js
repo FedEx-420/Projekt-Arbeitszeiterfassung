@@ -4,6 +4,7 @@
   const number=value=>Number(value||0);
   const hours=value=>number(value).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})+' h';
   const money=value=>number(value).toLocaleString('de-DE',{style:'currency',currency:'EUR'});
+  const priceMoney=value=>number(value).toLocaleString('de-DE',{style:'currency',currency:'EUR',minimumFractionDigits:2,maximumFractionDigits:4});
   const count=value=>number(value).toLocaleString('de-DE',{maximumFractionDigits:2});
   const date=value=>value?new Intl.DateTimeFormat('de-DE',{day:'2-digit',month:'long',year:'numeric'}).format(new Date(value+'T12:00:00Z')):'-';
   const time=value=>value?String(value).slice(0,5)+' Uhr':'-';
@@ -158,10 +159,13 @@
   }
   async function createInvoice(data){
     if(!data.tax||data.tax.version!==905||data.tax.lines?.length!==data.items.length)throw new Error('Bitte vor der Rechnungserstellung die Umsatzsteuer prüfen.');
-    const e=await layout(data,'Rechnung',data.number,'Rechnungsvorschau - Abrechnung erfolgt separat');
+    const cancellation=data.cancellationOf,finalized=data.finalized===true;
+    const e=await layout(data,cancellation?'Stornorechnung':'Rechnung',data.number,finalized?(cancellation?'Stornorechnung':'Rechnung')+' '+data.number:'Rechnungsvorschau - Abrechnung erfolgt separat');
+    if(data.issuer){e.heading('Aussteller',85);e.lines([data.issuer.name,...(data.issuer.address||[]),data.issuer.taxNumber?'Steuernummer: '+data.issuer.taxNumber:'',data.issuer.vatId?'USt-IdNr.: '+data.issuer.vatId:'',[data.issuer.email,data.issuer.phone].filter(Boolean).join(' · ')].filter(Boolean).join('\n'),{size:9,gap:13});}
     e.heading('Rechnung an',75);e.lines(data.customer,{size:13,gap:18});
     if(data.address?.length)e.lines(data.address.join('\n'),{gap:13});e.y-=8;
     e.lines('Ausgestellt am: '+date(data.issued)+' | Leistungszeitraum: '+date(data.from)+(data.to!==data.from?' bis '+date(data.to):''),{size:9,gap:14});
+    if(cancellation)e.lines('Vollständige Stornierung der Rechnung '+(typeof cancellation==='string'?cancellation:cancellation.number)+(cancellation.issued?' vom '+date(cancellation.issued):'')+(data.cancellationReason?'\nGrund: '+data.cancellationReason:''),{size:10,gap:15});
     e.lines(data.orderCount+' Arbeitsschein(e)',{size:9,gap:14});
     for(const day of data.days){
       e.context='';e.heading('Ausführung am '+date(day.date),85);e.context=date(day.date);
@@ -169,10 +173,11 @@
     }
     e.context='';e.heading('Leistungen und Material',90);e.context='Leistungen und Material';
     e.lines('Einzelpreise '+(data.tax.basis==='net'?'netto':'brutto')+' gemäß Auswahl. Positionsbeträge werden auf Cent gerundet.',{size:8,color:e.colors.muted,gap:12});
-    e.table(['Pos.','Position / Ausführung','Menge','Einheit','Einzelpreis','Gesamt'],data.items.map((item,index)=>{const line=data.tax.lines[index],rule=window.WorktimeInvoiceTax?.rules[line.code];return {numeric:[0,2,4,5],cells:[String(index+1),[item.name,date(item.date),item.execution,item.description,'Steuer: '+(rule?.label||line.rate+' %')].filter(Boolean).join('\n'),count(item.quantity),item.unit,money(item.price),money((data.tax.basis==='net'?line.net:line.gross)/100)]};}),[32,175,68,44,93,103.28],{numericHeaders:[0,2,4,5],lastRowReserve:100});
+    e.table(['Pos.','Position / Ausführung','Menge','Einheit','Einzelpreis','Gesamt'],data.items.map((item,index)=>{const line=data.tax.lines[index],rule=window.WorktimeInvoiceTax?.rules[line.code];return {numeric:[0,2,4,5],cells:[String(index+1),[item.name,date(item.date),item.execution,item.description,'Steuer: '+(rule?.label||line.rate+' %')].filter(Boolean).join('\n'),count(item.quantity),item.unit,priceMoney(item.price),money((data.tax.basis==='net'?line.net:line.gross)/100)]};}),[32,175,68,44,93,103.28],{numericHeaders:[0,2,4,5],lastRowReserve:100});
     e.context='';const summaryRows=2+data.tax.groups.length*(data.tax.groups.length>1?2:1),notesHeight=data.tax.notes.reduce((sum,note)=>sum+32+e.wrap(note.text+'\nRechtsgrundlage: '+note.law+'\nAngabe des Ausstellers: '+note.detail,e.content,9).length*14,0);e.room(Math.min(500,summaryRows*27+48+notesHeight));e.invoiceTotals(data.tax);
     for(const note of data.tax.notes){e.heading('Steuerhinweis',65);e.lines(note.text+'\nRechtsgrundlage: '+note.law+'\nAngabe des Ausstellers: '+note.detail,{size:9,gap:14});}
-    e.lines('Vorschau / Download schließen die Abrechnung nicht automatisch ab.',{size:8,color:e.colors.muted,gap:12});
+    if(data.issuer?.iban)e.lines('Bankverbindung: '+data.issuer.iban,{size:9,gap:14});
+    e.lines(finalized?(cancellation?'Dieses Dokument storniert die oben bezeichnete Rechnung vollständig. Originalrechnung und Stornorechnung bleiben im Rechnungsregister erhalten.':'Ausgestellte Rechnung. Änderungen erfolgen ausschließlich durch verknüpfte Stornierung und gegebenenfalls eine neue Rechnung.'):'Vorschau / Download schließen die Abrechnung nicht automatisch ab.',{size:8,color:e.colors.muted,gap:12});
     return e.finish();
   }
   async function createWorkReport(data){
@@ -184,7 +189,7 @@
       e.context='';e.heading(date(day.date),90);e.context=date(day.date);
       e.table(['Mitarbeiter','Von','Bis','Pause','Stunden'],day.periods.map(p=>({numeric:[3,4],cells:[p.name,time(p.start),time(p.end),hours(p.pause),hours(p.hours)]})),[217.28,75,75,74,74]);
       for(const note of day.notes||[]){e.heading('Dokumentation',65);e.lines(note,{size:9,gap:14});}
-      if(day.items.length)e.table(['Leistung / Material','Menge','Einheit','Einzelpreis','Gesamt'],day.items.map(item=>({numeric:[1,3,4],cells:[[item.name,item.description].filter(Boolean).join('\n'),count(item.quantity),item.unit,money(item.price),money(item.quantity*item.price)]})),[218,65,45,87,100.28],{numericHeaders:[1,3,4]});
+      if(day.items.length)e.table(['Leistung / Material','Menge','Einheit','Einzelpreis','Gesamt'],day.items.map(item=>({numeric:[1,3,4],cells:[[item.name,item.description].filter(Boolean).join('\n'),count(item.quantity),item.unit,priceMoney(item.price),money(item.quantity*item.price)]})),[218,65,45,87,100.28],{numericHeaders:[1,3,4]});
       for(const entry of day.signatures||[])await e.signature(entry.image,entry.signer);
     }
     e.context='';e.amountTotal('Gesamtsumme',data.total);e.lines('Arbeitsnachweis - keine Rechnung. Die Umsatzsteuer wird bei der Rechnungserstellung separat geprüft.',{size:8,color:e.colors.muted,gap:12});return e.finish();

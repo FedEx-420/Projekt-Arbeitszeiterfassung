@@ -43,10 +43,10 @@
   function checkText(value) { if (String(value).length > limits.cell || /[\u0000]/.test(String(value))) error('Ein Katalogfeld ist zu lang oder enthält Binärdaten. Bitte CSV-Export prüfen.'); return String(value); }
   function aliasMap(headers) {
     const aliases = {
-      article_number: ['articlenumber', 'article_number', 'artikelnummer', 'artikelnr', 'artnr', 'lieferantenartikelnummer', 'supplieraid', 'supplierpid', 'bestellnummer'],
+      article_number: ['articlenumber', 'article_number', 'artikelnummer', 'artikelnr', 'artnr', 'lieferantenartikelnummer', 'supplieraid', 'supplierpid', 'bestellnummer', 'sku'],
       name: ['name', 'artikelname', 'bezeichnung', 'artikelbezeichnung', 'kurztext', 'beschreibung', 'description', 'descriptionshort'],
       unit: ['unit', 'einheit', 'mengeneinheit', 'basiseinheit', 'orderunit', 'me'],
-      purchase_price: ['purchaseprice', 'purchase_price', 'einkaufspreis', 'ek', 'eknetto', 'einkaufspreisnetto'],
+      purchase_price: ['purchaseprice', 'purchase_price', 'einkaufspreis', 'ek', 'eknetto', 'einkaufspreisnetto', 'ekpreis', 'ekpreisnetto', 'preiseK', 'einstandspreis', 'einstandspreisnetto'],
       recommended_price_1: ['recommendedprice1', 'recommended_price_1', 'vk*', 'vk1', 'vk*netto', 'vk1netto', 'verkaufspreis1', 'empfohlenervk*'],
       recommended_price_2: ['recommendedprice2', 'recommended_price_2', 'vk**', 'vk2', 'vk**netto', 'vk2netto', 'verkaufspreis2', 'empfohlenervk**'],
       price_unit: ['priceunit', 'price_unit', 'preiseinheit', 'preisje', 'pricequantity'],
@@ -58,7 +58,19 @@
       const candidates = headers.filter(h => names.map(key).includes(key(h)));
       if (candidates.length === 1) mapping[field] = candidates[0];
     }
+    if(!mapping.recommended_price_1){const explicit=headers.filter(h=>aliases.recommended_price_1.map(key).includes(key(h)));const generic=headers.filter(h=>['vk','vknetto','verkaufspreis','verkaufspreisnetto','sellingprice','sellingpricenet','netverkaufspreis'].includes(key(h)));if(!explicit.length&&generic.length===1)mapping.recommended_price_1=generic[0];}
     return mapping;
+  }
+  function automaticMapping(headers,rows,{listAsSellingPrice=false}={}){
+    const mapping=aliasMap(headers),has=h=>headers.includes(h)&&rows.some(r=>r[h]!=null&&String(r[h]).trim()!==''),filled=field=>mapping[field]&&has(mapping[field]);
+    if(!filled('purchase_price')){const candidates=['source_net_price','source_net_customer'].filter(has);if(candidates.length===1)mapping.purchase_price=candidates[0];}
+    if(listAsSellingPrice&&!filled('recommended_price_1')){const candidates=['source_list_price','source_net_list'].filter(has);if(candidates.length===1)mapping.recommended_price_1=candidates[0];}
+    return mapping;
+  }
+  function matchesArticle(row,query,mapping={article_number:'article_number',name:'name'}){
+    const fold=v=>clean(v).normalize('NFC').toLocaleLowerCase('de').replace(/ä/g,'ae').replace(/ö/g,'oe').replace(/ü/g,'ue').replace(/ß/g,'ss').normalize('NFKD').replace(/[\u0300-\u036f]/g,'');
+    const tokens=fold(query).split(/\s+/).filter(Boolean);if(!tokens.length)return true;
+    const haystack=fold([row[mapping.article_number],row[mapping.name]].filter(v=>v!=null).join(' '));return tokens.every(token=>haystack.includes(token));
   }
   function context(file, options) {
     if (!file || typeof file.slice !== 'function' || !Number.isSafeInteger(file.size) || file.size < 1) error('Bitte eine lesbare Katalogdatei auswählen.');
@@ -72,9 +84,8 @@
     if (force || now - ctx.lastProgress > 150) { ctx.lastProgress = now; ctx.options.onProgress?.({ bytesRead: ctx.bytesRead, totalBytes: ctx.file.size, recordsRead: ctx.recordsRead, matchedRows: ctx.matchedRows }); }
   }
   function keep(ctx, row) {
-    const filter = clean(ctx.options.articleFilter).toLocaleLowerCase('de');
-    const haystack = Object.entries(row).filter(([key]) => !key.startsWith('_')).map(([,value]) => String(value ?? '')).join(' ').toLocaleLowerCase('de');
-    if (filter && !haystack.includes(filter)) return false;
+    const filter = clean(ctx.options.articleFilter);
+    if(filter){const mapping=ctx.searchMapping||(ctx.searchMapping=aliasMap(ctx.headers));if(!mapping.article_number&&!mapping.name)warning(ctx,'Artikelspalten nicht eindeutig erkannt. Ohne Suche lesen, dann Artikelnummer und Bezeichnung zuordnen.');if(!matchesArticle(row,filter,mapping))return false;}
     ctx.matchedRows++;
     if (ctx.skippedMatches < ctx.offset) { ctx.skippedMatches++; return false; }
     if (ctx.rows.length >= ctx.maxRows) { ctx.truncated = true; return true; }
@@ -343,7 +354,7 @@
     }else{if(signature[0]===0xd0&&signature[1]===0xcf)error('Altes Excel-XLS-Format erkannt. Bitte in Excel als XLSX oder CSV speichern.');let chosen=encoding;if(chosen==='auto'&&signature[0]===0xff&&signature[1]===0xfe)chosen='utf-16le';else if(chosen==='auto'&&signature[0]===0xfe&&signature[1]===0xff)chosen='utf-16be';await readSource(file.stream(),ctx,name,chosen,false);}
     abort(options.signal);progress(ctx,true);if(!ctx.rows.length)warning(ctx,'Keine Artikel im gewählten Such-/Zeilenausschnitt gefunden.');
     if(ctx.truncated)warning(ctx,'Nur dieser Ausschnitt mit höchstens '+ctx.maxRows+' Artikeln wurde gelesen. Weitere Artikel sind vorhanden; Suche eingrenzen oder den nächsten Ausschnitt wählen. Bei ZIP-Ausschnitten ist die vollständige Archiv-Prüfsumme noch nicht geprüft. Es wurde nichts automatisch gespeichert.');
-    const suggestedMapping=aliasMap(ctx.headers);return {headers:ctx.headers,rows:ctx.rows,warnings:ctx.warnings,format:ctx.format,totalRead:ctx.recordsRead,truncated:ctx.truncated,hasMore:ctx.truncated,suggestedMapping,supplier:ctx.supplier,decimal:ctx.decimal,priceUnit:ctx.priceUnit};
+    const suggestedMapping=automaticMapping(ctx.headers,ctx.rows,{listAsSellingPrice:options.listAsSellingPrice===true});return {headers:ctx.headers,rows:ctx.rows,warnings:ctx.warnings,format:ctx.format,totalRead:ctx.recordsRead,truncated:ctx.truncated,hasMore:ctx.truncated,suggestedMapping,supplier:ctx.supplier,decimal:ctx.decimal,priceUnit:ctx.priceUnit};
   }
-  return Object.freeze({limits,readCatalog,aliasMap,normalizeUnit,priceText,xmlTree,zipDirectory,datanormVersion,datanormPrice});
+  return Object.freeze({limits,readCatalog,aliasMap,automaticMapping,matchesArticle,normalizeUnit,priceText,xmlTree,zipDirectory,datanormVersion,datanormPrice});
 });

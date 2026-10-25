@@ -2132,7 +2132,7 @@
     materialsView=()=>materialViewBeforeCatalog()+catalogFeature.view();
     render=()=>{catalogFeature.afterRender();renderBeforeCatalog();};
   }
-  const invoiceLedger=window.WorktimeInvoiceLedger?.create({root,state,api,allRows,render:()=>render(),reload:()=>reload(),isManager,businessId,today,escape,askTax:(data,accept)=>window.WorktimeInvoiceTax.ask(data,accept),openPdf:openDocumentPdf,scopeOrder:orderInCurrentBusiness});
+  const invoiceLedger=window.WorktimeInvoiceLedger?.create({root,state,api,allRows,render:()=>render(),reload:()=>reload(),isManager,businessId,today,escape,getCompanyDetails:()=>legalFeature?.getCompanyDetails?.()||null,askTax:(data,accept,options)=>window.WorktimeInvoiceTax.ask(data,accept,options),openPdf:openDocumentPdf,scopeOrder:orderInCurrentBusiness});
   if(invoiceLedger){
     const reloadBeforeLedger=reload,viewBeforeLedger=viewHtml,renderBeforeLedger=render;
     reload=async()=>{await reloadBeforeLedger();await invoiceLedger.load();};

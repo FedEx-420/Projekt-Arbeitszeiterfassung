@@ -31,7 +31,8 @@
   },true);
   root.addEventListener('input',event=>{if(event.target.closest('[data-form^="legal-"]'))event.target.setCustomValidity?.('');});
   root.addEventListener('click',event=>{const button=event.target.closest('[data-legal-action]');if(!button)return;event.preventDefault();const type=button.dataset.legalAction;if(type==='open'){selected=button.dataset.kind;message='';render();root.querySelector('.legal-editor')?.scrollIntoView({block:'start'});}if(type==='close'){selected='';render();}if(type==='reload')load().then(render);if(type==='prepare'&&isManager()&&info()){const items=templates.kinds.filter(([kind])=>!latest(kind)).map(([kind])=>({kind,expected_version:0,content:templates.template(kind,values()),status:'draft'}));if(!items.length){message='Alle sechs Unterlagen sind bereits vorbereitet.';render();return;}action(()=>append(items),'Die fehlenden Dokumententwürfe wurden gemeinsam gespeichert. Fachliche Prüfung und Freigabe bleiben offen.');}});
-  return {load,view,setupPanel};
+  const getCompanyDetails=()=>isManager()&&info()?JSON.parse(JSON.stringify(info())):null;
+  return {load,view,setupPanel,getCompanyDetails};
  }
  window.WorktimeLegal={create};
 })();

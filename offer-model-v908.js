@@ -40,11 +40,45 @@
     if (material?.[field] == null || material[field] === '') return null;
     return unitPrice(material[field]);
   }
+  // A drag changes only a narrow band around the deliberately selected price.
+  // The band is re-anchored by typing/selecting a price, never during a drag.
+  function priceRange(value,decimals=4) {
+    const factor=decimals===2?100:10000;
+    const parsed=number(value),anchor=Math.min(1000000,Math.max(0,Number.isFinite(parsed)?parsed:0));
+    const radius=Math.max(1,anchor*.1),round=value=>Math.round(value*factor)/factor;
+    return {min:round(Math.max(0,anchor-radius)),max:round(Math.min(1000000,anchor+radius)),step:1/factor,value:round(anchor)};
+  }
+  function pricePreview(offer,index,calculator) {
+    const settings=config(offer),item=offer.items[index],choice=settings.tax_choice;
+    let taxIndex=index;
+    if(settings.kind==='fixed')taxIndex=settings.categories.findIndex(category=>category.id===settings.assignment[index]);
+    const code=choice?.overrides?.[taxIndex]||choice?.mode||'standard';
+    const selected={basis:choice?.basis||'net',mode:code,confirmed:true,overrides:{},reasons:{...(choice?.reasons||{})}};
+    // The preview is not a tax decision or a saved tax confirmation.
+    if(code!=='standard'&&!selected.reasons[code])selected.reasons[code]='Unverbindliche Preisvorschau';
+    const tax=calculator([{name:item.name||'Position',quantity:1,price:unitPrice(item.unit_price)}],selected);
+    return {gross:tax.gross/100,rate:tax.lines[0].rate,provisional:!choice,basis:selected.basis};
+  }
+  function netEditDraft(offer,calculator) {
+    const draft=structuredClone(offer),settings=config(offer);
+    if(settings.tax_choice?.basis!=='gross')return {offer:draft,converted:false};
+    const original=tax(offer,calculator),rateAt=index=>original.lines[index]?.rate;
+    const netUnit=(value,rate)=>{
+      if(!Number.isFinite(rate))fail('Die bisherigen Steuerangaben sind unvollständig. Bitte vor der Umstellung prüfen.');
+      return Math.round(unitPrice(value)*100/(100+rate)*10000)/10000;
+    };
+    if(settings.kind==='fixed'){
+      draft.items=draft.items.map((item,index)=>({...item,unit_price:netUnit(item.unit_price,rateAt(settings.categories.findIndex(category=>category.id===settings.assignment[index])))}));
+      settings.categories=settings.categories.map((category,index)=>({...category,price:original.lines[index].net/100}));
+    }else draft.items=draft.items.map((item,index)=>({...item,unit_price:netUnit(item.unit_price,rateAt(index))}));
+    settings.tax_choice={...settings.tax_choice,basis:'net'};draft.offer_config=settings;
+    return {offer:draft,converted:true,previousGross:original.gross/100,roundingDifference:(tax(draft,calculator).gross-original.gross)/100};
+  }
   function publicModel(offer,calculator) {
     const value = tax(offer,calculator), rows = visibleItems(offer), settings = config(offer);
     return {kind:settings.kind,tax:value,rows:rows.map((row,index)=>({...row,tax:value.lines[index]}))};
   }
-  const module = {config,visibleItems,tax,choiceFromTax,recommended,publicModel,price,unitPrice};
+  const module = {config,visibleItems,tax,choiceFromTax,recommended,publicModel,price,unitPrice,priceRange,pricePreview,netEditDraft};
   if (typeof window !== 'undefined') window.WorktimeOfferModel = module;
   if (typeof exports !== 'undefined') Object.assign(exports,module);
 })();

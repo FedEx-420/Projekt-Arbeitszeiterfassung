@@ -91,17 +91,19 @@
     const mapped = fields.filter(f => mapping[f]);
     if (mapped.some(f => !parsed.headers.includes(mapping[f])) || new Set(mapped.map(f => mapping[f])).size !== mapped.length) fail('Jede Quelle darf nur genau einer Bedeutung zugeordnet sein. EK und Verkaufspreise nicht vertauschen.');
     if (!prices.some(f => mapping[f])) fail('Mindestens EK oder einen empfohlenen Verkaufspreis zuordnen.');
-    const keys = new Set();
+    const keys = new Set(),names=new Set();
     return parsed.rows.map((row, index) => {
       try {
+        if(typeof row[mapping.article_number]==='number'&&(!Number.isSafeInteger(row[mapping.article_number])||row[mapping.article_number]<0))fail('Artikelnummer ist als unsichere Zahl gespeichert. Die vollständige Artikelnummer als Text manuell angeben.');
         const article_number = text(row[mapping.article_number], 'Artikelnummer', 120), name = text(row[mapping.name], 'Artikelname', 200), normalizedUnit = unit(row[mapping.unit]);
         const key = supplierKey(supplier, article_number); if (keys.has(key)) fail('Artikelnummer ist innerhalb dieses Lieferanten doppelt.'); keys.add(key);
+        const nameKey=name.toLowerCase();if(names.has(nameKey))fail('Artikelbezeichnung ist in dieser Auswahl doppelt. Bitte die Bezeichnung mit der Artikelnummer unterscheiden oder einen Artikel auslassen.');names.add(nameKey);
         const basisRaw = mapping.price_unit ? row[mapping.price_unit] : options.price_unit;
         if (!/^\d{1,6}$/.test(String(basisRaw ?? '').trim())) fail('Preiseinheit fehlt oder ist keine ganze Zahl.');
         const basis = Number(basisRaw), match = existing.filter(m => supplierKey(m.catalog_supplier || '', m.catalog_article_number || '') === key);
         if (match.length > 1) fail('Der gespeicherte Katalog enthält eine mehrdeutige Artikelnummer.');
         const current = match[0];
-        if (!current && existing.some(m => String(m.name).trim().toLowerCase() === name.toLowerCase())) fail('Ein gleichnamiges Material existiert ohne diese Lieferanten-Artikelnummer. Bitte zuerst beim vorhandenen Material Lieferant/Artikelnummer zuordnen. Es wird nicht automatisch zusammengeführt.');
+        if (existing.some(m => (!current||m.id!==current.id)&&String(m.name).trim().toLowerCase() === name.toLowerCase())) fail('Ein gleichnamiges Material existiert unter einer anderen Zuordnung. Bitte zuerst Lieferant/Artikelnummer prüfen oder die Bezeichnung unterscheiden. Es wird nicht automatisch zusammengeführt.');
         if (current && String(current.unit || 'Stk') !== normalizedUnit) fail('Basiseinheit des vorhandenen Materials unterscheidet sich. Verpackungs-/Einheitenumrechnung vorher klären.');
         const values = {};
         prices.forEach(f => { if (mapping[f]) { const price = money(row[mapping[f]], decimal, basis); if (price !== null) values[f] = price; } });

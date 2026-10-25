@@ -5,3 +5,16 @@
 @media(max-width:380px){.offer-totals>div{flex-wrap:wrap}.offer-line{padding:12px}.offer-grand-total{font-size:16px}}
 .offer-price-slider{display:block;width:100%;min-height:30px;padding:0;accent-color:#086a60}.offer-price-presets{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:8px}.offer-category-assignment{grid-column:1/-1}.offer-categories{padding:16px;border:1px solid #cde1d9;border-radius:14px;background:#f0f8f5}.offer-category{display:grid;grid-template-columns:2fr 1fr;gap:12px;padding:14px 0;border-bottom:1px solid #cde1d9}.offer-category input{width:100%}.offer-category:last-of-type{margin-bottom:14px}.offer-tax-note{color:#526c65;font-size:.9rem}.offer-line [aria-invalid=true],.offer-category [aria-invalid=true]{border:2px solid #b42335!important;outline-color:#b42335}.offer-categories[hidden]{display:none}
 @media(max-width:600px){.offer-category{grid-template-columns:minmax(0,1fr)}.offer-price-presets>button{flex:1 1 160px}}
+/* Nested address grids must not inherit intrinsic input/date minimum widths. */
+#offer-editor,#offer-editor form,#offer-editor details,#offer-editor .offer-categories,#offer-editor .offer-category,#offer-editor .offer-line{min-width:0;max-width:100%;box-sizing:border-box}
+#offer-editor .entry-form{width:100%;min-width:0;grid-template-columns:repeat(2,minmax(0,1fr))}
+#offer-editor .entry-form>.wide{grid-column:1/-1}
+#offer-editor label,#offer-editor .entry-form>*{min-width:0;max-width:100%;overflow-wrap:anywhere}
+#offer-editor input,#offer-editor select,#offer-editor textarea{width:100%;min-width:0;max-width:100%;box-sizing:border-box}
+#offer-editor button{max-width:100%;white-space:normal;overflow-wrap:anywhere;box-sizing:border-box}
+#offer-editor .offer-line{grid-template-columns:minmax(120px,1.7fr) minmax(65px,.7fr) minmax(65px,.6fr) minmax(165px,1.5fr) minmax(80px,.8fr) auto}
+.offer-price-range,.offer-price-gross{display:block;line-height:1.5;font-size:.78rem;color:#526c65;overflow-wrap:anywhere}
+.offer-price-gross{margin-top:6px;color:#164f43;font-weight:600}
+.offer-net-price>small:first-of-type{color:#164f43;font-weight:600}
+@media(max-width:1000px){#offer-editor .offer-line{grid-template-columns:repeat(2,minmax(0,1fr))}#offer-editor .offer-line .offer-position,#offer-editor .offer-line>button{grid-column:1/-1}}
+@media(max-width:500px){#offer-editor .entry-form{grid-template-columns:minmax(0,1fr)}#offer-editor input,#offer-editor select,#offer-editor textarea{font-size:16px}#offer-editor .offer-categories{padding:12px}}

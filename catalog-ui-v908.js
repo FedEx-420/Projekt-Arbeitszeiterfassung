@@ -4,14 +4,15 @@
   function create({ root, state, api, reload, render, businessId, isManager, escape: esc }) {
     const format = window.WorktimeCatalogFormat;
     if (!format) return null;
-    let scope = '', selected = '', revision = 0, draft = null, parsed = null, preview = null, filename = '', supplier = '', mapping = {}, decimal = 'comma', priceUnit = '1', net = false, page = 0, busy = false, message = '', error = false, readSerial = 0;
+    const advanced=window.WorktimeCatalogImportUI?.create({root,state,api,reload,render,businessId,isManager,escape:esc});
+    let scope = '', selected = '', materialSearch='', revision = 0, draft = null, parsed = null, preview = null, filename = '', supplier = '', mapping = {}, decimal = 'comma', priceUnit = '1', net = false, page = 0, busy = false, message = '', error = false, readSerial = 0;
     const current = () => isManager() && state.profile && businessId() ? state.profile.id + ':' + businessId() : '';
     const materials = () => (state.rows.materials || []).filter(m => String(m.business_id) === String(businessId()));
     const euro = value => value == null ? 'Nicht hinterlegt' : Number(value).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 4 }) + ' €';
     const labels = { article_number: 'Artikelnummer', name: 'Artikelname', unit: 'Basiseinheit', purchase_price: 'Einkaufspreis (EK)', recommended_price_1: 'Empfohlener VK *', recommended_price_2: 'Empfohlener VK **', price_unit: 'Preiseinheit (z. B. 100)' };
     function ensure() {
       if (scope !== current()) {
-        scope = current(); selected = ''; revision = 0; draft = null; parsed = null; preview = null; filename = ''; supplier = ''; mapping = {}; net = false; page = 0; busy = false; message = ''; error = false; readSerial++;
+        scope = current(); selected = ''; materialSearch='';revision = 0; draft = null; parsed = null; preview = null; filename = ''; supplier = ''; mapping = {}; net = false; page = 0; busy = false; message = ''; error = false; readSerial++;
       }
       return !!scope;
     }
@@ -31,6 +32,7 @@
     }
     function view() {
       if (!ensure()) return '';
+      if(advanced)return `<div data-catalog-v908><p role="${error?'alert':'status'}" class="catalog-status ${error?'catalog-error':''}">${esc(message)}</p>${editor()}${advanced.view()}</div>`;
       return `<div data-catalog-v908><p role="${error ? 'alert' : 'status'}" class="catalog-status ${error ? 'catalog-error' : ''}">${esc(message)}</p>${editor()}<section class="panel catalog-v908"><h3>Großhändler-Katalog importieren</h3><p>Unterstützt: CSV, TSV und JSON mit einer Tabelle einfacher Artikel. Höchstens 2 MB und 1000 Artikel je Import. Vorschau und Zuordnung erfolgen auf diesem Gerät; erst „verbindlich übernehmen“ speichert die ausgewählten Daten.</p><p>Excel/XLSX, DATANORM, ZIP/XML, Makros und verschachtelte JSON-Kataloge sind hier noch nicht unterstützt. Bitte beim Großhändler einen CSV-Export mit Artikelnummer, Basiseinheit und eindeutig bezeichneten Nettopreisen anfordern. Für weitere Formate wird eine anonymisierte Musterdatei mit Preis-/Rabattbeschreibung benötigt.</p><div class="entry-form"><label>Datei<input type="file" name="catalog_file" accept=".csv,.tsv,.json,text/csv,application/json,text/tab-separated-values" ${busy ? 'disabled' : ''}></label><label>Textcodierung<select name="catalog_encoding"><option value="utf-8">UTF-8</option><option value="windows-1252">Windows-1252 / ANSI</option></select></label><label>CSV-Trennzeichen<select name="catalog_delimiter"><option value=";">Semikolon (;)</option><option value=",">Komma (,)</option><option value="tab">Tabulator</option></select></label><button type="button" class="secondary" data-catalog-action="read" ${busy ? 'disabled' : ''}>Datei lokal einlesen</button></div>${parsed ? `<p>${esc(filename)} · ${parsed.rows.length} Artikel erkannt</p>` : ''}${mappingView()}${previewView()}</section></div>`;
     }
     async function action(task, success) {
@@ -79,6 +81,7 @@
       const button = event.target.closest('[data-catalog-action]'); if (!button || !ensure() || busy) return;
       event.preventDefault(); event.stopImmediatePropagation();
       const task = button.dataset.catalogAction;
+      if(task==='edit-metadata'){selected=button.dataset.id;draft=null;revision=Number(materials().find(m=>m.id===selected)?.catalog_revision||1);render();root.querySelector('[name="catalog_material"]')?.scrollIntoView?.({block:'center',behavior:'smooth'});}
       if (task === 'page-prev' || task === 'page-next') { page = Math.max(0, Math.min(Math.ceil(preview.length / 25) - 1, page + (task === 'page-next' ? 1 : -1))); render(); }
       if (task === 'discard-preview') { preview = null; render(); }
       if (task === 'read') {
@@ -95,7 +98,21 @@
         }).catch(failure => { if (stamp === current() && request === readSerial) { parsed = null; preview = null; message = failure.message; error = true; } }).finally(() => { if (stamp === current() && request === readSerial) { busy = false; render(); } });
       }
     }, true);
-    return { view, reset: () => { scope = ''; ensure(); }, afterRender: ensure };
+    function grossNote(input){const value=Number(input.value),label=input.closest?.('label');if(!label)return;label.firstChild.textContent='Netto-Verkaufspreis in € (ohne Umsatzsteuer) ';let note=label.querySelector('[data-material-gross]');if(!note){note=document.createElement('small');note.dataset.materialGross='';label.append(note);}note.textContent=input.value!==''&&Number.isFinite(value)?'Brutto bei 19 %: '+euro(value*1.19)+' · Vergleichswert; die tatsächliche Umsatzsteuer wird in der Rechnung gewählt.':'Bitte Nettopreis ohne Umsatzsteuer eintragen.';}
+    function searchMaterials(){const byId=new Map(materials().map(m=>[m.id,m])),query=materialSearch.trim().toLocaleLowerCase('de');let total=0,visible=0;for(const button of root.querySelectorAll('[data-action="edit-material"]')){const card=button.closest('.row-card'),m=byId.get(button.dataset.id);if(!card||!m)continue;total++;card.dataset.materialCatalogCard='';const match=!query||[m.name,m.catalog_article_number,m.catalog_supplier].some(v=>String(v||'').toLocaleLowerCase('de').includes(query));card.hidden=!match;if(match)visible++;}const output=root.querySelector('[data-material-search-count]');if(output)output.textContent=visible+' von '+total+' gespeicherten Materialien';}
+    function afterRender(){
+      if(!ensure())return;advanced?.afterRender();
+      const firstCard=root.querySelector('[data-action="edit-material"]')?.closest('.row-card');if(firstCard&&!root.querySelector('[data-material-search]')){const label=document.createElement('label');label.className='catalog-material-search';label.innerHTML='Gespeicherte Materialliste durchsuchen<input type="search" data-material-search placeholder="Name, Artikelnummer oder Vertrieb"><small data-material-search-count></small>';label.querySelector('input').value=materialSearch;firstCard.before(label);}searchMaterials();
+      for(const form of root.querySelectorAll('form[data-form="material"],form[data-form="material-edit"],form[data-form="hourly-price"]')){const input=form.querySelector('[name="price"]');if(input)grossNote(input);}
+      const byId=new Map(materials().map(m=>[m.id,m]));for(const button of root.querySelectorAll('[data-action="edit-material"],form[data-form="hourly-price"] [name="id"]')){
+        const id=button.dataset?.id||button.value,m=byId.get(id),card=button.closest?.('.row-card')||button.closest?.('section.panel');if(!m||!card||card.querySelector('[data-material-catalog-summary]'))continue;
+        const box=document.createElement('div');box.dataset.materialCatalogSummary='';box.className='catalog-material-meta';
+        box.innerHTML=`<span>Artikelnummer: <b>${esc(m.catalog_article_number||'Nicht hinterlegt')}</b></span><span>Vertrieb / Lieferant: ${esc(m.catalog_supplier||'Nicht hinterlegt')}</span><span>EK netto: ${euro(m.purchase_price)}</span><span>VK * netto: ${euro(m.recommended_price_1)}</span><span>VK ** netto: ${euro(m.recommended_price_2)}</span><span>Standard-VK netto: ${euro(m.unit_price)} · Brutto bei 19 %: ${euro(Number(m.unit_price||0)*1.19)}</span>${Number(m.unit_price)===0&&(m.recommended_price_1!=null||m.recommended_price_2!=null)?'<strong>Standard-Verkaufspreis ist 0 €. Vor Verwendung als Rechnungspreis bitte bewusst prüfen.</strong>':''}<button type="button" class="secondary small" data-catalog-action="edit-metadata" data-id="${esc(m.id)}">Artikelnummer, Vertrieb, EK und VK bearbeiten</button>`;
+        card.append(box);
+      }
+    }
+    root.addEventListener('input',event=>{if(event.target.matches?.('[data-material-search]')&&ensure()){materialSearch=event.target.value;searchMaterials();}if(event.target.name==='price'&&event.target.closest?.('form[data-form="material"],form[data-form="material-edit"],form[data-form="hourly-price"]'))grossNote(event.target);const form=event.target.closest?.('form[data-form="catalog-prices-v908"]');if(form&&ensure()){const m=materials().find(row=>row.id===selected);if(m){const data=Object.fromEntries(new FormData(form));draft={...m,...Object.fromEntries(format.prices.map(key=>[key,data['catalog_'+key]])),catalog_supplier:data.catalog_supplier,catalog_article_number:data.catalog_article_number};}}});
+    return { view, reset: () => { scope = ''; ensure();advanced?.reset(); }, afterRender };
   }
   window.WorktimeCatalog = { create };
 })();

@@ -2130,7 +2130,7 @@
   if(catalogFeature){
     const materialViewBeforeCatalog=materialsView,renderBeforeCatalog=render;
     materialsView=()=>materialViewBeforeCatalog()+catalogFeature.view();
-    render=()=>{catalogFeature.afterRender();renderBeforeCatalog();};
+    render=()=>{renderBeforeCatalog();catalogFeature.afterRender();};
   }
   const invoiceLedger=window.WorktimeInvoiceLedger?.create({root,state,api,allRows,render:()=>render(),reload:()=>reload(),isManager,businessId,today,escape,getCompanyDetails:()=>legalFeature?.getCompanyDetails?.()||null,askTax:(data,accept,options)=>window.WorktimeInvoiceTax.ask(data,accept,options),openPdf:openDocumentPdf,scopeOrder:orderInCurrentBusiness});
   if(invoiceLedger){

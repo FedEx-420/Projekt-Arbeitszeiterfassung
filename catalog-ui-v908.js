@@ -99,7 +99,18 @@
       }
     }, true);
     function grossNote(input){const value=Number(input.value),label=input.closest?.('label');if(!label)return;label.firstChild.textContent='Netto-Verkaufspreis in € (ohne Umsatzsteuer) ';let note=label.querySelector('[data-material-gross]');if(!note){note=document.createElement('small');note.dataset.materialGross='';label.append(note);}note.textContent=input.value!==''&&Number.isFinite(value)?'Brutto bei 19 %: '+euro(value*1.19)+' · Vergleichswert; die tatsächliche Umsatzsteuer wird in der Rechnung gewählt.':'Bitte Nettopreis ohne Umsatzsteuer eintragen.';}
-    function searchMaterials(){const byId=new Map(materials().map(m=>[m.id,m])),query=materialSearch.trim().toLocaleLowerCase('de');let total=0,visible=0;for(const button of root.querySelectorAll('[data-action="edit-material"]')){const card=button.closest('.row-card'),m=byId.get(button.dataset.id);if(!card||!m)continue;total++;card.dataset.materialCatalogCard='';const match=!query||[m.name,m.catalog_article_number,m.catalog_supplier].some(v=>String(v||'').toLocaleLowerCase('de').includes(query));card.hidden=!match;if(match)visible++;}const output=root.querySelector('[data-material-search-count]');if(output)output.textContent=visible+' von '+total+' gespeicherten Materialien';}
+    function searchMaterials(){
+      const byId=new Map(materials().map(m=>[m.id,m])),query=materialSearch.trim(),matcher=window.WorktimeCatalogImport?.matchesArticle;
+      const mapping={name:'name',article_number:'catalog_article_number',supplier:'catalog_supplier'};
+      const fallbackTokens=query.toLocaleLowerCase('de').split(/\s+/).filter(Boolean);let total=0,visible=0;
+      for(const button of root.querySelectorAll('[data-action="edit-material"]')){
+        const card=button.closest('.row-card'),m=byId.get(button.dataset.id);if(!card||!m)continue;total++;card.dataset.materialCatalogCard='';
+        // Same word-by-word name matching as catalog search; preserve explicit supplier search.
+        const match=!query||(matcher?matcher(m,query,mapping):fallbackTokens.every(token=>[m.name,m.catalog_article_number,m.catalog_supplier].some(v=>String(v||'').toLocaleLowerCase('de').includes(token))));
+        card.hidden=!match;if(match)visible++;
+      }
+      const output=root.querySelector('[data-material-search-count]');if(output)output.textContent=visible+' von '+total+' gespeicherten Materialien';
+    }
     function afterRender(){
       if(!ensure())return;advanced?.afterRender();
       const firstCard=root.querySelector('[data-action="edit-material"]')?.closest('.row-card');if(firstCard&&!root.querySelector('[data-material-search]')){const label=document.createElement('label');label.className='catalog-material-search';label.innerHTML='Gespeicherte Materialliste durchsuchen<input type="search" data-material-search placeholder="Name, Artikelnummer oder Vertrieb"><small data-material-search-count></small>';label.querySelector('input').value=materialSearch;firstCard.before(label);}searchMaterials();

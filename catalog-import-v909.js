@@ -67,10 +67,46 @@
     if(listAsSellingPrice&&!filled('recommended_price_1')){const candidates=['source_list_price','source_net_list'].filter(has);if(candidates.length===1)mapping.recommended_price_1=candidates[0];}
     return mapping;
   }
+  const foldSearch=v=>clean(v).normalize('NFC').toLocaleLowerCase('de').replace(/ä/g,'ae').replace(/ö/g,'oe').replace(/ü/g,'ue').replace(/ß/g,'ss').normalize('NFKD').replace(/[\u0300-\u036f]/g,'');
+  let lastSearchQuery, lastSearchTokens=[];
+  function searchTokens(query){
+    const text=String(query??'');if(text===lastSearchQuery)return lastSearchTokens;
+    lastSearchQuery=text;lastSearchTokens=foldSearch(text).split(/\s+/).filter(Boolean).map(value=>{
+      // Never guess article numbers, electrical ratings, dimensions or short codes.
+      const edits=/^[a-z]{4,64}$/.test(value)?value.length>=8?2:1:0;
+      return {value,edits,pairs:edits?[...new Set(Array.from({length:value.length-1},(_,i)=>value.slice(i,i+2)))]:[]};
+    });return lastSearchTokens;
+  }
+  function similarNameWord(word,token){
+    const {value,edits,pairs}=token,n=value.length;if(word.length<n-edits)return false;
+    // An edit can destroy at most three distinct bigrams (adjacent swap).
+    // This cheap necessary condition avoids edit matrices for unrelated catalog rows.
+    const required=pairs.length-3*edits;
+    if(required>0){let shared=0;for(const pair of pairs)if(word.includes(pair)&&++shared>=required)break;if(shared<required)return false;}
+    // Optimal-string-alignment distance to a substring, including adjacent swaps.
+    // Free text prefix/suffix keeps partial compound names searchable as before.
+    let older=new Uint16Array(n+1),previous=Uint16Array.from({length:n+1},(_,i)=>i),current=new Uint16Array(n+1);
+    for(let j=1;j<=word.length;j++){
+      current[0]=0;
+      for(let i=1;i<=n;i++){
+        let cost=Math.min(previous[i]+1,current[i-1]+1,previous[i-1]+(value[i-1]===word[j-1]?0:1));
+        if(i>1&&j>1&&value[i-1]===word[j-2]&&value[i-2]===word[j-1])cost=Math.min(cost,older[i-2]+1);
+        current[i]=Math.min(cost,edits+1);
+      }
+      if(current[n]<=edits)return true;
+      const spare=older;older=previous;previous=current;current=spare;
+    }
+    return false;
+  }
   function matchesArticle(row,query,mapping={article_number:'article_number',name:'name'}){
-    const fold=v=>clean(v).normalize('NFC').toLocaleLowerCase('de').replace(/ä/g,'ae').replace(/ö/g,'oe').replace(/ü/g,'ue').replace(/ß/g,'ss').normalize('NFKD').replace(/[\u0300-\u036f]/g,'');
-    const tokens=fold(query).split(/\s+/).filter(Boolean);if(!tokens.length)return true;
-    const haystack=fold([row[mapping.article_number],row[mapping.name]].filter(v=>v!=null).join(' '));return tokens.every(token=>haystack.includes(token));
+    const tokens=searchTokens(query);if(!tokens.length)return true;
+    const name=foldSearch(row[mapping.name]),article=foldSearch(row[mapping.article_number]);let words;
+    return tokens.every(token=>{
+      if(name.includes(token.value)||article.includes(token.value))return true;
+      if(!token.edits)return false;
+      words??=name.match(/[a-z]+/g)||[];
+      return words.some(word=>similarNameWord(word,token));
+    });
   }
   function context(file, options) {
     if (!file || typeof file.slice !== 'function' || !Number.isSafeInteger(file.size) || file.size < 1) error('Bitte eine lesbare Katalogdatei auswählen.');

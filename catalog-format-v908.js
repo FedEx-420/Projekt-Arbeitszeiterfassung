@@ -9,7 +9,7 @@
   const limits = Object.freeze({ bytes: 2 * 1024 * 1024, rows: 1000, columns: 32, cell: 500 });
   const fields = Object.freeze(['article_number', 'name', 'unit', 'purchase_price', 'recommended_price_1', 'recommended_price_2', 'price_unit']);
   const prices = fields.slice(3, 6);
-  function fail(message, row) { throw new Error((row ? 'Zeile ' + row + ': ' : '') + message); }
+  function fail(message, row) { const error=new Error((row ? 'Zeile ' + row + ': ' : '') + message);if(row){error.catalogRow=row-2;error.catalogField=/Artikelbezeichnung|gleichnamig|Artikelname/i.test(message)?'name':/Artikelnummer/i.test(message)?'article_number':/Einheit|Verpackung/i.test(message)?'unit':null;}throw error; }
   function text(value, label, max = limits.cell) {
     const result = String(value ?? '').trim();
     if (!result || result.length > max || /[\u0000-\u001f\u007f-\u009f]/.test(result) || /^[=+@]/.test(result)) fail(label + ' fehlt oder enthält unzulässige Steuerzeichen/Formel-Inhalte.');

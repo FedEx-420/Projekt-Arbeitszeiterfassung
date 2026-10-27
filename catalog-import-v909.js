@@ -50,6 +50,7 @@
       recommended_price_1: ['recommendedprice1', 'recommended_price_1', 'vk*', 'vk1', 'vk*netto', 'vk1netto', 'verkaufspreis1', 'empfohlenervk*'],
       recommended_price_2: ['recommendedprice2', 'recommended_price_2', 'vk**', 'vk2', 'vk**netto', 'vk2netto', 'verkaufspreis2', 'empfohlenervk**'],
       price_unit: ['priceunit', 'price_unit', 'preiseinheit', 'preisje', 'pricequantity'],
+      gtin: ['gtin','ean','ean13','ean14','source_gtin','internationaleartikelnummer'],
       manufacturer: ['manufacturer','hersteller','herstellername','marke','brand','manufacturername'],
       category: ['category','kategorie','warengruppe','produktgruppe','artikelgruppe','productgroup','groupid','source_category'],
       supplier: ['supplier', 'lieferant', 'vertrieb', 'grosshaendler', 'großhändler', 'distributor']

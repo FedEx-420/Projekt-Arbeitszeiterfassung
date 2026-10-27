@@ -106,10 +106,10 @@
       for(const button of root.querySelectorAll('[data-action="edit-material"]')){
         const card=button.closest('.row-card'),m=byId.get(button.dataset.id);if(!card||!m)continue;total++;card.dataset.materialCatalogCard='';
         // Same word-by-word name matching as catalog search; preserve explicit supplier search.
-        const match=!query||(matcher?matcher(m,query,mapping):fallbackTokens.every(token=>[m.name,m.catalog_article_number,m.catalog_supplier].some(v=>String(v||'').toLocaleLowerCase('de').includes(token))));
+        const match=!query||(matcher?matcher({...m,name:m.catalog_product_name||m.name},query,mapping):fallbackTokens.every(token=>[m.name,m.catalog_article_number,m.catalog_supplier].some(v=>String(v||'').toLocaleLowerCase('de').includes(token))));
         card.hidden=!match;if(match)visible++;
       }
-      const output=root.querySelector('[data-material-search-count]');if(output)output.textContent=visible+' von '+total+' gespeicherten Materialien';
+      const output=root.querySelector('[data-material-search-count]');if(output)output.textContent=visible+' von '+total+' gespeicherten Materialien';window.WorktimeCatalogProducts?.syncVisibility(root);
     }
     function afterRender(){
       if(!ensure())return;const catalog=root.querySelector('[data-catalog-v908]'),firstMaterial=root.querySelector('[data-action="edit-material"]')?.closest('.row-card');if(catalog&&firstMaterial&&!(catalog.compareDocumentPosition(firstMaterial)&Node.DOCUMENT_POSITION_FOLLOWING))firstMaterial.before(catalog);advanced?.afterRender();
@@ -121,6 +121,7 @@
         box.innerHTML=`<span>Artikelnummer: <b>${esc(m.catalog_article_number||'Nicht hinterlegt')}</b></span><span>Vertrieb / Lieferant: ${esc(m.catalog_supplier||'Nicht hinterlegt')}</span><span>EK netto: ${euro(m.purchase_price)}</span><span>VK * netto: ${euro(m.recommended_price_1)}</span><span>VK ** netto: ${euro(m.recommended_price_2)}</span><span>Standard-VK netto: ${euro(m.unit_price)} · Brutto bei 19 %: ${euro(Number(m.unit_price||0)*1.19)}</span>${Number(m.unit_price)===0&&(m.recommended_price_1!=null||m.recommended_price_2!=null)?'<strong>Standard-Verkaufspreis ist 0 €. Vor Verwendung als Rechnungspreis bitte bewusst prüfen.</strong>':''}<button type="button" class="secondary small" data-catalog-action="edit-metadata" data-id="${esc(m.id)}">Artikelnummer, Vertrieb, EK und VK bearbeiten</button>`;
         card.append(box);
       }
+      window.WorktimeCatalogProducts?.decorate({root,materials:materials(),api,businessId,reload,render,isManager});
     }
     root.addEventListener('input',event=>{if(event.target.matches?.('[data-material-search]')&&ensure()){materialSearch=event.target.value;searchMaterials();}if(event.target.name==='price'&&event.target.closest?.('form[data-form="material"],form[data-form="material-edit"],form[data-form="hourly-price"]'))grossNote(event.target);const form=event.target.closest?.('form[data-form="catalog-prices-v908"]');if(form&&ensure()){const m=materials().find(row=>row.id===selected);if(m){const data=Object.fromEntries(new FormData(form));draft={...m,...Object.fromEntries(format.prices.map(key=>[key,data['catalog_'+key]])),catalog_supplier:data.catalog_supplier,catalog_article_number:data.catalog_article_number};}}});
     return { view, reset: () => { scope = ''; ensure();advanced?.reset(); }, afterRender };

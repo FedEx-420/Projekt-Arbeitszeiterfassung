@@ -11,6 +11,7 @@
 })(typeof globalThis === 'object' ? globalThis : this, function () {
   'use strict';
   const classifier=typeof module==='object'&&module.exports?require('./catalog-classify-v925.js'):globalThis.WorktimeCatalogClassify;
+  const technical=typeof module==='object'&&module.exports?require('./product-features-v928.js'):globalThis.WorktimeProductFeatures;
   const MiB = 1024 * 1024;
   const limits = Object.freeze({ inputBytes: 2048 * MiB, expandedBytes: 2048 * MiB, entries: 2048, directoryBytes: 4 * MiB, ratio: 200, rows: 1000, columns: 64, cell: 4096, line: 65536, xmlBytes: 32 * MiB, sharedXmlBytes: 16 * MiB, jsonBytes: 8 * MiB, xmlNodes: 300000, depth: 64 });
   const priceFields = ['purchase_price', 'recommended_price_1', 'recommended_price_2'];
@@ -360,12 +361,14 @@
   async function readBMEcat(stream,ctx,encoding,expanded) {
     const source=await collect(stream,ctx,limits.xmlBytes,encoding,expanded),tree=xmlTree(source);if(tree.name!=='BMECAT')error('XML-Format nicht erkannt. Unterstützt wird BMEcat 1.2/2005; andere XML-Dateien bitte als CSV exportieren.');
     ctx.format='BMEcat XML';ctx.decimal='dot';ctx.supplier=firstText(tree,'SUPPLIER_NAME');
-    ctx.headers=[...canonical,'source_net_list','source_net_customer','source_recommended_gross','source_currency','source_price_factor'];
+    ctx.headers=[...canonical,'source_net_list','source_net_customer','source_recommended_gross','source_currency','source_price_factor','source_image_url'];
     warning(ctx,'BMEcat-Preisarten bitte ausdrücklich EK/VK zuordnen. „nrp“ ist ein empfohlener Preis inklusive Umsatzsteuer und wird nicht automatisch als Nettopreis übernommen. Staffel-, Zeitraum- und Formelpreise müssen manuell geprüft werden.');
-    const products=descendants(tree,'ARTICLE').concat(descendants(tree,'PRODUCT')),catalogCurrency=firstText(tree,'CURRENCY');
+    const products=descendants(tree,'ARTICLE').concat(descendants(tree,'PRODUCT')),catalogCurrency=firstText(tree,'CURRENCY'),mimeRoot=firstText(tree,'MIME_ROOT');
     if(!products.length)error('Keine BMEcat-Artikel gefunden.');
     for(const product of products){abort(ctx.options.signal);ctx.recordsRead++;const basis=firstText(product,'PRICE_QUANTITY')||'1';
       const row={article_number:firstText(product,'SUPPLIER_AID')||firstText(product,'SUPPLIER_PID'),name:firstText(product,'DESCRIPTION_SHORT'),unit:normalizeUnit(firstText(product,'ORDER_UNIT')),purchase_price:'',recommended_price_1:'',recommended_price_2:'',price_unit:basis,supplier:ctx.supplier,manufacturer:firstText(product,'MANUFACTURER_NAME'),category:firstText(product,'REFERENCE_FEATURE_GROUP_NAME')||firstText(product,'REFERENCE_FEATURE_GROUP_ID'),source_net_list:'',source_net_customer:'',source_recommended_gross:'',source_currency:'',source_price_factor:'',_review:[]};
+      const image=descendants(product,'MIME').find(node=>/^image\//i.test(firstText(node,'MIME_TYPE'))||/\.(?:png|jpe?g|webp)(?:[?#]|$)/i.test(firstText(node,'MIME_SOURCE')));if(image){const source=firstText(image,'MIME_SOURCE'),base=mimeRoot;try{row.source_image_url=technical?.safeImageURL(base?new URL(source,base).href:source)||'';}catch{row.source_image_url='';}}
+      const namedFeatures={};for(const feature of descendants(product,'FEATURE')){const name=firstText(feature,'FNAME'),value=firstText(feature,'FVALUE');if(name&&value)namedFeatures[name]=value;}if(technical)row._technical_features=Object.fromEntries(Object.entries(technical.fromRow(namedFeatures).features).filter(([,entry])=>entry.source==='catalog'));
       if(product.attrs.mode&&product.attrs.mode!=='new'&&product.attrs.mode!=='update'){warning(ctx,'BMEcat-Löschanweisungen werden nicht ausgeführt.');continue;}
       const priceNodes=descendants(product,'ARTICLE_PRICE').concat(descendants(product,'PRODUCT_PRICE')),counts={};
       for(const p of priceNodes){const kind=p.attrs.price_type,kindKeys={net_list:'source_net_list',net_customer:'source_net_customer',nrp:'source_recommended_gross'},key=Object.hasOwn(kindKeys,kind)?kindKeys[kind]:null;if(!key){row._review.push('Weitere Preisart '+String(kind||'unbekannt')+': manuell prüfen.');continue;}counts[key]=(counts[key]||0)+1;const currency=firstText(p,'PRICE_CURRENCY')||catalogCurrency,factor=firstText(p,'PRICE_FACTOR')||'1',bound=firstText(p,'LOWER_BOUND')||'1',amount=firstText(p,'PRICE_AMOUNT');row.source_currency=currency;row.source_price_factor=factor;
@@ -446,5 +449,5 @@
     if(ctx.truncated&&!options.scanAll)warning(ctx,'Nur dieser Ausschnitt mit höchstens '+ctx.maxRows+' Artikeln wurde gelesen. Weitere Artikel sind vorhanden; Suche eingrenzen oder den nächsten Ausschnitt wählen. Bei ZIP-Ausschnitten ist die vollständige Archiv-Prüfsumme noch nicht geprüft. Es wurde nichts automatisch gespeichert.');
     const suggestedMapping=automaticMapping(ctx.headers,ctx.rows,{listAsSellingPrice:options.listAsSellingPrice===true});const a=ctx.analysis;const analysis=a?{...a,manufacturers:[...a.manufacturers].sort(),categories:[...a.categories].sort(),complete:(options.inspectOnly===true||options.scanAll===true)&&!ctx.stoppedEarly}:null;return {analysis,headers:ctx.headers,rows:ctx.rows,warnings:ctx.warnings,format:ctx.format,totalMatches:ctx.matchedRows,scanComplete:!ctx.stoppedEarly,totalRead:ctx.recordsRead,truncated:ctx.truncated,hasMore:ctx.truncated,suggestedMapping,supplier:ctx.supplier,decimal:ctx.decimal,priceUnit:ctx.priceUnit};
   }
-  return Object.freeze({limits,readCatalog,articleGroups,matchesGroups,aliasMap,automaticMapping,matchesArticle,normalizeUnit,priceText,xmlTree,zipDirectory,datanormVersion,datanormPrice});
+  return Object.freeze({articleDetails:(row,headers)=>technical?.fromRow(row,headers)||{features:{},image_url:''},limits,readCatalog,articleGroups,matchesGroups,aliasMap,automaticMapping,matchesArticle,normalizeUnit,priceText,xmlTree,zipDirectory,datanormVersion,datanormPrice});
 });

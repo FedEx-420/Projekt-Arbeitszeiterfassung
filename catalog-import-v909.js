@@ -237,10 +237,11 @@
     if (!header) error('Katalog enthält keine Spaltenüberschriften.');
     ctx.format = /\.tsv$/i.test(name) ? 'TSV' : 'CSV/Text';
   }
+  const datanormDate=value=>/^\d{8}$/.test(value)&&Number.isFinite(Date.parse(value.slice(0,4)+'-'+value.slice(4,6)+'-'+value.slice(6,8)))&&new Date(value.slice(0,4)+'-'+value.slice(4,6)+'-'+value.slice(6,8)).toISOString().slice(0,10).replaceAll('-','')===value;
   function datanormVersion(line) {
     if (!line.startsWith('V')) error('DATANORM benötigt einen Vorlaufsatz V.');
-    if (line.length >= 128 && !line.startsWith('V;')) return { version: line.slice(123,125), currency: clean(line.slice(125,128)) };
-    if (line.startsWith('V;')) return { version: '05', currency: '' };
+    if (line.length >= 128 && !line.startsWith('V;')) return { version: line.slice(123,125), currency: clean(line.slice(125,128)),date:/^\d{6}$/.test(line.slice(2,8))?'20'+line.slice(6,8)+line.slice(4,6)+line.slice(2,4):'' };
+    if (line.startsWith('V;')) {const f=line.split(';');if(f.length<9||f[1]!=='050'||!datanormDate(clean(f[3])))error('DATANORM-5-Vorlaufsatz ist unvollständig oder hat eine unbekannte Version.');return {version:'05',currency:clean(f[4]),content:clean(f[2]),date:clean(f[3]),creator:clean(f[7]),supplier:[f[8],f[9]].map(clean).filter(Boolean).join(' ')};}
     error('DATANORM-Vorlaufsatz ist unvollständig.');
   }
   function datanormPrice(raw) {
@@ -248,13 +249,13 @@
     const cents = BigInt(raw); return (cents/100n).toString() + '.' + String(cents%100n).padStart(2,'0');
   }
   async function readDatanorm(stream, ctx, name, encoding, expanded) {
-    let metadata = null, pending = null; const byArticle = new Map(), ambiguous = new Set(); let sawArticle = false;
+    let metadata = null, pending = null, lineCount=0,sawEnd=false; const byArticle = new Map(), ambiguous = new Set(); let sawArticle = false;
     ctx.decimal = 'dot'; ctx.format = 'DATANORM 4';
-    ctx.headers = [...canonical, 'source_list_price', 'source_net_price', 'source_price_kind', 'source_discount_group', 'source_action'];
+    ctx.headers = [...canonical, 'source_list_price', 'source_net_price', 'source_price_kind', 'source_discount_group', 'source_action','source_manufacturer_number','source_manufacturer_type','source_gtin','source_price_date'];
     warning(ctx, 'DATANORM-Listen-/Nettopreis ist keine Umsatzsteuer-Unterscheidung. EK/VK-Zuordnung beim Lieferanten prüfen und in der Vorschau selbst auswählen. Rabatte, Kupfer-/Tageszuschläge werden nicht automatisch verrechnet.');
     const flush = () => {
       if (!pending) return false;
-      const item = pending; pending = null;
+      const item = pending; pending = null;item._source_catalog_entry=name;
       const previous = byArticle.get(item.article_number);
       if (previous) {
         for (const key of ['source_list_price','source_net_price']) if (item[key] !== '') { const token = item.article_number + '\u001f' + key; if (ambiguous.has(token)) continue; if (previous[key] && (previous[key] !== item[key] || previous.price_unit !== item.price_unit || previous.unit !== item.unit)) { previous[key] = ''; ambiguous.add(token); previous._review.push('Mehrere unterschiedliche Preise/Einheiten für dieselbe Artikelnummer: Preis manuell klären.'); } else previous[key] = item[key]; }
@@ -264,12 +265,17 @@
       const before = ctx.rows.length, stop = keep(ctx,item); if (ctx.rows.length > before) byArticle.set(item.article_number,item); return stop;
     };
     for await (let line of lines(stream,ctx,encoding,expanded)) {
-      line = line.replace(/^\uFEFF/,''); if (!clean(line)) continue;
-      if (!metadata) { metadata = datanormVersion(line); if (metadata.version !== '04') error('DATANORM Version ' + (metadata.version || 'unbekannt') + ' erkannt. Dieser Import unterstützt geprüft DATANORM 4. Version 3/5 bitte beim Lieferanten als DATANORM 4 oder CSV exportieren; Preise werden nicht geraten.'); if (metadata.currency !== 'EUR') error('DATANORM-Währung ist nicht eindeutig EUR. Bitte einen EUR-Katalog verwenden.'); continue; }
-      ctx.recordsRead++;
-      const f = line.split(';').map(clean), type = f[0];
+      line = line.replace(/^\uFEFF/,''); if (!clean(line)) continue;lineCount++;
+      if (!metadata) { metadata = datanormVersion(line); if (!['04','05'].includes(metadata.version)) error('DATANORM Version '+(metadata.version||'unbekannt')+' wird nicht unterstützt. Bitte DATANORM 4 oder 5 verwenden.');if(metadata.version==='05'&&metadata.content!=='A')error('DATANORM-5-Artikelstamm benötigt Dateiinhalt A. Preisdatei bitte zusammen mit dem Artikelstamm als ZIP auswählen.'); if (metadata.currency !== 'EUR') error('DATANORM-Währung ist nicht eindeutig EUR. Bitte einen EUR-Katalog verwenden.');ctx.datanormSources??=new Map();ctx.datanormSources.set(name,metadata);ctx.format='DATANORM '+(metadata.version==='05'?'5':'4');ctx.supplier=ctx.supplier||metadata.supplier||'';continue; }
+      ctx.recordsRead++;if(ctx.recordsRead%5000===0)await new Promise(resolve=>setTimeout(resolve,0));
+      const f = line.split(';').map(clean), type = f[0];if(sawEnd)error('DATANORM enthält weitere Sätze nach dem Endesatz.');if(metadata.version==='05'&&type==='E'){if(!/^\d+$/.test(f[1]||'')||Number(f[1])!==lineCount)error('DATANORM-5-Endesatz: Satzanzahl stimmt nicht mit der gelesenen Datei überein.');sawEnd=true;continue;}
       if (type === 'A') {
         if (flush()) break;
+        if(metadata.version==='05'){
+         if(f.length<29||f.length>30)error('DATANORM-5-Artikelsatz hat einen unbekannten Aufbau.');if(!['N','A'].includes(f[1])){warning(ctx,'Löschungen und Umnummerierungen werden nicht automatisch ausgeführt.');continue;}sawArticle=true;const basis=/^\d{1,6}$/.test(f[7])&&Number(f[7])>0?String(Number(f[7])):'';const amount=datanormPrice(f[8]);
+         pending={article_number:f[2],name:[f[3],f[4]].filter(Boolean).join(' '),unit:normalizeUnit(f[5]),purchase_price:'',recommended_price_1:'',recommended_price_2:'',price_unit:basis,supplier:ctx.supplier,source_list_price:'',source_net_price:'',source_price_kind:f[6],source_discount_group:f[9],category:f[11]||f[10]||'',manufacturer:'',source_action:f[1],source_manufacturer_number:f[16]||'',source_manufacturer_type:f[17]||'',source_gtin:f[18]||'',_review:[]};
+         if(!basis)pending._review.push('Anzahl der Einheiten zum Preis fehlt oder ist ungültig. Bitte ergänzen.');if(amount&&BigInt(f[8]||0)>0n){if(f[6]==='1')pending.source_list_price=amount;else if(f[6]==='2')pending.source_net_price=amount;else pending._review.push('Andere Preisart oder Preis auf Anfrage: Preis manuell prüfen.');}else pending._review.push('Preis fehlt im Artikelstamm. Eine passende DATPREIS-Datei im ZIP wird zusätzlich geprüft.');Object.values(pending).filter(v=>typeof v==='string').forEach(checkText);continue;
+        }
         if (f.length < 13) error('DATANORM A-Satz ' + (ctx.recordsRead+1) + ' ist unvollständig.');
         if (!['N','A'].includes(f[1])) { warning(ctx,'Löschungen und Artikelnummern-Änderungen aus DATANORM werden nur übersprungen, niemals automatisch ausgeführt.'); continue; }
         sawArticle = true;
@@ -282,16 +288,41 @@
         else if (f[6] === '2') pending.source_net_price = rawPrice;
         else pending._review.push('Preiskennzeichen nicht unterstützt: Preis manuell klären.');
         Object.values(pending).filter(v => typeof v === 'string').forEach(checkText);
+      } else if(metadata.version==='05'&&type==='B'){warning(ctx,'DATANORM-5-Löschungen und Umnummerierungen werden nicht automatisch ausgeführt.');
+      } else if(metadata.version==='05'&&type==='Z'){warning(ctx,'Rohstoff-/Kupferzuschläge sind vorhanden und werden nicht in EK/VK eingerechnet. Endgültige Preise vor Übernahme beim Lieferanten prüfen.');if(pending&&f[2]===pending.article_number)pending._review.push('Dieser Artikel hat einen Rohstoff-/Kupferzuschlag. Gelieferte Preise können weitere Zuschläge erfordern.');
       } else if (type === 'B' && pending && f[2] === pending.article_number) {
-        pending._source_gtin = f[7] || ''; pending._source_alternative_article = f[4] || '';
+        pending._source_gtin = f[7] || '';pending.source_gtin=f[7]||'';if(f[9])pending.category=f[9]; pending._source_alternative_article = f[4] || '';
         if (f[6] && Number(f[6]) !== 0) pending._review.push('Kupferwert/Zuschlag vorhanden: endgültigen Preis beim Lieferanten prüfen.');
       } else if (type === 'P') warning(ctx, 'DATPREIS-/P-Preisänderungen werden nicht ohne passende Artikel-, Rabatt- und Preiseinheitsprüfung übernommen. Bitte Artikelstamm oder CSV mit endgültigen Nettopreisen verwenden.');
       else if (['Z','D','C','J'].includes(type)) warning(ctx,'Zusatz-, Leistungs-, Set- und Staffelpreise werden nicht automatisch als Einzelmaterialpreise interpretiert.');
-      if (ctx.recordsRead % 5000 === 0) await new Promise(resolve => setTimeout(resolve,0));
+
     }
-    if (!ctx.truncated) flush();
-    if (!sawArticle && !ctx.rows.length) error('Kein DATANORM-4-Artikelsatz A gefunden. Preis-, Rabatt- oder Langtextdateien allein enthalten keinen vollständigen Artikelstamm.');
+    if (!ctx.truncated) {flush();if(metadata?.version==='05'&&!sawEnd)error('DATANORM-5-Datei ist unvollständig: Endesatz fehlt.');}
+    if (!sawArticle && !ctx.rows.length) error('Kein DATANORM-Artikelsatz A gefunden. Preis-, Rabatt- oder Langtextdateien allein enthalten keinen vollständigen Artikelstamm.');
     if (ctx.rows.some(r => r._review?.length)) warning(ctx,'Einzelne Artikel enthalten ungeklärte Angaben. Fehlende Werte vor dem Speichern ergänzen oder den Artikel auslassen.');
+  }
+  async function readDatanormPrices(stream,ctx,name,encoding,expanded,source){
+    let metadata=null,lineCount=0,sawEnd=false;const selected=new Map(ctx.rows.filter(r=>r._source_catalog_entry===source).map(r=>[r.article_number,r])),slots=new Map(),ambiguous=new Set();
+    const note=(row,text)=>{if(!row._review.includes(text))row._review.push(text);};
+    const original=ctx.datanormSources?.get(source);let validEK=0,validList=0;
+    for await(let line of lines(stream,ctx,encoding==='auto'?'cp437':encoding,expanded)){
+      if(!clean(line))continue;lineCount++;if(lineCount%5000===0)await new Promise(resolve=>setTimeout(resolve,0));if(!metadata){metadata=datanormVersion(line);if(!['04','05'].includes(metadata.version)||metadata.currency!=='EUR'||metadata.version!==original?.version)error('Artikel- und Preisdatei haben unterschiedliche Version oder Währung.');if(metadata.version==='05'&&(metadata.content!=='P'||metadata.creator!==original.creator))error('DATANORM-5-Preisdatei passt nicht zum Datenersteller des Artikelstamms.');continue;}
+      const f=line.split(';').map(clean);if(sawEnd)error('Preisdatei enthält Daten nach dem Endesatz.');if(metadata.version==='05'&&f[0]==='E'){if(!/^[0-9]+$/.test(f[1]||'')||Number(f[1])!==lineCount)error('DATANORM-5-Preisdatei: Satzanzahl stimmt nicht.');sawEnd=true;continue;}
+      ctx.recordsRead++;if(f[0]!=='P'){warning(ctx,'Unbekannte Zusatzsätze in der Preisdatei werden nicht als Preise übernommen.');continue;}
+      const v5=metadata.version==='05',sku=v5?f[1]:f[2],kind=v5?f[2]:f[3],basis=v5?f[3]:null,amount=v5?f[4]:f[4],date=v5?f[12]||metadata.date:'',row=selected.get(sku);
+      const simple=v5?f.length===14&&!f.slice(5,12).some(Boolean)&&/^[0-9]{1,6}$/.test(basis||'')&&Number(basis)>0&&(!date||datanormDate(date))&&(!date||!metadata.date||date<=metadata.date):f.length>=7&&f.length<=8&&f[1]==='A'&&!f.slice(5).some(Boolean);
+      const field=kind==='1'?'source_list_price':kind==='2'?'source_net_price':null;
+      if(!simple||!field||!datanormPrice(amount)||BigInt(amount||0)===0n){warning(ctx,'Einige Preiszeilen sind zeitabhängig, rabattiert, unklar oder nicht unterstützt. Diese Preise werden nicht automatisch übernommen.');if(row&&field){ambiguous.add(sku+'\u001f'+field);row[field]='';note(row,'Preisdatei enthält ungeklärte Angaben für diese Preisart. Bitte manuell prüfen.');}continue;}
+      if(kind==='2')validEK++;else validList++;if(!row)continue;
+      if(v5&&Number(basis)!==Number(row.price_unit)){ambiguous.add(sku+'\u001f'+field);row[field]='';note(row,'Preisdatei verwendet eine andere Anzahl zum Preis. Bitte manuell umrechnen.');continue;}
+      const key=sku+'\u001f'+field,previous=slots.get(key),price=datanormPrice(amount);
+      if(previous&&previous.price!==price){ambiguous.add(key);row[field]='';note(row,'Mehrere unterschiedliche Preise für dieselbe Preisart. Bitte manuell klären.');continue;}
+      if(!ambiguous.has(key)){slots.set(key,{price,date});row[field]=price;row['_'+field+'_date']=date;row.source_price_date=['source_net_price','source_list_price'].filter(k=>row['_'+k+'_date']).map(k=>(k==='source_net_price'?'EK':'Listenpreis')+': '+row['_'+k+'_date']).join(' · ');}
+
+    }
+    if(metadata?.version==='05'&&!sawEnd)error('DATANORM-5-Preisdatei ist unvollständig: Endesatz fehlt.');
+    if(ctx.analysis){ctx.analysis.separatePurchasePrices=(ctx.analysis.separatePurchasePrices||0)+validEK;ctx.analysis.separateListPrices=(ctx.analysis.separateListPrices||0)+validList;}
+    warning(ctx,'Passende separate Preisdatei gelesen: '+validEK+' klare EK-Preiszeilen und '+validList+' Listenpreiszeilen. Rohstoffzuschläge werden nicht hinzugerechnet.');
   }
   function xmlDecode(value) {
     return value.replace(/&([^;\s]{1,30});/g, (_, entity) => {
@@ -399,14 +430,14 @@
     if(/\.json$/i.test(name))return readJson(stream,ctx,encoding==='auto'?'utf-8':encoding,expanded);
     if(/\.(?:xml|bmecat)$/i.test(name))return readBMEcat(stream,ctx,encoding==='auto'?'utf-8':encoding,expanded);
     if(/\.(?:csv|tsv|txt)$/i.test(name))return readDelimited(stream,ctx,name,encoding==='auto'?'utf-8':encoding,expanded);
-    error('Nicht unterstütztes Katalogformat. Gelesen werden CSV, TSV, TXT, JSON, XLSX, BMEcat-XML, DATANORM 4 (.001/.dat) und ZIP mit diesen Dateien. Alte XLS/ODS/PDF/Bilder bitte als CSV/XLSX exportieren; Belege separat scannen.');
+    error('Nicht unterstütztes Katalogformat. Gelesen werden CSV, TSV, TXT, JSON, XLSX, BMEcat-XML, DATANORM 4/5 (.001/.dat) und ZIP mit diesen Dateien. Alte XLS/ODS/PDF/Bilder bitte als CSV/XLSX exportieren; Belege separat scannen.');
   }
   async function readCatalog(file,options={}) {
     const ctx=context(file,options);abort(options.signal);const name=file.name||options.filename||'',encoding=options.encoding||'auto',signature=new Uint8Array(await file.slice(0,4).arrayBuffer());
     if(signature[0]===0x50&&signature[1]===0x4b){
       const entries=await zipDirectory(file);abort(options.signal);
       if(entries.some(e=>e.name==='[Content_Types].xml')&&entries.some(e=>e.name==='xl/workbook.xml'))await readXlsx(file,entries,ctx);
-      else{const candidates=entries.filter(e=>!e.name.endsWith('/')&&/\.(?:csv|tsv|txt|json|xml|bmecat|dat|\d{3})$/i.test(e.name)&&!/(?:^|\/)(?:datpreis|datasets)\./i.test(e.name)).sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true}));if(!candidates.length)error('ZIP enthält keinen unterstützten Artikelkatalog. Rabatt-/Preisdateien allein reichen nicht aus.');const selected=options.entryName?candidates.filter(e=>e.name===options.entryName):candidates;if(!selected.length)error('Ausgewählte Katalogdatei ist im ZIP nicht vorhanden.');if(selected.length>1&&!selected.every(e=>/(?:^|\/)datanorm\.\d{3}$/i.test(e.name)))error('ZIP enthält mehrere unterschiedliche Kataloge. Bitte eine Datei einzeln entpackt auswählen.');warning(ctx,'ZIP wird nur lokal und ausschnittsweise gelesen. Es findet keine vollständige Katalogübernahme im Hintergrund statt.');for(const entry of selected){await readSource(await zipStream(file,entry,ctx),ctx,entry.name,encoding,true);if(ctx.truncated)break;}ctx.format='ZIP / '+ctx.format;}
+      else{const candidates=entries.filter(e=>!e.name.endsWith('/')&&!/(?:^|[/])(?:readme|liesmich|bitte_lesen)(?:[._-]|$)/i.test(e.name)&&/\.(?:csv|tsv|txt|json|xml|bmecat|dat|\d{3})$/i.test(e.name)&&!/(?:^|\/)(?:datpreis|datasets)\./i.test(e.name)).sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true}));if(!candidates.length)error('ZIP enthält keinen unterstützten Artikelkatalog. Rabatt-/Preisdateien allein reichen nicht aus.');const selected=options.entryName?candidates.filter(e=>e.name===options.entryName):candidates;if(!selected.length)error('Ausgewählte Katalogdatei ist im ZIP nicht vorhanden.');if(selected.length>1&&!selected.every(e=>/(?:^|\/)datanorm\.\d{3}$/i.test(e.name)))error('ZIP enthält mehrere unterschiedliche Kataloge. Bitte eine Datei einzeln entpackt auswählen.');warning(ctx,'ZIP wird nur lokal und ausschnittsweise gelesen. Es findet keine vollständige Katalogübernahme im Hintergrund statt.');for(const entry of selected){await readSource(await zipStream(file,entry,ctx),ctx,entry.name,encoding,true);if(ctx.truncated)break;}for(const [source]of ctx.datanormSources||[]){const match=/^(.*\/)?datanorm\.(\d{3})$/i.exec(source);if(!match)continue;const priceName=(match[1]||'')+'DATPREIS.'+match[2],priceEntries=entries.filter(e=>e.name.toLowerCase()===priceName.toLowerCase());if(priceEntries.length>1)error('Mehrere Preisdateien mit gleicher Zuordnung.');if(priceEntries[0])await readDatanormPrices(await zipStream(file,priceEntries[0],ctx),ctx,priceEntries[0].name,encoding,true,source);}ctx.format='ZIP / '+ctx.format;}
     }else{if(signature[0]===0xd0&&signature[1]===0xcf)error('Altes Excel-XLS-Format erkannt. Bitte in Excel als XLSX oder CSV speichern.');let chosen=encoding;if(chosen==='auto'&&signature[0]===0xff&&signature[1]===0xfe)chosen='utf-16le';else if(chosen==='auto'&&signature[0]===0xfe&&signature[1]===0xff)chosen='utf-16be';await readSource(file.stream(),ctx,name,chosen,false);}
     abort(options.signal);progress(ctx,true);if(!ctx.rows.length&&!options.inspectOnly)warning(ctx,'Keine Artikel im gewählten Such-/Zeilenausschnitt gefunden.');
     if(ctx.truncated)warning(ctx,'Nur dieser Ausschnitt mit höchstens '+ctx.maxRows+' Artikeln wurde gelesen. Weitere Artikel sind vorhanden; Suche eingrenzen oder den nächsten Ausschnitt wählen. Bei ZIP-Ausschnitten ist die vollständige Archiv-Prüfsumme noch nicht geprüft. Es wurde nichts automatisch gespeichert.');

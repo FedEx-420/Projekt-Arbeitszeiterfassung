@@ -139,6 +139,9 @@
     if(!['manufacturer','category'].every(key=>!ctx.options[key+'s']?.length||ctx.options[key+'s'].includes(groups[key])))return false;
     const filter = clean(ctx.options.articleFilter);
     if(filter){const mapping=ctx.searchMapping||(ctx.searchMapping=(()=>{const detected=aliasMap(ctx.headers);return {article_number:detected.article_number,name:detected.name};})());if(!mapping.article_number&&!mapping.name)warning(ctx,'Artikelspalten nicht eindeutig erkannt. Ohne Suche lesen, dann Artikelnummer und Bezeichnung zuordnen.');if(!matchesArticle(row,filter,mapping))return false;}
+    const searchMap=ctx.fieldSearchMap||(ctx.fieldSearchMap=aliasMap(ctx.headers));
+    if(clean(ctx.options.articleNameFilter)&&!matchesArticle(row,ctx.options.articleNameFilter,{name:searchMap.name}))return false;
+    if(clean(ctx.options.articleNumberFilter)&&!foldSearch(row[searchMap.article_number]).includes(foldSearch(ctx.options.articleNumberFilter)))return false;
     ctx.matchedRows++;
     if (ctx.skippedMatches < ctx.offset) { ctx.skippedMatches++; return false; }
     if (ctx.rows.length >= ctx.maxRows) { ctx.truncated = true; return true; }

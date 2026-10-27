@@ -115,17 +115,17 @@
     if (file.size > limits.inputBytes) error('Datei über 2 GiB. Bitte einen kleineren Lieferanten-Ausschnitt verwenden.');
     const maxRows = Number(options.maxRows ?? limits.rows), offset = Number(options.offset ?? 0);
     if (!Number.isSafeInteger(maxRows) || maxRows < 1 || maxRows > limits.rows || !Number.isSafeInteger(offset) || offset < 0) error('Ungültiger Katalog-Ausschnitt. Höchstens 1000 Artikel pro Vorschau.');
-    return { file, options, maxRows, offset, rows: [], headers: [], warnings: [], format: '', bytesRead: 0, recordsRead: 0, matchedRows: 0, skippedMatches: 0, supplier: '', decimal: 'comma', priceUnit: '1', truncated: false, expanded: 0, lastProgress: 0 };
+    return { file, options, maxRows, offset, rows: [], headers: [], warnings: [], format: '', bytesRead: 0, recordsRead: 0, matchedRows: 0, skippedMatches: 0, supplier: '', decimal: 'comma', priceUnit: '1', truncated: false, stoppedEarly:false, phase:'Artikeldatei wird geprüft',priceRows:0, expanded: 0, lastProgress: 0 };
   }
   function progress(ctx, force = false) {
     const now = Date.now();
-    if (force || now - ctx.lastProgress > 150) { ctx.lastProgress = now; ctx.options.onProgress?.({ bytesRead: ctx.bytesRead, totalBytes: ctx.file.size, recordsRead: ctx.recordsRead, matchedRows: ctx.matchedRows }); }
+    if (force || now - ctx.lastProgress > 150) { ctx.lastProgress = now; ctx.options.onProgress?.({ bytesRead: ctx.bytesRead, totalBytes: ctx.file.size, recordsRead: ctx.recordsRead, matchedRows: ctx.matchedRows,phase:ctx.phase,articles:ctx.analysis?.articles||0,priceRows:ctx.priceRows }); }
   }
   function articleGroups(row,headers=Object.keys(row)){
     const map=aliasMap(headers);return {manufacturer:clean(row[map.manufacturer]),category:clean(row[map.category])};
   }
   function matchesGroups(row,options={},headers=Object.keys(row)){
-    const groups=articleGroups(row,headers);return ['manufacturer','category'].every(key=>!options[key+'s']?.length||options[key+'s'].includes(groups[key]));
+    const groups=articleGroups(row,headers);return ['manufacturer','category'].every(key=>!options[key==='category'?'categories':'manufacturers']?.length||options[key==='category'?'categories':'manufacturers'].includes(groups[key]));
   }
   function keep(ctx, row) {
     const groupMap=ctx.groupMap||(ctx.groupMap=aliasMap(ctx.headers));const groups={manufacturer:clean(row[groupMap.manufacturer]),category:clean(row[groupMap.category])};
@@ -136,7 +136,7 @@
     if((purchaseColumn&&clean(row[purchaseColumn]))||['source_net_price','source_net_customer'].some(k=>clean(row[k])))a.withPurchasePrice++;
     if(['source_list_price','source_net_list'].some(k=>clean(row[k])))a.withListPrice++;
     if(ctx.options.inspectOnly)return false;
-    if(!['manufacturer','category'].every(key=>!ctx.options[key+'s']?.length||ctx.options[key+'s'].includes(groups[key])))return false;
+    if(!['manufacturer','category'].every(key=>!ctx.options[key==='category'?'categories':'manufacturers']?.length||ctx.options[key==='category'?'categories':'manufacturers'].includes(groups[key])))return false;
     const filter = clean(ctx.options.articleFilter);
     if(filter){const mapping=ctx.searchMapping||(ctx.searchMapping=(()=>{const detected=aliasMap(ctx.headers);return {article_number:detected.article_number,name:detected.name};})());if(!mapping.article_number&&!mapping.name)warning(ctx,'Artikelspalten nicht eindeutig erkannt. Ohne Suche lesen, dann Artikelnummer und Bezeichnung zuordnen.');if(!matchesArticle(row,filter,mapping))return false;}
     const searchMap=ctx.fieldSearchMap||(ctx.fieldSearchMap=aliasMap(ctx.headers));
@@ -144,7 +144,7 @@
     if(clean(ctx.options.articleNumberFilter)&&!foldSearch(row[searchMap.article_number]).includes(foldSearch(ctx.options.articleNumberFilter)))return false;
     ctx.matchedRows++;
     if (ctx.skippedMatches < ctx.offset) { ctx.skippedMatches++; return false; }
-    if (ctx.rows.length >= ctx.maxRows) { ctx.truncated = true; return true; }
+    if (ctx.rows.length >= ctx.maxRows) {ctx.truncated=true;if(ctx.options.scanAll)return false;ctx.stoppedEarly=true;return true;}
     const characters=Object.entries(row).filter(([key])=>!key.startsWith('_')).reduce((n,[,v])=>n+String(v??'').length,0);
     ctx.previewCharacters=(ctx.previewCharacters||0)+characters;
     if(ctx.previewCharacters>16*MiB)error('Dieser Vorschauausschnitt enthält zu viel Text. Bitte die Artikelsuche eingrenzen oder einen kleineren Lieferantenausschnitt verwenden.');
@@ -233,7 +233,7 @@
       if (consume(part)) break;
     }
     if (delimiter === 'auto' && first) { delimiter = detectDelimiter(first); consume(first); }
-    if (!ctx.truncated) { if (quoted) error('Nicht geschlossene CSV-Anführungszeichen.'); if (cell || row.length || afterQuote) putRow(); }
+    if (!ctx.stoppedEarly) { if (quoted) error('Nicht geschlossene CSV-Anführungszeichen.'); if (cell || row.length || afterQuote) putRow(); }
     if (!header) error('Katalog enthält keine Spaltenüberschriften.');
     ctx.format = /\.tsv$/i.test(name) ? 'TSV' : 'CSV/Text';
   }
@@ -297,18 +297,19 @@
       else if (['Z','D','C','J'].includes(type)) warning(ctx,'Zusatz-, Leistungs-, Set- und Staffelpreise werden nicht automatisch als Einzelmaterialpreise interpretiert.');
 
     }
-    if (!ctx.truncated) {flush();if(metadata?.version==='05'&&!sawEnd)error('DATANORM-5-Datei ist unvollständig: Endesatz fehlt.');}
+    if (!ctx.stoppedEarly) {flush();if(metadata?.version==='05'&&!sawEnd)error('DATANORM-5-Datei ist unvollständig: Endesatz fehlt.');}
     if (!sawArticle && !ctx.rows.length) error('Kein DATANORM-Artikelsatz A gefunden. Preis-, Rabatt- oder Langtextdateien allein enthalten keinen vollständigen Artikelstamm.');
     if (ctx.rows.some(r => r._review?.length)) warning(ctx,'Einzelne Artikel enthalten ungeklärte Angaben. Fehlende Werte vor dem Speichern ergänzen oder den Artikel auslassen.');
   }
   async function readDatanormPrices(stream,ctx,name,encoding,expanded,source){
+    ctx.phase='Separate Preisdatei wird zugeordnet';progress(ctx,true);
     let metadata=null,lineCount=0,sawEnd=false;const selected=new Map(ctx.rows.filter(r=>r._source_catalog_entry===source).map(r=>[r.article_number,r])),slots=new Map(),ambiguous=new Set();
     const note=(row,text)=>{if(!row._review.includes(text))row._review.push(text);};
     const original=ctx.datanormSources?.get(source);let validEK=0,validList=0;
     for await(let line of lines(stream,ctx,encoding==='auto'?'cp437':encoding,expanded)){
       if(!clean(line))continue;lineCount++;if(lineCount%5000===0)await new Promise(resolve=>setTimeout(resolve,0));if(!metadata){metadata=datanormVersion(line);if(!['04','05'].includes(metadata.version)||metadata.currency!=='EUR'||metadata.version!==original?.version)error('Artikel- und Preisdatei haben unterschiedliche Version oder Währung.');if(metadata.version==='05'&&(metadata.content!=='P'||metadata.creator!==original.creator))error('DATANORM-5-Preisdatei passt nicht zum Datenersteller des Artikelstamms.');continue;}
       const f=line.split(';').map(clean);if(sawEnd)error('Preisdatei enthält Daten nach dem Endesatz.');if(metadata.version==='05'&&f[0]==='E'){if(!/^[0-9]+$/.test(f[1]||'')||Number(f[1])!==lineCount)error('DATANORM-5-Preisdatei: Satzanzahl stimmt nicht.');sawEnd=true;continue;}
-      ctx.recordsRead++;if(f[0]!=='P'){warning(ctx,'Unbekannte Zusatzsätze in der Preisdatei werden nicht als Preise übernommen.');continue;}
+      ctx.recordsRead++;ctx.priceRows++;if(f[0]!=='P'){warning(ctx,'Unbekannte Zusatzsätze in der Preisdatei werden nicht als Preise übernommen.');continue;}
       const v5=metadata.version==='05',sku=v5?f[1]:f[2],kind=v5?f[2]:f[3],basis=v5?f[3]:null,amount=v5?f[4]:f[4],date=v5?f[12]||metadata.date:'',row=selected.get(sku);
       const simple=v5?f.length===14&&!f.slice(5,12).some(Boolean)&&/^[0-9]{1,6}$/.test(basis||'')&&Number(basis)>0&&(!date||datanormDate(date))&&(!date||!metadata.date||date<=metadata.date):f.length>=7&&f.length<=8&&f[1]==='A'&&!f.slice(5).some(Boolean);
       const field=kind==='1'?'source_list_price':kind==='2'?'source_net_price':null;
@@ -437,11 +438,11 @@
     if(signature[0]===0x50&&signature[1]===0x4b){
       const entries=await zipDirectory(file);abort(options.signal);
       if(entries.some(e=>e.name==='[Content_Types].xml')&&entries.some(e=>e.name==='xl/workbook.xml'))await readXlsx(file,entries,ctx);
-      else{const candidates=entries.filter(e=>!e.name.endsWith('/')&&!/(?:^|[/])(?:readme|liesmich|bitte_lesen)(?:[._-]|$)/i.test(e.name)&&/\.(?:csv|tsv|txt|json|xml|bmecat|dat|\d{3})$/i.test(e.name)&&!/(?:^|\/)(?:datpreis|datasets)\./i.test(e.name)).sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true}));if(!candidates.length)error('ZIP enthält keinen unterstützten Artikelkatalog. Rabatt-/Preisdateien allein reichen nicht aus.');const selected=options.entryName?candidates.filter(e=>e.name===options.entryName):candidates;if(!selected.length)error('Ausgewählte Katalogdatei ist im ZIP nicht vorhanden.');if(selected.length>1&&!selected.every(e=>/(?:^|\/)datanorm\.\d{3}$/i.test(e.name)))error('ZIP enthält mehrere unterschiedliche Kataloge. Bitte eine Datei einzeln entpackt auswählen.');warning(ctx,'ZIP wird nur lokal und ausschnittsweise gelesen. Es findet keine vollständige Katalogübernahme im Hintergrund statt.');for(const entry of selected){await readSource(await zipStream(file,entry,ctx),ctx,entry.name,encoding,true);if(ctx.truncated)break;}for(const [source]of ctx.datanormSources||[]){const match=/^(.*\/)?datanorm\.(\d{3})$/i.exec(source);if(!match)continue;const priceName=(match[1]||'')+'DATPREIS.'+match[2],priceEntries=entries.filter(e=>e.name.toLowerCase()===priceName.toLowerCase());if(priceEntries.length>1)error('Mehrere Preisdateien mit gleicher Zuordnung.');if(priceEntries[0])await readDatanormPrices(await zipStream(file,priceEntries[0],ctx),ctx,priceEntries[0].name,encoding,true,source);}ctx.format='ZIP / '+ctx.format;}
+      else{const candidates=entries.filter(e=>!e.name.endsWith('/')&&!/(?:^|[/])(?:readme|liesmich|bitte_lesen)(?:[._-]|$)/i.test(e.name)&&/\.(?:csv|tsv|txt|json|xml|bmecat|dat|\d{3})$/i.test(e.name)&&!/(?:^|\/)(?:datpreis|datasets)\./i.test(e.name)).sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true}));if(!candidates.length)error('ZIP enthält keinen unterstützten Artikelkatalog. Rabatt-/Preisdateien allein reichen nicht aus.');const selected=options.entryName?candidates.filter(e=>e.name===options.entryName):candidates;if(!selected.length)error('Ausgewählte Katalogdatei ist im ZIP nicht vorhanden.');if(selected.length>1&&!selected.every(e=>/(?:^|\/)datanorm\.\d{3}$/i.test(e.name)))error('ZIP enthält mehrere unterschiedliche Kataloge. Bitte eine Datei einzeln entpackt auswählen.');warning(ctx,'ZIP wird nur lokal und ausschnittsweise gelesen. Es findet keine vollständige Katalogübernahme im Hintergrund statt.');for(const entry of selected){await readSource(await zipStream(file,entry,ctx),ctx,entry.name,encoding,true);if(ctx.stoppedEarly)break;}for(const [source]of ctx.datanormSources||[]){const match=/^(.*\/)?datanorm\.(\d{3})$/i.exec(source);if(!match)continue;const priceName=(match[1]||'')+'DATPREIS.'+match[2],priceEntries=entries.filter(e=>e.name.toLowerCase()===priceName.toLowerCase());if(priceEntries.length>1)error('Mehrere Preisdateien mit gleicher Zuordnung.');if(priceEntries[0])await readDatanormPrices(await zipStream(file,priceEntries[0],ctx),ctx,priceEntries[0].name,encoding,true,source);}ctx.format='ZIP / '+ctx.format;}
     }else{if(signature[0]===0xd0&&signature[1]===0xcf)error('Altes Excel-XLS-Format erkannt. Bitte in Excel als XLSX oder CSV speichern.');let chosen=encoding;if(chosen==='auto'&&signature[0]===0xff&&signature[1]===0xfe)chosen='utf-16le';else if(chosen==='auto'&&signature[0]===0xfe&&signature[1]===0xff)chosen='utf-16be';await readSource(file.stream(),ctx,name,chosen,false);}
-    abort(options.signal);progress(ctx,true);if(!ctx.rows.length&&!options.inspectOnly)warning(ctx,'Keine Artikel im gewählten Such-/Zeilenausschnitt gefunden.');
-    if(ctx.truncated)warning(ctx,'Nur dieser Ausschnitt mit höchstens '+ctx.maxRows+' Artikeln wurde gelesen. Weitere Artikel sind vorhanden; Suche eingrenzen oder den nächsten Ausschnitt wählen. Bei ZIP-Ausschnitten ist die vollständige Archiv-Prüfsumme noch nicht geprüft. Es wurde nichts automatisch gespeichert.');
-    const suggestedMapping=automaticMapping(ctx.headers,ctx.rows,{listAsSellingPrice:options.listAsSellingPrice===true});const a=ctx.analysis;const analysis=a?{...a,manufacturers:[...a.manufacturers].sort(),categories:[...a.categories].sort(),complete:options.inspectOnly===true&&!ctx.truncated}:null;return {analysis,headers:ctx.headers,rows:ctx.rows,warnings:ctx.warnings,format:ctx.format,totalRead:ctx.recordsRead,truncated:ctx.truncated,hasMore:ctx.truncated,suggestedMapping,supplier:ctx.supplier,decimal:ctx.decimal,priceUnit:ctx.priceUnit};
+    abort(options.signal);ctx.phase='Prüfung abgeschlossen';progress(ctx,true);if(!ctx.rows.length&&!options.inspectOnly)warning(ctx,'Keine Artikel im gewählten Such-/Zeilenausschnitt gefunden.');
+    if(ctx.truncated&&!options.scanAll)warning(ctx,'Nur dieser Ausschnitt mit höchstens '+ctx.maxRows+' Artikeln wurde gelesen. Weitere Artikel sind vorhanden; Suche eingrenzen oder den nächsten Ausschnitt wählen. Bei ZIP-Ausschnitten ist die vollständige Archiv-Prüfsumme noch nicht geprüft. Es wurde nichts automatisch gespeichert.');
+    const suggestedMapping=automaticMapping(ctx.headers,ctx.rows,{listAsSellingPrice:options.listAsSellingPrice===true});const a=ctx.analysis;const analysis=a?{...a,manufacturers:[...a.manufacturers].sort(),categories:[...a.categories].sort(),complete:(options.inspectOnly===true||options.scanAll===true)&&!ctx.stoppedEarly}:null;return {analysis,headers:ctx.headers,rows:ctx.rows,warnings:ctx.warnings,format:ctx.format,totalMatches:ctx.matchedRows,scanComplete:!ctx.stoppedEarly,totalRead:ctx.recordsRead,truncated:ctx.truncated,hasMore:ctx.truncated,suggestedMapping,supplier:ctx.supplier,decimal:ctx.decimal,priceUnit:ctx.priceUnit};
   }
   return Object.freeze({limits,readCatalog,articleGroups,matchesGroups,aliasMap,automaticMapping,matchesArticle,normalizeUnit,priceText,xmlTree,zipDirectory,datanormVersion,datanormPrice});
 });

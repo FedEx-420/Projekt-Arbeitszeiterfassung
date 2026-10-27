@@ -51,7 +51,7 @@ async function main(){
  });
  await test('preparing and accepting tax only creates a local draft, never an issue write',async()=>{
   const f=fixture();await f.feature.start([{id:'order-A',work_kind:'customer'}]);f.acceptTax(tax);
-  assert.equal(f.state.view,'invoice-draft');assert.equal(f.calls.length,1);assert.ok(f.calls[0].url.endsWith('prepare_invoice_batch_v908'));
+  assert.equal(f.state.view,'invoice-draft');assert.equal(f.calls.length,1);assert.ok(f.calls[0].url.endsWith('prepare_invoice_batch_v919'));
   assert.match(f.feature.draftView(),/Rechnung verbindlich abschließen/);assert.match(f.feature.draftView(),/Rechnungsempfänger/);
   assert.deepEqual(f.getTaxSettings(),{basis:'net',allowedBasis:['net']});
  });
@@ -99,15 +99,16 @@ async function main(){
   await f.feature.load();fail=true;await f.feature.load();assert.equal(f.feature.getBatches().length,1);assert.match(f.feature.view(),/nicht aktualisiert/);
  });
  await test('uncertain issue retries reuse the same request UUID and do not reset the entered issuer',async()=>{
-  let attempts=0;const f=fixture({api:async(url)=>{if(url.endsWith('prepare_invoice_batch_v908'))return copy(f.prepared);if(++attempts===1)throw Error('Synthetic lost response');return copy(f.batch);}});
+  let attempts=0;const f=fixture({api:async(url)=>{if(url.endsWith('prepare_invoice_batch_v919'))return copy(f.prepared);if(++attempts===1)throw Error('Synthetic lost response');return copy(f.batch);}});
   await f.feature.start([{id:'order-A'}]);f.acceptTax(tax);const form=f.form();await f.submit(form);assert.equal(f.state.view,'invoice-draft');assert.match(f.feature.draftView(),/Synthetic lost response/);await f.submit(form);
   const issues=f.calls.filter(call=>call.url?.endsWith('issue_invoice_batch_v908'));assert.equal(issues.length,2);assert.equal(issues[0].request.body.p_id,issues[1].request.body.p_id);assert.deepEqual(issues[0].request.body.p_parties,issues[1].request.body.p_parties);assert.equal(f.state.view,'invoices-paid');
  });
  await test('slow finalization response cannot navigate or overwrite the newly selected company view',async()=>{
-  let resolveIssue;const f=fixture({api:async url=>url.endsWith('prepare_invoice_batch_v908')?copy(f.prepared):new Promise(resolve=>resolveIssue=resolve)});
+  let resolveIssue;const f=fixture({api:async url=>url.endsWith('prepare_invoice_batch_v919')?copy(f.prepared):new Promise(resolve=>resolveIssue=resolve)});
   await f.feature.start([{id:'order-A'}]);f.acceptTax(tax);const pending=f.submit(f.form());f.state.company='B';f.feature.afterRender();f.state.view='planning';resolveIssue(copy(f.batch));await pending;
   assert.equal(f.state.view,'planning');assert.equal(f.feature.getBatches().length,0);
  });
+ await test('an old database falls back only when the new pricing endpoint is absent',async()=>{const f=fixture({api:async url=>{if(url.endsWith('prepare_invoice_batch_v919'))throw Object.assign(Error('missing'),{code:'PGRST202'});return copy(f.prepared);}});await f.feature.start([{id:'order-A'}]);assert.equal(f.calls.length,2);assert.ok(f.calls[1].url.endsWith('prepare_invoice_batch_v908'));f.acceptTax(tax);assert.ok(!f.feature.draftView().includes('data-ledger-form="prices"'));});
  console.log(passed+' invoice-ledger UI tests passed.');
 }
 main().catch(error=>{console.error(error);process.exit(1);});

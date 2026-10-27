@@ -5,6 +5,7 @@
     const format = window.WorktimeCatalogFormat;
     if (!format) return null;
     const advanced=window.WorktimeCatalogImportUI?.create({root,state,api,reload,render,businessId,isManager,escape:esc});
+    const management=window.WorktimeCatalogManagement?.create({root,state,api,reload,render,businessId,isManager,escape:esc});
     let scope = '', selected = '', materialSearch='', revision = 0, draft = null, parsed = null, preview = null, filename = '', supplier = '', mapping = {}, decimal = 'comma', priceUnit = '1', net = false, page = 0, busy = false, message = '', error = false, readSerial = 0;
     const current = () => isManager() && state.profile && businessId() ? state.profile.id + ':' + businessId() : '';
     const materials = () => (state.rows.materials || []).filter(m => String(m.business_id) === String(businessId()));
@@ -32,7 +33,7 @@
     }
     function view() {
       if (!ensure()) return '';
-      if(advanced)return `<div data-catalog-v908><p role="${error?'alert':'status'}" class="catalog-status ${error?'catalog-error':''}">${esc(message)}</p>${advanced.view()}<details class="supplier-settings" ${selected?'open':''}><summary>Preise eines vorhandenen Artikels bearbeiten</summary>${editor()}</details></div>`;
+      if(advanced)return `<div data-catalog-v908><p role="${error?'alert':'status'}" class="catalog-status ${error?'catalog-error':''}">${esc(message)}</p>${advanced.view()}${management?.view()||''}<details class="supplier-settings" ${selected?'open':''}><summary>Preise eines vorhandenen Artikels bearbeiten</summary>${editor()}</details></div>`;
       return `<div data-catalog-v908><p role="${error ? 'alert' : 'status'}" class="catalog-status ${error ? 'catalog-error' : ''}">${esc(message)}</p>${editor()}<section class="panel catalog-v908"><h3>Großhändler-Katalog importieren</h3><p>Unterstützt: CSV, TSV und JSON mit einer Tabelle einfacher Artikel. Höchstens 2 MB und 1000 Artikel je Import. Vorschau und Zuordnung erfolgen auf diesem Gerät; erst „verbindlich übernehmen“ speichert die ausgewählten Daten.</p><p>Excel/XLSX, DATANORM, ZIP/XML, Makros und verschachtelte JSON-Kataloge sind hier noch nicht unterstützt. Bitte beim Großhändler einen CSV-Export mit Artikelnummer, Basiseinheit und eindeutig bezeichneten Nettopreisen anfordern. Für weitere Formate wird eine anonymisierte Musterdatei mit Preis-/Rabattbeschreibung benötigt.</p><div class="entry-form"><label>Datei<input type="file" name="catalog_file" accept=".csv,.tsv,.json,text/csv,application/json,text/tab-separated-values" ${busy ? 'disabled' : ''}></label><label>Textcodierung<select name="catalog_encoding"><option value="utf-8">UTF-8</option><option value="windows-1252">Windows-1252 / ANSI</option></select></label><label>CSV-Trennzeichen<select name="catalog_delimiter"><option value=";">Semikolon (;)</option><option value=",">Komma (,)</option><option value="tab">Tabulator</option></select></label><button type="button" class="secondary" data-catalog-action="read" ${busy ? 'disabled' : ''}>Datei lokal einlesen</button></div>${parsed ? `<p>${esc(filename)} · ${parsed.rows.length} Artikel erkannt</p>` : ''}${mappingView()}${previewView()}</section></div>`;
     }
     async function action(task, success) {
@@ -106,7 +107,7 @@
       for(const button of root.querySelectorAll('[data-action="edit-material"]')){
         const card=button.closest('.row-card'),m=byId.get(button.dataset.id);if(!card||!m)continue;total++;card.dataset.materialCatalogCard='';
         // Same word-by-word name matching as catalog search; preserve explicit supplier search.
-        const match=!query||(matcher?matcher({...m,name:m.catalog_product_name||m.name},query,mapping):fallbackTokens.every(token=>[m.name,m.catalog_article_number,m.catalog_supplier].some(v=>String(v||'').toLocaleLowerCase('de').includes(token))));
+        const match=!query||(matcher?matcher({...m,name:[m.catalog_product_name||m.name,...Object.values(window.WorktimeCatalogClassify?.describe(m)||{})].join(' ')},query,mapping):fallbackTokens.every(token=>[m.name,m.catalog_article_number,m.catalog_supplier].some(v=>String(v||'').toLocaleLowerCase('de').includes(token))));
         card.hidden=!match;if(match)visible++;
       }
       const output=root.querySelector('[data-material-search-count]');if(output)output.textContent=visible+' von '+total+' gespeicherten Materialien';window.WorktimeCatalogProducts?.syncVisibility(root);
@@ -118,13 +119,14 @@
       const byId=new Map(materials().map(m=>[m.id,m]));for(const button of root.querySelectorAll('[data-action="edit-material"],form[data-form="hourly-price"] [name="id"]')){
         const id=button.dataset?.id||button.value,m=byId.get(id),card=button.closest?.('.row-card')||button.closest?.('section.panel');if(!m||!card||card.querySelector('[data-material-catalog-summary]'))continue;
         const box=document.createElement('div');box.dataset.materialCatalogSummary='';box.className='catalog-material-meta';
-        box.innerHTML=`<span>Artikelnummer: <b>${esc(m.catalog_article_number||'Nicht hinterlegt')}</b></span><span>Vertrieb / Lieferant: ${esc(m.catalog_supplier||'Nicht hinterlegt')}</span><span>EK netto: ${euro(m.purchase_price)}</span><span>VK * netto: ${euro(m.recommended_price_1)}</span><span>VK ** netto: ${euro(m.recommended_price_2)}</span><span>Standard-VK netto: ${euro(m.unit_price)} · Brutto bei 19 %: ${euro(Number(m.unit_price||0)*1.19)}</span>${Number(m.unit_price)===0&&(m.recommended_price_1!=null||m.recommended_price_2!=null)?'<strong>Standard-Verkaufspreis ist 0 €. Vor Verwendung als Rechnungspreis bitte bewusst prüfen.</strong>':''}<button type="button" class="secondary small" data-catalog-action="edit-metadata" data-id="${esc(m.id)}">Artikelnummer, Vertrieb, EK und VK bearbeiten</button>`;
+        const classification=window.WorktimeCatalogClassify?.describe(m);
+        box.innerHTML=`${classification?`<span>Hersteller: ${esc(classification.manufacturer||'Nicht erkannt')}${classification.manufacturer_source==='inferred'?' · aus Bezeichnung erkannt':''}</span><span>Kategorie: ${esc(classification.category)}</span>`:''}<span>Artikelnummer: <b>${esc(m.catalog_article_number||'Nicht hinterlegt')}</b></span><span>Vertrieb / Lieferant: ${esc(m.catalog_supplier||'Nicht hinterlegt')}</span><span>EK netto: ${euro(m.purchase_price)}</span><span>VK * netto: ${euro(m.recommended_price_1)}</span><span>VK ** netto: ${euro(m.recommended_price_2)}</span><span>Standard-VK netto: ${euro(m.unit_price)} · Brutto bei 19 %: ${euro(Number(m.unit_price||0)*1.19)}</span>${Number(m.unit_price)===0&&(m.recommended_price_1!=null||m.recommended_price_2!=null)?'<strong>Standard-Verkaufspreis ist 0 €. Vor Verwendung als Rechnungspreis bitte bewusst prüfen.</strong>':''}<button type="button" class="secondary small" data-catalog-action="edit-metadata" data-id="${esc(m.id)}">Artikelnummer, Vertrieb, EK und VK bearbeiten</button>`;
         card.append(box);
       }
       window.WorktimeCatalogProducts?.decorate({root,materials:materials(),api,businessId,reload,render,isManager});
     }
     root.addEventListener('input',event=>{if(event.target.matches?.('[data-material-search]')&&ensure()){materialSearch=event.target.value;searchMaterials();}if(event.target.name==='price'&&event.target.closest?.('form[data-form="material"],form[data-form="material-edit"],form[data-form="hourly-price"]'))grossNote(event.target);const form=event.target.closest?.('form[data-form="catalog-prices-v908"]');if(form&&ensure()){const m=materials().find(row=>row.id===selected);if(m){const data=Object.fromEntries(new FormData(form));draft={...m,...Object.fromEntries(format.prices.map(key=>[key,data['catalog_'+key]])),catalog_supplier:data.catalog_supplier,catalog_article_number:data.catalog_article_number};}}});
-    return { view, reset: () => { scope = ''; ensure();advanced?.reset(); }, afterRender };
+    return { view, reset: () => { scope = ''; ensure();advanced?.reset();management?.reset(); }, afterRender };
   }
   window.WorktimeCatalog = { create };
 })();

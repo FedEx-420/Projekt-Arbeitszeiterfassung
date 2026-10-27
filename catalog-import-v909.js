@@ -10,6 +10,7 @@
   else root.WorktimeCatalogImport = api;
 })(typeof globalThis === 'object' ? globalThis : this, function () {
   'use strict';
+  const classifier=typeof module==='object'&&module.exports?require('./catalog-classify-v925.js'):globalThis.WorktimeCatalogClassify;
   const MiB = 1024 * 1024;
   const limits = Object.freeze({ inputBytes: 2048 * MiB, expandedBytes: 2048 * MiB, entries: 2048, directoryBytes: 4 * MiB, ratio: 200, rows: 1000, columns: 64, cell: 4096, line: 65536, xmlBytes: 32 * MiB, sharedXmlBytes: 16 * MiB, jsonBytes: 8 * MiB, xmlNodes: 300000, depth: 64 });
   const priceFields = ['purchase_price', 'recommended_price_1', 'recommended_price_2'];
@@ -123,13 +124,13 @@
     if (force || now - ctx.lastProgress > 150) { ctx.lastProgress = now; ctx.options.onProgress?.({ bytesRead: ctx.bytesRead, totalBytes: ctx.file.size, recordsRead: ctx.recordsRead, matchedRows: ctx.matchedRows,phase:ctx.phase,articles:ctx.analysis?.articles||0,priceRows:ctx.priceRows }); }
   }
   function articleGroups(row,headers=Object.keys(row)){
-    const map=aliasMap(headers);return {manufacturer:clean(row[map.manufacturer]),category:clean(row[map.category])};
+    const map=aliasMap(headers),data={name:clean(row[map.name]),manufacturer:clean(row[map.manufacturer]),category:clean(row[map.category])};return classifier?classifier.describe(data):data;
   }
   function matchesGroups(row,options={},headers=Object.keys(row)){
     const groups=articleGroups(row,headers);return ['manufacturer','category'].every(key=>!options[key==='category'?'categories':'manufacturers']?.length||options[key==='category'?'categories':'manufacturers'].includes(groups[key]));
   }
   function keep(ctx, row) {
-    const groupMap=ctx.groupMap||(ctx.groupMap=aliasMap(ctx.headers));const groups={manufacturer:clean(row[groupMap.manufacturer]),category:clean(row[groupMap.category])};
+    const groupMap=ctx.groupMap||(ctx.groupMap=aliasMap(ctx.headers));const data={name:clean(row[groupMap.name]),manufacturer:clean(row[groupMap.manufacturer]),category:clean(row[groupMap.category])};const groups=classifier?classifier.describe(data):data;
     ctx.analysis??={articles:0,withPurchasePrice:0,withListPrice:0,manufacturers:new Set(),categories:new Set(),limited:false};
     const a=ctx.analysis;a.articles++;
     for(const [key,set]of [['manufacturer',a.manufacturers],['category',a.categories]])if(groups[key]){if(set.size<1000)set.add(groups[key]);else if(!set.has(groups[key]))a.limited=true;}

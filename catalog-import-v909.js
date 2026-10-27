@@ -13,7 +13,7 @@
   const MiB = 1024 * 1024;
   const limits = Object.freeze({ inputBytes: 2048 * MiB, expandedBytes: 2048 * MiB, entries: 2048, directoryBytes: 4 * MiB, ratio: 200, rows: 1000, columns: 64, cell: 4096, line: 65536, xmlBytes: 32 * MiB, sharedXmlBytes: 16 * MiB, jsonBytes: 8 * MiB, xmlNodes: 300000, depth: 64 });
   const priceFields = ['purchase_price', 'recommended_price_1', 'recommended_price_2'];
-  const canonical = ['article_number', 'name', 'unit', ...priceFields, 'price_unit', 'supplier'];
+  const canonical = ['article_number', 'name', 'unit', ...priceFields, 'price_unit', 'supplier', 'manufacturer', 'category'];
   const cp437 = 'ÇüéâäàåçêëèïîìÄÅÉæÆôöòûùÿÖÜ¢£¥₧ƒáíóúñÑªº¿⌐¬½¼¡«»░▒▓│┤╡╢╖╕╣║╗╝╜╛┐└┴┬├─┼╞╟╚╔╩╦╠═╬╧╨╤╥╙╘╒╓╫╪┘┌█▄▌▐▀αßΓπΣσµτΦΘΩδ∞φε∩≡±≥≤⌠⌡÷≈°∙·√ⁿ²■ ';
   const crcTable = Uint32Array.from({length:256},(_,n)=>{for(let k=0;k<8;k++)n=n&1?0xedb88320^(n>>>1):n>>>1;return n>>>0;});
   const safeKey = value => !['__proto__', 'constructor', 'prototype'].includes(value);
@@ -50,6 +50,8 @@
       recommended_price_1: ['recommendedprice1', 'recommended_price_1', 'vk*', 'vk1', 'vk*netto', 'vk1netto', 'verkaufspreis1', 'empfohlenervk*'],
       recommended_price_2: ['recommendedprice2', 'recommended_price_2', 'vk**', 'vk2', 'vk**netto', 'vk2netto', 'verkaufspreis2', 'empfohlenervk**'],
       price_unit: ['priceunit', 'price_unit', 'preiseinheit', 'preisje', 'pricequantity'],
+      manufacturer: ['manufacturer','hersteller','herstellername','marke','brand','manufacturername'],
+      category: ['category','kategorie','warengruppe','produktgruppe','artikelgruppe','productgroup','groupid','source_category'],
       supplier: ['supplier', 'lieferant', 'vertrieb', 'grosshaendler', 'großhändler', 'distributor']
     };
     const key = s => clean(s).toLowerCase().replace(/\beur\b|€/g,'').replace(/[\s.()\-\/]/g, '');
@@ -119,7 +121,22 @@
     const now = Date.now();
     if (force || now - ctx.lastProgress > 150) { ctx.lastProgress = now; ctx.options.onProgress?.({ bytesRead: ctx.bytesRead, totalBytes: ctx.file.size, recordsRead: ctx.recordsRead, matchedRows: ctx.matchedRows }); }
   }
+  function articleGroups(row,headers=Object.keys(row)){
+    const map=aliasMap(headers);return {manufacturer:clean(row[map.manufacturer]),category:clean(row[map.category])};
+  }
+  function matchesGroups(row,options={},headers=Object.keys(row)){
+    const groups=articleGroups(row,headers);return ['manufacturer','category'].every(key=>!options[key+'s']?.length||options[key+'s'].includes(groups[key]));
+  }
   function keep(ctx, row) {
+    const groupMap=ctx.groupMap||(ctx.groupMap=aliasMap(ctx.headers));const groups={manufacturer:clean(row[groupMap.manufacturer]),category:clean(row[groupMap.category])};
+    ctx.analysis??={articles:0,withPurchasePrice:0,withListPrice:0,manufacturers:new Set(),categories:new Set(),limited:false};
+    const a=ctx.analysis;a.articles++;
+    for(const [key,set]of [['manufacturer',a.manufacturers],['category',a.categories]])if(groups[key]){if(set.size<1000)set.add(groups[key]);else if(!set.has(groups[key]))a.limited=true;}
+    const purchaseColumn=groupMap.purchase_price;
+    if((purchaseColumn&&clean(row[purchaseColumn]))||['source_net_price','source_net_customer'].some(k=>clean(row[k])))a.withPurchasePrice++;
+    if(['source_list_price','source_net_list'].some(k=>clean(row[k])))a.withListPrice++;
+    if(ctx.options.inspectOnly)return false;
+    if(!['manufacturer','category'].every(key=>!ctx.options[key+'s']?.length||ctx.options[key+'s'].includes(groups[key])))return false;
     const filter = clean(ctx.options.articleFilter);
     if(filter){const mapping=ctx.searchMapping||(ctx.searchMapping=(()=>{const detected=aliasMap(ctx.headers);return {article_number:detected.article_number,name:detected.name};})());if(!mapping.article_number&&!mapping.name)warning(ctx,'Artikelspalten nicht eindeutig erkannt. Ohne Suche lesen, dann Artikelnummer und Bezeichnung zuordnen.');if(!matchesArticle(row,filter,mapping))return false;}
     ctx.matchedRows++;
@@ -255,7 +272,7 @@
         sawArticle = true;
         const basis = /^[0-3]$/.test(f[7]) ? String(10 ** Number(f[7])) : '';
         const rawPrice = datanormPrice(f[9]);
-        pending = { article_number: f[2], name: [f[4],f[5]].filter(Boolean).join(' '), unit: normalizeUnit(f[8]), purchase_price: '', recommended_price_1: '', recommended_price_2: '', price_unit: basis, supplier: ctx.supplier, source_list_price: '', source_net_price: '', source_price_kind: f[6], source_discount_group: f[10], source_action: f[1], _review: [] };
+        pending = { article_number: f[2], name: [f[4],f[5]].filter(Boolean).join(' '), unit: normalizeUnit(f[8]), purchase_price: '', recommended_price_1: '', recommended_price_2: '', price_unit: basis, supplier: ctx.supplier, source_list_price: '', source_net_price: '', source_price_kind: f[6], source_discount_group: f[10], category:f[11]||'', manufacturer:'', source_action: f[1], _review: [] };
         if (!basis) pending._review.push('Preiseinheit nicht erkannt: vor Übernahme manuell festlegen.');
         if (!rawPrice || BigInt(f[9] || 0) === 0n) pending._review.push('Kein eindeutiger Artikelpreis. 0 kann in DATANORM ein Platzhalter für eine separate Preisdatei sein. Bitte manuell prüfen.');
         else if (f[6] === '1') pending.source_list_price = rawPrice;
@@ -311,7 +328,7 @@
     const products=descendants(tree,'ARTICLE').concat(descendants(tree,'PRODUCT')),catalogCurrency=firstText(tree,'CURRENCY');
     if(!products.length)error('Keine BMEcat-Artikel gefunden.');
     for(const product of products){abort(ctx.options.signal);ctx.recordsRead++;const basis=firstText(product,'PRICE_QUANTITY')||'1';
-      const row={article_number:firstText(product,'SUPPLIER_AID')||firstText(product,'SUPPLIER_PID'),name:firstText(product,'DESCRIPTION_SHORT'),unit:normalizeUnit(firstText(product,'ORDER_UNIT')),purchase_price:'',recommended_price_1:'',recommended_price_2:'',price_unit:basis,supplier:ctx.supplier,source_net_list:'',source_net_customer:'',source_recommended_gross:'',source_currency:'',source_price_factor:'',_review:[]};
+      const row={article_number:firstText(product,'SUPPLIER_AID')||firstText(product,'SUPPLIER_PID'),name:firstText(product,'DESCRIPTION_SHORT'),unit:normalizeUnit(firstText(product,'ORDER_UNIT')),purchase_price:'',recommended_price_1:'',recommended_price_2:'',price_unit:basis,supplier:ctx.supplier,manufacturer:firstText(product,'MANUFACTURER_NAME'),category:firstText(product,'REFERENCE_FEATURE_GROUP_NAME')||firstText(product,'REFERENCE_FEATURE_GROUP_ID'),source_net_list:'',source_net_customer:'',source_recommended_gross:'',source_currency:'',source_price_factor:'',_review:[]};
       if(product.attrs.mode&&product.attrs.mode!=='new'&&product.attrs.mode!=='update'){warning(ctx,'BMEcat-Löschanweisungen werden nicht ausgeführt.');continue;}
       const priceNodes=descendants(product,'ARTICLE_PRICE').concat(descendants(product,'PRODUCT_PRICE')),counts={};
       for(const p of priceNodes){const kind=p.attrs.price_type,kindKeys={net_list:'source_net_list',net_customer:'source_net_customer',nrp:'source_recommended_gross'},key=Object.hasOwn(kindKeys,kind)?kindKeys[kind]:null;if(!key){row._review.push('Weitere Preisart '+String(kind||'unbekannt')+': manuell prüfen.');continue;}counts[key]=(counts[key]||0)+1;const currency=firstText(p,'PRICE_CURRENCY')||catalogCurrency,factor=firstText(p,'PRICE_FACTOR')||'1',bound=firstText(p,'LOWER_BOUND')||'1',amount=firstText(p,'PRICE_AMOUNT');row.source_currency=currency;row.source_price_factor=factor;
@@ -388,9 +405,9 @@
       if(entries.some(e=>e.name==='[Content_Types].xml')&&entries.some(e=>e.name==='xl/workbook.xml'))await readXlsx(file,entries,ctx);
       else{const candidates=entries.filter(e=>!e.name.endsWith('/')&&/\.(?:csv|tsv|txt|json|xml|bmecat|dat|\d{3})$/i.test(e.name)&&!/(?:^|\/)(?:datpreis|datasets)\./i.test(e.name)).sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true}));if(!candidates.length)error('ZIP enthält keinen unterstützten Artikelkatalog. Rabatt-/Preisdateien allein reichen nicht aus.');const selected=options.entryName?candidates.filter(e=>e.name===options.entryName):candidates;if(!selected.length)error('Ausgewählte Katalogdatei ist im ZIP nicht vorhanden.');if(selected.length>1&&!selected.every(e=>/(?:^|\/)datanorm\.\d{3}$/i.test(e.name)))error('ZIP enthält mehrere unterschiedliche Kataloge. Bitte eine Datei einzeln entpackt auswählen.');warning(ctx,'ZIP wird nur lokal und ausschnittsweise gelesen. Es findet keine vollständige Katalogübernahme im Hintergrund statt.');for(const entry of selected){await readSource(await zipStream(file,entry,ctx),ctx,entry.name,encoding,true);if(ctx.truncated)break;}ctx.format='ZIP / '+ctx.format;}
     }else{if(signature[0]===0xd0&&signature[1]===0xcf)error('Altes Excel-XLS-Format erkannt. Bitte in Excel als XLSX oder CSV speichern.');let chosen=encoding;if(chosen==='auto'&&signature[0]===0xff&&signature[1]===0xfe)chosen='utf-16le';else if(chosen==='auto'&&signature[0]===0xfe&&signature[1]===0xff)chosen='utf-16be';await readSource(file.stream(),ctx,name,chosen,false);}
-    abort(options.signal);progress(ctx,true);if(!ctx.rows.length)warning(ctx,'Keine Artikel im gewählten Such-/Zeilenausschnitt gefunden.');
+    abort(options.signal);progress(ctx,true);if(!ctx.rows.length&&!options.inspectOnly)warning(ctx,'Keine Artikel im gewählten Such-/Zeilenausschnitt gefunden.');
     if(ctx.truncated)warning(ctx,'Nur dieser Ausschnitt mit höchstens '+ctx.maxRows+' Artikeln wurde gelesen. Weitere Artikel sind vorhanden; Suche eingrenzen oder den nächsten Ausschnitt wählen. Bei ZIP-Ausschnitten ist die vollständige Archiv-Prüfsumme noch nicht geprüft. Es wurde nichts automatisch gespeichert.');
-    const suggestedMapping=automaticMapping(ctx.headers,ctx.rows,{listAsSellingPrice:options.listAsSellingPrice===true});return {headers:ctx.headers,rows:ctx.rows,warnings:ctx.warnings,format:ctx.format,totalRead:ctx.recordsRead,truncated:ctx.truncated,hasMore:ctx.truncated,suggestedMapping,supplier:ctx.supplier,decimal:ctx.decimal,priceUnit:ctx.priceUnit};
+    const suggestedMapping=automaticMapping(ctx.headers,ctx.rows,{listAsSellingPrice:options.listAsSellingPrice===true});const a=ctx.analysis;const analysis=a?{...a,manufacturers:[...a.manufacturers].sort(),categories:[...a.categories].sort(),complete:options.inspectOnly===true&&!ctx.truncated}:null;return {analysis,headers:ctx.headers,rows:ctx.rows,warnings:ctx.warnings,format:ctx.format,totalRead:ctx.recordsRead,truncated:ctx.truncated,hasMore:ctx.truncated,suggestedMapping,supplier:ctx.supplier,decimal:ctx.decimal,priceUnit:ctx.priceUnit};
   }
-  return Object.freeze({limits,readCatalog,aliasMap,automaticMapping,matchesArticle,normalizeUnit,priceText,xmlTree,zipDirectory,datanormVersion,datanormPrice});
+  return Object.freeze({limits,readCatalog,articleGroups,matchesGroups,aliasMap,automaticMapping,matchesArticle,normalizeUnit,priceText,xmlTree,zipDirectory,datanormVersion,datanormPrice});
 });

@@ -1,0 +1,27 @@
+'use strict';
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),http=require('node:http'),{chromium}=require('playwright');
+const dir=path.resolve(__dirname,'../..'),styles=[...fs.readFileSync(path.join(dir,'index.html'),'utf8').matchAll(/<link rel="stylesheet" href="([^"?]+)(?:\?[^"]*)?"/g)].map(m=>m[1]);
+const scripts=['catalog-format-v908.js','catalog-import-v909.js','catalog-import-ui-v910.js','catalog-ui-v908.js'],allowed=new Set([...styles,...scripts]);
+const html='<!doctype html><html lang="de"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'+styles.map(s=>`<link rel="stylesheet" href="/${s}">`).join('')+'<body><main class="app-shell" id="root"></main>'+scripts.map(s=>`<script src="/${s}"></script>`).join('')+'</body></html>';
+const server=http.createServer((req,res)=>{const name=new URL(req.url,'http://127.0.0.1').pathname.slice(1);if(!name){res.setHeader('Content-Type','text/html');return res.end(html);}if(!allowed.has(name)){res.statusCode=404;return res.end();}res.setHeader('Content-Type',name.endsWith('.css')?'text/css':'application/javascript');res.end(fs.readFileSync(path.join(dir,name)));});
+async function main(){await new Promise(r=>server.listen(0,'127.0.0.1',r));const browser=await chromium.launch({channel:process.platform==='win32'?'msedge':undefined,headless:true});let passed=0;const test=async(name,fn)=>{await fn();passed++;console.log('PASS '+name);};
+ try{const context=await browser.newContext({viewport:{width:390,height:844},serviceWorkers:'block'}),page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));let dialogs=0;page.on('dialog',d=>{dialogs++;d.accept();});await context.route('**/*',route=>new URL(route.request().url()).hostname==='127.0.0.1'?route.continue():route.abort());await page.goto('http://127.0.0.1:'+server.address().port);
+ await page.evaluate(()=>{const root=document.querySelector('#root'),state={profile:{id:'chief',role:'business'},company:'A',rows:{materials:[{id:'old',business_id:'A',name:'Kabel',unit:'M',unit_price:10,purchase_price:2,recommended_price_1:4,recommended_price_2:5,catalog_supplier:'Alter Vertrieb',catalog_article_number:'0007',catalog_revision:1}]}};const calls=[];let feature,lateReject;
+  const escape=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const render=()=>{root.innerHTML='<section class="panel"><form data-form="material" class="entry-form"><label>Preis in €<input name="price" type="number" step="0.01" value="10"></label></form></section>'+state.rows.materials.filter(m=>m.business_id===state.company).map(m=>`<article class="row-card"><div><b>${escape(m.name)}</b></div><button data-action="edit-material" data-id="${m.id}">Bearbeiten</button></article>`).join('')+feature.view();feature.afterRender();};
+  feature=window.WorktimeCatalog.create({root,state,escape,render,businessId:()=>state.company,isManager:()=>state.profile?.role==='business',reload:async()=>{},api:async(url,request)=>{calls.push({url,request:structuredClone(request)});if(window.__catalog.late)return new Promise((_,reject)=>lateReject=reject);const p=request.body;for(const row of p.p_rows||[])state.rows.materials.push({id:'new-'+row.article_number,business_id:p.p_company,name:row.name,unit:row.unit,unit_price:row.recommended_price_1??0,purchase_price:row.purchase_price,recommended_price_1:row.recommended_price_1,recommended_price_2:row.recommended_price_2,catalog_supplier:p.p_supplier,catalog_article_number:row.article_number,catalog_revision:1});return {catalog_import_version:911,standard_price_source:'recommended_price_1',company_id:p.p_company,created:p.p_rows?.length||0,updated:0,unchanged:0};}});window.__catalog={state,calls,feature,render,late:false,rejectLate:()=>lateReject?.(Error('PRIVATE-OLD-COMPANY-ERROR'))};render();
+ });
+
+
+
+
+ const h='V'.padEnd(123,' ')+'04EUR',stem=h+'\nA;N;001;;Steckdose Test;;1;0;Stk;9999;RG;WG;LG\nA;N;002;;Ohne Preis;;1;0;Stk;9999;RG;WG;LG',prices=h+'\nP;A;001;1;1000;1;2500;;;;;';
+ await page.locator('[name="supplier_file"]').setInputFiles({name:'datanorm.001',mimeType:'text/plain',buffer:Buffer.from(stem)});
+ await page.locator('[name="supplier_price_file"]').setInputFiles({name:'datpreis.001',mimeType:'text/plain',buffer:Buffer.from(prices)});
+ assert.equal(await page.locator('[name="supplier_file"]').evaluate(x=>x.files[0]?.name),'datanorm.001');assert.equal(await page.locator('[name="supplier_only_priced"]').isChecked(),true);
+ await page.locator('[data-supplier-action="read"]').click();await page.locator('.supplier-row').first().waitFor();
+ await test('separate preispflege selection retains the stem and shows only matched, correctly discounted material',async()=>{assert.equal(await page.locator('.supplier-row').count(),1);assert.equal(await page.locator('[data-supplier-field="purchase_price"]').inputValue(),'7.50');assert.equal(await page.locator('[data-supplier-field="article_number"]').inputValue(),'001');assert.equal(await page.evaluate(()=>window.__catalog.calls.length),0);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));});
+ assert.deepEqual(errors,[]);console.log(JSON.stringify({passed,productionWrites:0}));await context.close();
+ }finally{await browser.close();await new Promise(r=>server.close(r));}
+}
+main().catch(e=>{console.error(e.stack);server.close();process.exitCode=1;});

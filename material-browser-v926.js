@@ -3,7 +3,7 @@
  api.create=({root,state,businessId,isManager,render,escape:esc})=>{
   const metadata=new WeakMap();
   let scope='',kind='category',filters={category:'',manufacturer:'',supplier:''},query='',page=0,answers={},questionIndex=0,includeUnknown=false;
-  const technical=new WeakMap();const feature=m=>{if(!technical.has(m))technical.set(m,window.WorktimeProductFeatures?.describe(m)||{});return technical.get(m);};
+  let technical=new WeakMap();window.addEventListener('worktime-product-index',()=>{technical=new WeakMap();});const feature=m=>{if(!technical.has(m))technical.set(m,window.WorktimeProductFeatures?.describe(m)||{});return technical.get(m);};
   const current=()=>isManager()&&state.profile&&businessId()?state.profile.id+':'+businessId():'';
   function ensure(){const next=current();if(next!==scope){scope=next;kind='category';filters={category:'',manufacturer:'',supplier:''};query='';answers={};questionIndex=0;includeUnknown=false;page=0;answers={};questionIndex=0;includeUnknown=false;}return !!scope;}
   const names={category:'Kategorie',manufacturer:'Hersteller',supplier:'Großhändler'};
@@ -11,7 +11,7 @@
   const info=m=>{if(!metadata.has(m))metadata.set(m,{...window.WorktimeCatalogClassify.describe(m),supplier:m.catalog_supplier||'Ohne Großhändler'});return metadata.get(m);};
   const value=(m,key)=>info(m)[key]||(key==='manufacturer'?'Hersteller nicht erkannt':'');
   const active=()=>!!query.trim()||Object.values(filters).some(Boolean)||Object.values(answers).some(Boolean);
-  function baseMatches(m,ignore){return Object.keys(filters).every(k=>k===ignore||!filters[k]||value(m,k)===filters[k])&&(!query.trim()||query.trim().toLocaleLowerCase('de').split(/\s+/).every(token=>[m.catalog_product_name||m.name,m.catalog_article_number,...Object.values(info(m))].some(v=>String(v||'').toLocaleLowerCase('de').includes(token))));}
+  function baseMatches(m,ignore){return Object.keys(filters).every(k=>k===ignore||!filters[k]||value(m,k)===filters[k])&&(!query.trim()||query.trim().toLocaleLowerCase('de').split(/\s+/).every(token=>[window.WorktimeProductDisplay?.displayName(m)||m.catalog_product_name||m.name,m.catalog_article_number,...Object.values(info(m))].some(v=>String(v||'').toLocaleLowerCase('de').includes(token))));}
 
   const matches=(m,ignore)=>baseMatches(m,ignore)&&(!window.WorktimeProductFeatures||window.WorktimeProductFeatures.matches(feature(m),answers,includeUnknown));
   function assistantCategory(){if(filters.category)return filters.category;const cats=[...new Set(all().filter(m=>baseMatches(m)).map(m=>value(m,'category')))];return cats.length===1?cats[0]:'';}

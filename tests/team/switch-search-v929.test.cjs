@@ -1,0 +1,11 @@
+const assert=require('node:assert/strict'),F=require('../../product-features-v928.js');
+const sample={mains:'Berker S.1 SCHUKO Steckdose polarweiß matt 16A 250V mit erhöhtem Berührungsschutz mit Klappdeckel Steckklemmen Thermoplast',hdmi:'Berker S.1 High Definition Steckdose HDMI polarweiß matt',usb:'Berker S.1 USB-Ladesteckdose polarweiß',combo:'Berker S.1 SCHUKO USB Steckdose 250V',net:'Berker S.1 Netzwerk Steckdose RJ45 Cat6',plate:'Berker Zentralplatte für SCHUKO Steckdose weiß'};
+for(const [name,text]of Object.entries(sample)){const f=F.infer(text,'Schaltermaterial');if(name==='mains'){assert.equal(f.socket_use.value,'Strom / SCHUKO');assert.equal(f.voltage_v.value,'250');assert.equal(f.cover.value,'Ja');assert.equal(f.terminal.value,'Steckklemmen');assert.equal(f.material.value,'Thermoplast');}if(name==='hdmi')assert.equal(f.socket_use.value,'HDMI / Video');if(name==='usb')assert.equal(f.socket_use.value,'USB / Laden');if(name==='combo'){assert.equal(f.socket_use.value,'Strom / SCHUKO');assert.equal(f.usb_charger.value,'Ja');}if(name==='plate')assert.equal(f.switch_kind.value,'Abdeckung');}
+assert.equal(F.infer('CEE Steckdose 230V 16A').socket_use.value,'CEE / Drehstrom');assert.notEqual(F.infer('Steckdose 230V 16A').socket_use.value,'Strom / SCHUKO');
+assert.equal(F.infer('Berker SCHUKO Steckdose ohne USB mit Klappdeckel').usb_charger.value,'Nein');
+assert.equal(F.matches(F.infer(sample.hdmi),{socket_use:'Strom / SCHUKO'}),false);
+assert.equal(F.matches(F.infer(sample.mains),{socket_use:'Strom / SCHUKO'}),true);
+assert.equal(F.describe({name:sample.hdmi,catalog_features:{switch_kind:{value:'Steckdose',source:'description'}}}).socket_use.value,'HDMI / Video');
+const keys=F.questions('Schaltermaterial',{switch_kind:'Steckdose',socket_use:'Strom / SCHUKO'});assert.ok(keys.indexOf('socket_use')<keys.indexOf('series'));assert.ok(keys.includes('cover'));assert.ok(keys.includes('rated_a'));assert.ok(keys.includes('terminal'));assert.ok(keys.includes('usb_charger'));
+const stored=F.forStorage(F.infer(sample.mains));assert.ok(!Object.hasOwn(stored,'socket_use'));assert.ok(!Object.hasOwn(stored,'cover'));assert.equal(stored.voltage_v.value,'250');
+console.log('PASS power, HDMI, USB and network sockets are distinct; accessories stay accessories; extra questions and existing v928 storage remain compatible');

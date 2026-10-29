@@ -17,8 +17,8 @@
    const cards=group.members.map(m=>({m,card:cardsById.get(m.id)})).filter(x=>x.card);
    if(!cards.length||cards[0].card.closest('[data-product-card]'))continue;
    const wrapper=document.createElement('section');wrapper.className='panel catalog-product-card';wrapper.dataset.productCard=group.id;
-   const title=document.createElement('h3');title.textContent=globalThis.WorktimeProductDisplay?.displayName(group.members[0])||group.name;wrapper.append(title);
-   const text=document.createElement('p');text.textContent=group.members.length+' Händlerangebot'+(group.members.length===1?'':'e')+' · Preise netto je '+group.unit;wrapper.append(text);
+   const title=document.createElement('h3');title.textContent=globalThis.WorktimeProductDisplay?.displayName(cards[0].m)||name(cards[0].m);wrapper.append(title);
+   const text=document.createElement('p');text.textContent=cards.length+' Händlerangebot'+(cards.length===1?'':'e')+' · Preise netto je '+group.unit;wrapper.append(text);
    cards[0].card.before(wrapper);
    for(const {m,card}of cards){const heading=card.querySelector('b,strong');if(heading)heading.textContent=m.catalog_supplier||name(m);wrapper.append(card);}
    if(isManager()){

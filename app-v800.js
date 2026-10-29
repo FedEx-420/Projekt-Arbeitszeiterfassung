@@ -363,7 +363,7 @@
     const material=state.rows.materials.find(item=>same(item.business_id,businessId())&&item.active!==false&&lower(item.name)===lower(event.target.value));
     if(material)select.value=materialUnit(material);
   });
-  function materialList() { return `<datalist id="materials">${state.rows.materials.filter(row => row.active !== false).map(row => `<option value="${escape(row.name)}"></option>`).join('')}</datalist>`; }
+  function materialList() { return `<datalist id="materials">${state.rows.materials.filter(row => same(row.business_id,businessId()) && row.active !== false).map(row => `<option value="${escape(row.name)}"></option>`).join('')}</datalist>`; }
   function signatureFields(order = {}) {
     const signedBy = String(order.signed_by || ''), signature = String(order.signature_data || ''), hasSignature = signature.startsWith('data:image/png;base64,');
     return `<div class="wide signature-field"><span class="field-label">Unterschrift</span><canvas class="signature-pad" width="960" height="320" data-signature="${escape(signature)}" aria-label="Unterschrift mit Finger oder Maus einzeichnen"></canvas><input type="hidden" name="signature_data" value="${escape(signature)}"><div class="actions"><button type="button" class="secondary small" data-action="clear-signature">Unterschrift löschen</button></div><p class="signature-help">Mit Finger oder Maus im Feld unterschreiben. Die Unterschrift ist zum Speichern erforderlich.</p></div><label class="wide">Unterschrieben von<input name="signed_by" required value="${escape(signedBy)}" placeholder="Name der unterschreibenden Person"></label>`;
@@ -702,17 +702,16 @@
     for (const file of [...(form.elements.documents?.files || [])]) { const safe = file.name.replace(/[^A-Za-z0-9._-]/g, '_'); const path = `${employee}/${order.id}-${Date.now()}-${safe}`; await upload('work-order-documents', path, file); await write('work_order_documents', { work_order_id: order.id, employee_id: employee, file_path: path, file_name: file.name, mime_type: file.type || null }); }
   }
   async function deleteWorkOrderCompletely(orderId) {
-    const id = String(orderId || '');
-    if (!id) throw new Error('Der Arbeitsschein wurde nicht gefunden.');
-    if (state.rows.orders.find(order => same(order.id,id))?.team_periods?.length && state.rows.orders.find(order => same(order.id,id))?.invoiced) throw new Error('Ein bereits abgerechneter gemeinsamer Arbeitsschein kann nicht gelöscht werden.');
-    const documents = state.rows.documents.filter(document => same(document.work_order_id, id));
-    for (const document of documents) await removeStoredFile('work-order-documents', document.file_path);
-    const query = `work_order_id=eq.${encodeURIComponent(id)}`;
-    if (state.rows.orders.find(order => same(order.id,id))?.team_periods?.length) { await api('/rest/v1/rpc/delete_team_work_order',{method:'POST',body:{p_id:id}}); return; }
-    await remove('work_order_items', query);
-    await remove('work_order_documents', query);
-    await remove('time_entries', query);
-    await remove('work_orders', `id=eq.${encodeURIComponent(id)}`);
+    const id=String(orderId||''),order=state.rows.orders.find(row=>same(row.id,id));
+    if(!order)throw Error('Der Arbeitsschein ist nicht mehr geladen. Bitte die Ansicht aktualisieren.');
+    if(order.invoiced)throw Error('Bereits abgerechnete Arbeitsscheine können nicht gelöscht werden.');
+    const documents=state.rows.documents.filter(document=>same(document.work_order_id,id));
+    // The existing server RPC validates access and invoicing and deletes the
+    // report and dependent rows in one transaction, for old and team reports.
+    try{await api('/rest/v1/rpc/delete_team_work_order',{method:'POST',body:{p_id:id}});}
+    catch(error){if(/PGRST202|42883/.test(error.code||''))throw Error('Die sichere Löschfunktion ist auf dem Server nicht verfügbar. Es wurden keine Anhänge entfernt. Bitte die Auftrags-Erweiterung prüfen.');throw error;}
+    let pending=0;for(const document of documents)try{await removeStoredFile('work-order-documents',document.file_path);}catch{pending++;}
+    if(pending)throw Object.assign(Error('Der Arbeitsschein wurde gelöscht. '+pending+' Anhang-Dateien konnten noch nicht entfernt werden.'),{orderDeleted:true,cleanupPending:pending});
   }
   function signatureValues(form) {
     if(form.elements.work_kind?.value && form.elements.work_kind.value!=='customer'){if(!teamEnabled())throw new Error('Die Auftragsfunktion ist momentan nicht vollständig geladen. Bitte aktualisieren, bevor eine interne Tätigkeit gespeichert wird.');return {signed_by:'',signature_data:''};}
@@ -2139,6 +2138,10 @@
     viewHtml=()=>['catalogs','supplier-catalogs'].includes(state.view)&&isManager()?catalogWizard.view():oldView();
     render=()=>{oldRender();catalogWizard.mount();};
   }
+  const openOrderTools=window.WorktimeOpenOrderTools?.create({root,state,render:()=>render(),reload:()=>reload(),businessId,isManager,deleteOrder:deleteWorkOrderCompletely,
+    getOpenOrders:()=>state.rows.orders.filter(order=>orderInCurrentBusiness(order)&&!order.invoiced&&(!order.work_kind||order.work_kind==='customer')),
+    markOrder:async order=>{await snapshotCurrentPrices([order]);const saved=await write('work_orders',{invoiced:true},'PATCH','id=eq.'+encodeURIComponent(order.id));if(!Array.isArray(saved)||!saved.some(row=>same(row.id,order.id)&&row.invoiced===true))throw Error('Der Abschluss wurde von der Datenbank nicht bestätigt. Bitte die Arbeitsscheine neu laden.');}});
+  if(openOrderTools){const renderBeforeOpenTools=render;render=()=>{renderBeforeOpenTools();openOrderTools.mount();};}
   const invoiceLedger=window.WorktimeInvoiceLedger?.create({root,state,api,allRows,render:()=>render(),reload:()=>reload(),isManager,businessId,today,escape,getCompanyDetails:()=>legalFeature?.getCompanyDetails?.()||null,askTax:(data,accept,options)=>window.WorktimeInvoiceTax.ask(data,accept,options),openPdf:openDocumentPdf,scopeOrder:orderInCurrentBusiness});
   if(invoiceLedger){
     const reloadBeforeLedger=reload,viewBeforeLedger=viewHtml,renderBeforeLedger=render;

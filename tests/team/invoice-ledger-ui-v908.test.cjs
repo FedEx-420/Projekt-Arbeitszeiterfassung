@@ -37,7 +37,7 @@ async function main(){
   assert.equal(groups.length,2);const a=groups.find(g=>g.key==='customer-A');assert.equal(a.invoices.length,2);assert.equal(a.invoices[0].id,'invoice-A2');assert.equal(a.invoices.find(i=>i.id==='invoice-A').cancellation.id,'cancel-A');assert.equal(a.invoices[0].cancellation,null);
  });
  await test('company-specific reads are cleared immediately when changing account context',async()=>{
-  const f=fixture();await f.feature.load();assert.equal(f.feature.getBatches().length,1);assert.ok(f.calls.every(call=>call.query.includes('company_id=eq.A')));
+  const f=fixture();await f.feature.load();assert.equal(f.feature.getBatches().length,1);assert.ok(f.calls.filter(call=>call.query).every(call=>call.query.includes('company_id=eq.A')));assert.ok(f.calls.filter(call=>call.url?.includes('invoice_number_status_v934')).every(call=>call.request.body.p_company==='A'));
   f.state.company='B';f.feature.afterRender();assert.equal(f.feature.getBatches().length,0);assert.match(f.feature.view(),/noch nicht geladen/);
  });
  await test('slow responses from the previous company cannot populate the new company register',async()=>{

@@ -1,0 +1,15 @@
+-- Reine Statusabfrage. Keine Daten oder Funktionen werden veraendert.
+SELECT jsonb_build_object(
+ 'einzel_zeitueberschneidungen', coalesce(position('count(distinct value->>''employee_id'')' in (select prosrc from pg_catalog.pg_proc where oid=pg_catalog.to_regprocedure('public.save_team_work_order(jsonb,jsonb,jsonb,uuid)')))>0,false),
+ 'rechnung_stundenpreis_zugriff_00A', coalesce(position('app_private.customer_labor_price_v868(w.customer_id,m.name,m.unit_price)' in (select prosrc from pg_catalog.pg_proc where oid=pg_catalog.to_regprocedure('public.prepare_invoice_batch_v908(uuid,jsonb)')))=0,false),
+ 'alte_arbeitsscheine_00B', coalesce(position('derived_from_work_time' in (select prosrc from pg_catalog.pg_proc where oid=pg_catalog.to_regprocedure('public.prepare_invoice_batch_v908(uuid,jsonb)')))>0,false),
+ 'rechnungs_vorschau_basis', pg_catalog.to_regprocedure('public.prepare_invoice_batch_v908(uuid,jsonb)') is not null,
+ 'rechnung_materialpreise_02', pg_catalog.to_regprocedure('public.prepare_invoice_batch_v919(uuid,jsonb,jsonb)') is not null,
+ 'artikel_haendler_03', pg_catalog.to_regprocedure('public.import_material_catalog_v921(uuid,text,jsonb,boolean,boolean)') is not null,
+ 'rechnungs_haendler_04', pg_catalog.to_regprocedure('public.prepare_invoice_batch_v922(uuid,jsonb,jsonb,jsonb)') is not null,
+ 'kategorien_05', pg_catalog.to_regprocedure('public.import_material_catalog_v925(uuid,text,jsonb,boolean,boolean)') is not null,
+ 'bilder_merkmale_06', pg_catalog.to_regprocedure('public.import_material_catalog_v928(uuid,text,jsonb,boolean,boolean)') is not null,
+ 'standardpreis_07', coalesce((select atttypmod=-1 and atttypid='pg_catalog.numeric'::pg_catalog.regtype from pg_catalog.pg_attribute where attrelid=pg_catalog.to_regclass('public.materials') and attname='unit_price' and not attisdropped),false),
+ 'automatische_nummern_08', pg_catalog.to_regprocedure('public.issue_invoice_auto_v934(uuid,uuid,date,jsonb,jsonb,jsonb,jsonb,jsonb,integer)') is not null,
+ 'sicheres_loeschen', pg_catalog.to_regprocedure('public.delete_team_work_order(uuid)') is not null
+) AS app_status;

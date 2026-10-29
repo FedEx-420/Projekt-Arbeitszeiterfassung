@@ -1,0 +1,1 @@
+(()=>{'use strict';const id=new URLSearchParams(location.hash.slice(1)).get('job');if(!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id||''))return;document.querySelector('#return-app').href='./?ids_return='+encodeURIComponent(id);try{const channel=new BroadcastChannel('worktime-ids-return-v938');channel.postMessage({type:'ids-return',id});channel.close();}catch{}})();

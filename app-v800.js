@@ -2159,4 +2159,10 @@
   const selectionPhotos=window.WorktimeProductFeatures?.installSelections({root,state,businessId});
   const flowGuide=window.WorktimeAppFlow?.create({root,state,businessId});if(flowGuide){const renderBeforeFlow=render;render=()=>{renderBeforeFlow();flowGuide.afterRender();selectionPhotos?.afterRender();};flowGuide.afterRender();selectionPhotos?.afterRender();}
   window.WorktimeGermanProducts?.install({root,state,businessId,render:()=>render()});
+  const supplierCart=window.WorktimeSupplierCartUI?.create({root,state,businessId,isManager,render:()=>render(),api,supabaseUrl:base,escape});
+  if(supplierCart){const beforeCartMenu=menuItems,beforeCartView=viewHtml,beforeCartRender=render;
+    menuItems=()=>{const items=beforeCartMenu();if(isManager())items.push(['shopping','Einkauf · Neugart / GC']);return items;};
+    viewHtml=()=>state.view==='shopping'&&isManager()?supplierCart.view():beforeCartView();
+    render=()=>{beforeCartRender();supplierCart.afterRender();};
+  }
 })();

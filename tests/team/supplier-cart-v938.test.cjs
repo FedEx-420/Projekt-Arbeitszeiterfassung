@@ -1,0 +1,11 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),os=require('node:os'),C=require('../../supplier-cart-v938.js');
+const line={material_id:'00000000-0000-4000-8000-000000000001',ref:'position-1',sku:'00123',supplier:'Neugart',name:'Fiktive Steckdose ä & <Text> '+ 'lang '.repeat(35),unit:'Stk',quantity:'2,50',purchase_price:1,recommended_price_1:999};
+const xml=C.build({lines:[line,{...line,ref:'position-2',sku:'00007',unit:'M',quantity:'12.75'}],supplier:'Neugart',customer:'000011',order:'B-123',commission:'Projekt & Muster',shipping:'Abholung',date:new Date('2026-10-29T12:34:56Z')});
+assert.match(xml,/<Date>2026-10-29<\/Date><Time>13:34:56<\/Time>/);assert.match(xml,/<ArtNo>00123<\/ArtNo>/);assert.match(xml,/<Qty>2.50<\/Qty><QU>PCE<\/QU>/);assert.match(xml,/<QU>MTR<\/QU>/);assert.match(xml,/ä &amp; &lt;Text&gt;/);assert.ok(!/OfferPrice|NetPrice|recommended_price|purchase_price|999/.test(xml));
+for(const quantity of ['0','-1','1.001','1e2','Infinity','1000000'])assert.throws(()=>C.build({lines:[{...line,quantity}],supplier:'Neugart'}),/Menge/);
+for(const unit of ['H','Pau','Packung','sa'])assert.throws(()=>C.unit(unit),/Einheit/);
+assert.throws(()=>C.build({lines:[{...line,supplier:'Anderer Händler'}],supplier:'Neugart'}),/Großhändler/);
+assert.throws(()=>C.build({lines:[{...line,sku:'1234567890123456'}],supplier:'Neugart'}),/artikelnummer/i);
+assert.throws(()=>C.build({lines:[line,line],supplier:'Neugart'}),/doppelt/);
+assert.throws(()=>C.build({lines:[{...line,name:'Text\u0000'}],supplier:'Neugart'}),/ungültige/);
+const output=path.join(os.tmpdir(),'worktime-ids-v938.xml');fs.writeFileSync(output,xml,'utf8');console.log('PASS exact supplier SKU, decimal quantities, supported units, XML escaping, stable references, no selling prices; validation XML: '+output);

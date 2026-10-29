@@ -1,0 +1,20 @@
+const app='https://fedex-420.github.io/Projekt-Arbeitszeiterfassung/';
+const common={'Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff','Access-Control-Allow-Origin':'https://fedex-420.github.io'};
+const reply=(message,status=400)=>new Response(message,{status,headers:{...common,'Content-Type':'text/plain; charset=utf-8'}});
+async function boundedBody(request){const reader=request.body?.getReader();if(!reader)throw Error('empty');const chunks=[];let size=0;while(true){const {done,value}=await reader.read();if(done)break;size+=value.byteLength;if(size>2097152){await reader.cancel();throw Error('large');}chunks.push(value);}const bytes=new Uint8Array(size);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.length;}return bytes;}
+export async function handle(request,{supabaseUrl,serviceKey,fetcher=fetch}){
+ const url=new URL(request.url);if(!supabaseUrl||!serviceKey)return reply('Die Empfangsstelle ist noch nicht eingerichtet.',503);
+ const rpc=async(name,body)=>fetcher(supabaseUrl+'/rest/v1/rpc/'+name,{method:'POST',headers:{apikey:serviceKey,Authorization:'Bearer '+serviceKey,'Content-Type':'application/json'},body:JSON.stringify(body)});
+ if(request.method==='OPTIONS')return new Response(null,{status:204,headers:{...common,'Access-Control-Allow-Methods':'GET,POST,OPTIONS'}});
+ if(request.method==='GET'&&url.searchParams.get('health')==='1'){try{const response=await rpc('ids_receiver_status_v938',{});if(!response.ok)return reply('Datenbankerweiterung fehlt.',503);return new Response(JSON.stringify({receiver:938,available:true}),{headers:{...common,'Content-Type':'application/json'}});}catch{return reply('Empfangsstelle vorübergehend nicht erreichbar.',503);}}
+ if(request.method!=='POST')return reply('IDS-Rückmeldungen müssen per POST gesendet werden.',405);
+ const id=url.searchParams.get('job'),token=url.searchParams.get('token');if(!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id||'')||!/^[0-9a-f]{64}$/.test(token||''))return reply('Ungültiger Rückgabevorgang.');
+ try{
+  const content=request.headers.get('content-type')||'';if(!/^multipart\/form-data|^application\/x-www-form-urlencoded/i.test(content))return reply('Nicht unterstütztes Rückgabeformat.',415);
+  const bytes=await boundedBody(request);const form=await new Response(bytes,{headers:{'Content-Type':content}}).formData();const values=[...form.getAll('warenkorb'),...form.getAll('Warenkorb')];if(values.length!==1)return reply('Genau ein Warenkorb muss zurückgegeben werden.');const xml=typeof values[0]==='string'?values[0]:await values[0].text();if(new TextEncoder().encode(xml).length>1048576||/<!DOCTYPE|<!ENTITY/i.test(xml)||!/<(?:\w+:)?Warenkorb(?:\s|>)/.test(xml))return reply('Ungültige Warenkorbdaten.');
+  const result=await rpc('ids_complete_cart_v938',{p_id:id,p_token:token,p_xml:xml});if(!result.ok)return reply('Die Rückmeldung wurde nicht angenommen. Der Vorgang ist abgelaufen, bereits zurückgegeben oder ungültig.',409);
+  return new Response(null,{status:303,headers:{...common,Location:app+'ids-return-v938.html#job='+id}});
+ }catch{return reply('Die Warenkorbrückmeldung konnte nicht verarbeitet werden. Es wurde keine Bestellung bestätigt.');}
+}
+
+Deno.serve(request=>handle(request,{supabaseUrl:Deno.env.get('SUPABASE_URL'),serviceKey:Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}));

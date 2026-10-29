@@ -25,7 +25,13 @@ im lokalen Speicher, Firmenwechsel und verborgene Anmeldung für Mitarbeiter.
 Zusätzlich in der vollständigen App mit einem Admin-Profil sowie mit dem bestehenden
 isolierten Shop-POST und der Katalog-/Einkaufssuche getestet.
 
-Der öffentliche Check der Empfangsfunktion antwortete am 29.10.2026 weiterhin mit
-HTTP 401 `UNAUTHORIZED_NO_AUTH_HEADER`. Diese Veröffentlichung behebt die
-Eingabesperre. Sie bestätigt keine erfolgreiche Anmeldung beim echten Großhändler
-und aktiviert keine Supabase-Einstellung.
+## Nachtrag · 30.10.2026
+
+Die Empfangsstelle wurde inzwischen separat in Supabase aktiviert. Die dort noch
+vorhandene Beispielvorlage wurde durch die geprüfte App-Funktion ersetzt und die
+zusätzliche JWT-Prüfung für diese eine Funktion ausgeschaltet. Die eigene
+Einmaltoken-Prüfung bleibt aktiv. Der Live-Check liefert HTTP 200 mit `available: true`.
+
+Nach dem Neuladen kann die App die Bereitschaft erkennen und den Übergabebutton
+freigeben. Der erfolgreiche Login beim echten Großhändler wurde noch nicht getestet;
+dafür werden die persönlichen Neugart-/GC-Zugangsdaten benötigt.

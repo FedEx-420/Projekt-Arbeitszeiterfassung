@@ -16,20 +16,29 @@ Einkaufsentwürfe sind lokal auf diesem Gerät nach Benutzer und Firma getrennt 
 IDS-Benutzername und Passwort werden weder lokal noch in der Datenbank gespeichert.
 Die Zugangsdaten werden erst beim selbst ausgelösten Übergabeklick an GC gesendet.
 
-## Was noch NICHT live aktiviert ist
+## Aktivierter Stand · 30.10.2026
 
-Die verbundenen Supabase-Konten liefern keine Projekte. Auch die lokale CLI hat keine
-Anmeldung. Der Benutzer hat die Einrichtung inzwischen durchgeführt. Eine unabhängige
-Bestätigung der Datenbankinstallation ist deshalb weiterhin nicht möglich. Der öffentliche
-Gesundheitscheck der Empfangsfunktion antwortete am 29.10.2026 noch mit HTTP 401
-`UNAUTHORIZED_NO_AUTH_HEADER`. Das zeigt, dass der Aufruf vor der eigenen
-Einmal-Token-Prüfung noch eine Supabase-Anmeldung verlangt. Für ausschließlich
-`ids-cart-return-v938` muss im Dashboard „Verify JWT“ ausgeschaltet werden.
-Artikelsuche, Katalogentnahme, Einkaufsentwurf und XML-Export funktionieren unabhängig
-von dieser Empfangsstelle. Neugart-Kontofreischaltung und ein echter
-angemeldeter Shop-Test sind ebenfalls offen. OMD, die Rückübernahme in Materialstammdaten
-und zusätzliche Shopfunktionen sind noch nicht integriert. Es wurde keine echte Bestellung
-angelegt oder ausgelöst.
+Die neue, auf das App-Projekt begrenzte Supabase-MCP-Verbindung wurde eingerichtet
+und erfolgreich per OAuth angemeldet. Der direkte Projektzugriff wurde geprüft.
+Die SQL-Erweiterung 09 war bereits vollständig vorhanden. Bei der Empfangsfunktion
+war noch die Supabase-Beispielvorlage mit aktivierter JWT-Prüfung gespeichert.
+
+`ids-cart-return-v938` ist jetzt als Version 2 mit der geprüften App-Empfangsfunktion
+veröffentlicht. `verify_jwt` ist für diese eine Funktion ausgeschaltet; die eigene
+Prüfung der zufälligen, befristeten Einmaltokens bleibt aktiv. Der öffentliche
+Gesundheitscheck liefert HTTP 200 mit `receiver: 938` und `available: true`.
+Ungültige Rückmeldungen ohne Token sowie mit gefälschtem Token werden abgewiesen.
+
+Der Browsercheck vom App-Ursprung bestätigt die Erreichbarkeit und die Freigabe des
+Übergabebuttons bei gültigem App-Status. Nach dem Neuladen kann die bestehende App
+Version 940 den technischen Bereitschaftsstatus erkennen. Es ist keine zusätzliche
+SQL-Datei zum Kopieren erforderlich.
+
+Der erste angemeldete Test mit persönlichen Neugart-Zugangsdaten steht weiterhin
+aus. OMD und die Rückübernahme eines Shop-Warenkorbs in Materialstammdaten sind
+separate, noch nicht integrierte Funktionen. Es wurde keine echte Bestellung
+angelegt oder ausgelöst. Die folgende Anleitung beschreibt die Einrichtung bei
+Neuaufsetzung; im bestehenden App-Projekt ist die Empfangsstelle bereits aktiviert.
 
 ## Einrichtung – zwei Dateien und danach der erste Shop-Test
 

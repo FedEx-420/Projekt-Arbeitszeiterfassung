@@ -51,24 +51,24 @@ Mengen, Kommission und Lieferung/Abholung werden je Einkaufsentwurf gespeichert.
 Die zuletzt festgelegte Bereitstellung bleibt erhalten; ein neuer Entwurf beginnt
 sichtbar mit **Abholung**. IDS-Zugangsdaten werden nicht in der App gespeichert.
 
-## Noch offene Aktivierung der Shop-Rückgabe
+## Aktivierte Shop-Rückgabe · 30.10.2026
 
-Der öffentliche Check der vorhandenen Empfangsfunktion antwortete am 29.10.2026
-mit HTTP 401 `UNAUTHORIZED_NO_AUTH_HEADER`. Der Benutzer hat SQL und Funktion
-nach eigener Angabe eingefügt. Die verbundenen Supabase-Konten liefern weiterhin
-keine Projekte; die Datenbankinstallation konnte daher nicht unabhängig bestätigt
-und die Funktionseinstellung nicht über den verbundenen Zugang geändert werden.
+Die technische Empfangsstelle ist aktiviert. Die zuvor vorhandene
+Supabase-Beispielvorlage wurde durch die geprüfte Empfangsfunktion ersetzt.
+`ids-cart-return-v938` ist als Version 2 aktiv, mit eigener Einmaltoken-Prüfung und
+`verify_jwt = false` für ausschließlich diese Funktion. Die erforderliche
+SQL-Erweiterung war bereits installiert; direkte Tabellenzugriffe bleiben gesperrt.
 
-Nur bei der Funktion **ids-cart-return-v938** muss die Dashboard-Einstellung
-**Verify JWT** ausgeschaltet werden. Die Funktion behält ihre eigene Prüfung des
-zufälligen, befristeten Einmaltokens. Bis die Empfangsstelle erreichbar ist, bleiben
-Artikelsuche, Einzelübernahme, Einkaufsentwurf und XML-Export nutzbar. Die direkte
-Übergabe mit geschützter Rückmeldung bleibt deaktiviert.
+Der Live-Check liefert HTTP 200 und `available: true`. Fehlende oder gefälschte
+Tokens werden abgewiesen. Ein isolierter Browsercheck auf dem App-Ursprung mit
+echter Verbindung zur Empfangsstelle bestätigt, dass der Übergabebutton bei gültigem
+App-Status freigegeben wird. Die App einmal neu laden oder die Verbindung im Einkauf
+erneut prüfen, um den neuen Bereitschaftsstatus zu übernehmen.
 
 Der erste angemeldete Test im echten Großhandelsshop steht aus. Die endgültige
-Bestellung wird im Shop geprüft und ausgelöst. Siehe die
-[IDS-2.5-Spezifikation, Abschnitt 5.2](https://pabu-itek-dev.k8s-hh.amcloud.io/api/download/file/1526)
-und die [Einrichtungsanleitung](Neugart_Einrichtung_v938.md).
+Bestellung wird im Shop geprüft und ausgelöst. Siehe das
+[Aktivierungsprotokoll](IDS_Aktivierung_2026-10-30.md) und die
+[Einrichtungsanleitung](Neugart_Einrichtung_v938.md).
 
 ## Prüfung
 

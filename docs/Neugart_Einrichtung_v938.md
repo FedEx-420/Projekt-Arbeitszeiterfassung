@@ -1,10 +1,12 @@
-# Neugart / GC ONLINE PLUS: Einrichtung und Videoauswertung (v938)
+# Neugart / GC ONLINE PLUS: Einrichtung und Videoauswertung (Stand v939)
 
 ## Was bereits vorbereitet ist
 
 - Eigenes App-Menü „Einkauf“ für Firmenleitung und Administrator.
-- Vorhandene Händlerartikel aus der Materialsuche über „Zum Einkauf“ auswählen.
-- Neugart-/GC-Katalog zuordnen, Mengen, Artikelnummern, Einheiten und Kommission prüfen.
+- Direkt im Einkauf nach vorhandenen Materialien und lokal gespeicherten Katalogartikeln suchen.
+- Eindeutigen Fachhändler beim Artikel übernehmen; fehlende Fachhändlernamen einmal pro Datei ergänzen.
+- Einzelne Katalogartikel mit einem Klick übernehmen und dem Einkauf hinzufügen.
+- Einkaufsentwürfe nach Fachhändler trennen; Mengen, Lieferung/Abholung und Kommission erhalten.
 - IDS-2.5-Warenkorb als XML exportieren. Keine EK- oder Kundenverkaufspreise übertragen.
 - Direkte Übergabe per POST mit multipart/form-data und UTF-8 an den GC-IDS-Endpunkt.
 - Geschützte Rückgabe mit zufälligem Einmaltoken, einer Stunde Gültigkeit und Bindung an Benutzer/Firma.
@@ -17,8 +19,14 @@ Die Zugangsdaten werden erst beim selbst ausgelösten Übergabeklick an GC gesen
 ## Was noch NICHT live aktiviert ist
 
 Die verbundenen Supabase-Konten liefern keine Projekte. Auch die lokale CLI hat keine
-Anmeldung. Daher sind Datenbankerweiterung und Empfangsfunktion getestet und vorbereitet,
-aber im Projekt noch nicht installiert. Neugart-Kontofreischaltung und ein echter
+Anmeldung. Der Benutzer hat die Einrichtung inzwischen durchgeführt. Eine unabhängige
+Bestätigung der Datenbankinstallation ist deshalb weiterhin nicht möglich. Der öffentliche
+Gesundheitscheck der Empfangsfunktion antwortete am 29.10.2026 noch mit HTTP 401
+`UNAUTHORIZED_NO_AUTH_HEADER`. Das zeigt, dass der Aufruf vor der eigenen
+Einmal-Token-Prüfung noch eine Supabase-Anmeldung verlangt. Für ausschließlich
+`ids-cart-return-v938` muss im Dashboard „Verify JWT“ ausgeschaltet werden.
+Artikelsuche, Katalogentnahme, Einkaufsentwurf und XML-Export funktionieren unabhängig
+von dieser Empfangsstelle. Neugart-Kontofreischaltung und ein echter
 angemeldeter Shop-Test sind ebenfalls offen. OMD, die Rückübernahme in Materialstammdaten
 und zusätzliche Shopfunktionen sind noch nicht integriert. Es wurde keine echte Bestellung
 angelegt oder ausgelöst.

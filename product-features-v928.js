@@ -50,7 +50,7 @@ if(/schalt|steck|wippe|rahmen|taster|dimmer/i.test(t)||/Schaltermaterial/i.test(
  function queryMatches(m,query,fields=[]){
   let rest=String(query||'').trim();const requested=[];
   for(const [rx,label]of seriesPatterns){const hit=rx.exec(rest);if(hit){requested.push(label||'Q.'+hit[1]);rest=rest.replace(new RegExp(rx.source,'ig'),' ');}}
-  const features=describe(m);if(requested.length&&(!features.series||features.series.conflict||!requested.every(v=>values('series',features.series.value).some(x=>canonicalSeries(x)===canonicalSeries(v)))))return false;
+  const features=requested.length?describe(m):null;if(requested.length&&(!features.series||features.series.conflict||!requested.every(v=>values('series',features.series.value).some(x=>canonicalSeries(x)===canonicalSeries(v)))))return false;
   const text=[globalThis.WorktimeProductDisplay?.displayName(m)||m.catalog_product_name||m.name,m.catalog_article_number,...fields].map(v=>String(v||'').toLocaleLowerCase('de'));
   return rest.toLocaleLowerCase('de').split(/\s+/).filter(Boolean).every(token=>text.some(v=>v.includes(token)));
  }

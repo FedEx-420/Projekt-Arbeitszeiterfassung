@@ -16,4 +16,5 @@ D.setIndex({entries:{one:entry,two:{...entry,image_url:'https://assets.hager.com
 D.setIndex({entries:{one:{...entry,image_url:'https://unverified.example/photo.jpg'}}});assert.equal(D.image(m),'');
 const index=JSON.parse(fs.readFileSync(path.join(__dirname,'../../catalog-image-index.json'),'utf8'));
 assert.ok(Object.keys(index.entries).length>50);D.setIndex(index);assert.ok(D.image(m));
+assert.ok(D.image({catalog_manufacturer:'Berker',catalog_manufacturer_number:'47229909'}));assert.equal(D.image({catalog_manufacturer:'Wago',catalog_manufacturer_number:'47229909'}),'');assert.equal(D.image({catalog_gtin:'4011334233009',catalog_manufacturer:'Berker',catalog_manufacturer_number:'47229909'}),'');
 console.log('PASS full names, Q.3 color abbreviations, exact GTIN images, duplicate and invalid identifier guards, unchanged source names');

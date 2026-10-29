@@ -2132,6 +2132,13 @@
     materialsView=()=>materialViewBeforeCatalog()+catalogFeature.view();
     render=()=>{renderBeforeCatalog();catalogFeature.afterRender();};
   }
+  const catalogWizard=window.WorktimeCatalogWizard?.create({root,state,api,reload:()=>reload(),render:()=>render(),businessId,isManager,escape});
+  if(catalogWizard){
+    const oldMenu=menuItems,oldView=viewHtml,oldRender=render;
+    menuItems=()=>{const items=oldMenu();return isManager()?[...items,['catalogs','Katalog hinzufügen'],['supplier-catalogs','Fachhändler Kataloge']]:items;};
+    viewHtml=()=>['catalogs','supplier-catalogs'].includes(state.view)&&isManager()?catalogWizard.view():oldView();
+    render=()=>{oldRender();catalogWizard.mount();};
+  }
   const invoiceLedger=window.WorktimeInvoiceLedger?.create({root,state,api,allRows,render:()=>render(),reload:()=>reload(),isManager,businessId,today,escape,getCompanyDetails:()=>legalFeature?.getCompanyDetails?.()||null,askTax:(data,accept,options)=>window.WorktimeInvoiceTax.ask(data,accept,options),openPdf:openDocumentPdf,scopeOrder:orderInCurrentBusiness});
   if(invoiceLedger){
     const reloadBeforeLedger=reload,viewBeforeLedger=viewHtml,renderBeforeLedger=render;

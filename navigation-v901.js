@@ -8,6 +8,7 @@
     ['customers', 'Kunden', 'Kontaktdaten und Kundenaufträge', 'customers', ['customers']],
     ['planning', 'Planung & Kalender', 'Termine, Urlaub und Krankheit', 'calendar', ['planning', 'calendar']],
     ['office', 'Büro', 'Abrechnung, Angebote und Postfach', 'office', ['invoices', 'invoices-paid', 'offers', 'materials', 'datev', 'mailbox']],
+    ['catalogs', 'Kataloge', 'Katalog hinzufügen und Fachhändler Kataloge', 'office', ['catalogs','supplier-catalogs']],
     ['legal', 'Unterlagen & Freigaben', 'Dokumente und verständliche Hilfen', 'legal', ['legal']],
     ['account', 'Mein Konto', 'Einstellungen, Team und Geräte', 'account', ['settings']],
     ['platform', 'Anbieteradministration', 'Preise und Geschäftskonten', 'platform', ['platform']]

@@ -1,0 +1,20 @@
+const assert=require('node:assert/strict');
+global.WorktimeCatalogProducts=require('../../catalog-products-v921.js');
+require('../../german-products-v936.js');
+const G=global.WorktimeGermanProducts;
+const entry={market:'DE',document_scope:'electrical-safety',brand:'Berker',sku:'47229909',gtin:'04011334233008',full_name:'Berker SCHUKO Steckdose S.1',source_url:'https://hager.com/de/katalog/produkt/47229909-test',document_url:'https://assets.hager.com/step-content/test.pdf',document_sha256:'a'.repeat(64),evidence_type:'manufacturer-eu-declaration',type_reference:'47229909',checked_at:new Date().toISOString()};
+const m={name:entry.full_name,catalog_gtin:'4011334233008'};
+assert.equal(G.allowed(m),false,'fail closed before evidence loads');
+G.setIndex({entries:{one:entry}});
+assert.equal(G.allowed(m),true);
+assert.equal(G.allowed({...m,catalog_country:'FR',catalog_manufacturer:'Ausländischer Hersteller'}),true,'manufacturer nationality is not a filter');
+for(const name of ['Steckdose britisch BS 1363','Schweizer Steckdose Typ J','Steckdose Ausführung Schweiz','Berker Steckdose französisch','Steckdose italienisch Typ L','Steckdose dänisch Typ K','Steckdose NEMA 5-15','nicht für Deutschland geeignet'])assert.equal(G.allowed({...m,name}),false,name);
+assert.equal(G.allowed({...m,catalog_gtin:'4011334233009'}),false,'invalid GTIN never falls back');
+assert.equal(G.allowed({name:m.name,catalog_manufacturer:'Berker',catalog_manufacturer_number:entry.sku}),true);
+assert.equal(G.allowed({name:m.name,catalog_manufacturer:'Berker',catalog_article_number:entry.sku}),false,'wholesaler SKU is not manufacturer model');
+assert.equal(G.allowed({name:'Hager CE VDE DIN SCHUKO zugelassen Deutschland 230V'}),false,'name, standards, brand and CE alone are not evidence');
+assert.equal(G.allowed({name:'Monteurstunde'}),true,'labor positions are not products');
+for(const change of [{document_scope:'rohs'},{market:'FR'},{type_reference:'wrong'},{checked_at:'2020-01-01'},{document_url:'https://evil.test/test.pdf'},{source_url:'https://hager.com/fr/katalog/produkt/47229909-test'}]){G.setIndex({entries:{one:{...entry,...change}}});assert.equal(G.allowed(m),false,JSON.stringify(change));}
+G.setIndex({entries:{one:entry,two:{...entry,document_sha256:'b'.repeat(64)}}});assert.equal(G.allowed(m),false,'ambiguous GTIN cannot choose an approval');
+G.setIndex({entries:{one:entry}});assert.equal(G.allowed(m),true,'existing saved materials are evaluated without reimport');
+console.log('PASS strict German evidence, foreign variants, overseas makers, unknowns, expiry, identity, conflicts, labor and existing materials');

@@ -363,7 +363,7 @@
     const material=state.rows.materials.find(item=>same(item.business_id,businessId())&&item.active!==false&&lower(item.name)===lower(event.target.value));
     if(material)select.value=materialUnit(material);
   });
-  function materialList() { return `<datalist id="materials">${state.rows.materials.filter(row => same(row.business_id,businessId()) && row.active !== false).map(row => `<option value="${escape(row.name)}"></option>`).join('')}</datalist>`; }
+  function materialList() { return `<datalist id="materials">${state.rows.materials.filter(row => same(row.business_id,businessId()) && row.active !== false && window.WorktimeGermanProducts?.allowed(row)).map(row => `<option value="${escape(row.name)}"></option>`).join('')}</datalist>`; }
   function signatureFields(order = {}) {
     const signedBy = String(order.signed_by || ''), signature = String(order.signature_data || ''), hasSignature = signature.startsWith('data:image/png;base64,');
     return `<div class="wide signature-field"><span class="field-label">Unterschrift</span><canvas class="signature-pad" width="960" height="320" data-signature="${escape(signature)}" aria-label="Unterschrift mit Finger oder Maus einzeichnen"></canvas><input type="hidden" name="signature_data" value="${escape(signature)}"><div class="actions"><button type="button" class="secondary small" data-action="clear-signature">Unterschrift löschen</button></div><p class="signature-help">Mit Finger oder Maus im Feld unterschreiben. Die Unterschrift ist zum Speichern erforderlich.</p></div><label class="wide">Unterschrieben von<input name="signed_by" required value="${escape(signedBy)}" placeholder="Name der unterschreibenden Person"></label>`;
@@ -627,7 +627,7 @@
     const name = String(value || '').trim(); if (!name) return null;
     const current = state.rows.materials.find(row => same(row.business_id, targetBusinessId) && lower(row.name) === lower(name));
     if (current) return current;
-    const selected = chooseSimilar(name, state.rows.materials.filter(row => same(row.business_id, targetBusinessId) && row.active !== false), 'Artikel'); if (selected) return selected;
+    const selected = chooseSimilar(name, state.rows.materials.filter(row => same(row.business_id, targetBusinessId) && row.active !== false && window.WorktimeGermanProducts?.allowed(row)), 'Artikel'); if (selected) return selected;
     const created = await write('materials', { business_id: targetBusinessId, name, unit_price: 0, unit: normalizeUnit(unit), active: true });
     return rememberCatalogRow('materials', created, 'Der Artikel');
   }
@@ -2158,4 +2158,5 @@
   }
   const selectionPhotos=window.WorktimeProductFeatures?.installSelections({root,state,businessId});
   const flowGuide=window.WorktimeAppFlow?.create({root,state,businessId});if(flowGuide){const renderBeforeFlow=render;render=()=>{renderBeforeFlow();flowGuide.afterRender();selectionPhotos?.afterRender();};flowGuide.afterRender();selectionPhotos?.afterRender();}
+  window.WorktimeGermanProducts?.install({root,state,businessId,render:()=>render()});
 })();

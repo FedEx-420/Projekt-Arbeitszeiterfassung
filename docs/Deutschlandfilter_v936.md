@@ -1,3 +1,5 @@
+> Historischer Stand v936. Seit v937 gilt die [verbesserte Länderauswahl](Deutschlandfilter_v937.md): Fehlende Nachweise blockieren die Suche nicht mehr.
+
 # Automatischer Deutschlandfilter
 
 Der Filter ist fest aktiv. Er gilt für die bestehende Materialsuche, Produktvorschläge

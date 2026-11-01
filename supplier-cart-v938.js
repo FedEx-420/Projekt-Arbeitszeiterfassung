@@ -6,7 +6,7 @@
  // Fixed HTTPS destinations only. An EFG account must start its IDS session
  // on EFG, rather than losing cart context during a GC-to-EFG shop switch.
  const shops=Object.freeze({gc:Object.freeze({id:'gc',name:'GC ONLINE PLUS',endpoint,uploadEndpoint}),efg:Object.freeze({id:'efg',name:'EFG ONLINE PLUS',endpoint:'https://efgonlineplus.de/ids.aspx',uploadEndpoint:'https://efgonlineplus.de/?page=PageOnlinePlusUpload'})});
- function shopFor(supplier,choice=''){if(choice&&!Object.hasOwn(shops,choice))throw Error('Bitte GC ONLINE PLUS oder EFG ONLINE PLUS als Onlinezugang wählen.');return shops[choice||(/neugart|\befg\b/i.test(supplier||'')?'efg':'gc')];}
+ function shopFor(supplier,choice=''){if(choice&&!Object.hasOwn(shops,choice))throw Error('Bitte GC ONLINE PLUS oder EFG ONLINE PLUS als Onlinezugang wählen.');return shops[choice||(/\befg\b/i.test(supplier||'')?'efg':'gc')];}
  const units={stk:'PCE',stück:'PCE',st:'PCE',pce:'PCE',m:'MTR',meter:'MTR',mtr:'MTR',kg:'KGM',kgm:'KGM',paar:'PR',pr:'PR',satz:'SET',set:'SET',l:'LTR',ltr:'LTR',m2:'MTK','m²':'MTK',mtk:'MTK',m3:'MTQ','m³':'MTQ',mtq:'MTQ',cm:'CMT',mm:'MMT',g:'GRM',km:'KTM'};
  const xml=v=>String(v??'').replace(/[<>&"']/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&apos;'}[c]));
  function clean(value,max,label,required=false){const s=String(value??'').trim();if((required&&!s)||[...s].length>max||/[\u0000-\u001f\u007f]/.test(s))throw Error(label+' fehlt, ist zu lang oder enthält ungültige Zeichen.');return s;}

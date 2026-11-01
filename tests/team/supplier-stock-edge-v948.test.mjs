@@ -1,0 +1,33 @@
+import assert from 'node:assert/strict';
+import {createHash,webcrypto} from 'node:crypto';
+import {createCodec,createHandler,normalizeStock} from '../../supabase/functions/supplier-stock-v948/handler.mjs';
+const md5=x=>createHash('md5').update(x).digest('hex'),owner='10000000-0000-4000-8000-000000000001',company='20000000-0000-4000-8000-000000000001',other='20000000-0000-4000-8000-000000000002',ids=['30000000-0000-4000-8000-000000000001','30000000-0000-4000-8000-000000000002'];
+let clock=Date.now(),role='administrator',merchantUser=true,queries=[],maxConcurrent=0,current=0,loginCount=0;
+const json=(x,headers={})=>new Response(JSON.stringify(x),{headers:{'Content-Type':'application/json',...headers}});
+const fetch=async(url,options={})=>{url=new URL(url);const data=options.body?JSON.parse(options.body):null;queries.push({host:url.hostname,path:url.pathname,method:options.method||'GET'});
+ if(url.hostname==='db.invalid'){
+  assert.equal(options.headers.Authorization,'Bearer synthetic');assert.equal(options.headers.apikey,'public-test');
+  if(url.pathname==='/auth/v1/user')return json({id:owner});
+  if(url.pathname==='/rest/v1/profiles')return url.searchParams.get('id')==='eq.'+owner?json([{id:owner,role}]):json([{id:company,role:'business'}]);
+  if(url.pathname==='/rest/v1/materials'){assert.equal(url.searchParams.get('business_id'),'eq.'+company);return json(ids.map((id,i)=>({id,business_id:company,catalog_supplier:'Neugart',catalog_article_number:i?'MISSING':'000123'})));}
+  throw Error('Unexpected DB path');
+ }
+ assert.equal(url.origin,'https://efgonlineplus.de');assert.equal(options.redirect,'error');assert.equal(url.searchParams.get('layout'),'EFG');
+ const logged=options.headers.Cookie?.includes('sid=private-session-cookie'),user={companyNumber:'777',username:'SYNTHETIC',customerNumber:'000011',customer:{company:{isSap:false}}};
+ if(data){const key=logged?'CSRF_SECRET':'null';assert.equal(url.searchParams.get('crsfKey'),md5(key+url.searchParams.get('rand')));}
+ if(url.pathname==='/api/account/getsettingsremaining')return json({user:logged&&merchantUser?user:null,crsfKey:logged?'CSRF_SECRET':null,warehouses:[{mfv:'070',warehouseNumber:'070',name:'Testlager'}]});
+ if(url.pathname==='/api/account/login'){loginCount++;assert.equal(data.password,'SYNTHETIC_PASSWORD');assert.equal(data.username,'SYNTHETIC');return json({successful:true,crsfKey:'CSRF_SECRET',mandatoryActions:[]},{'Set-Cookie':'sid=private-session-cookie; Path=/; Secure; HttpOnly'});}
+ if(url.pathname==='/api/products/getnetpricesandstocksbykbnlist'){assert.ok(logged);assert.equal(data.stockId,'070');assert.equal(url.searchParams.get('u'),md5('777_SYNTHETIC_000011'));assert.equal(data.kbns.length,1);current++;maxConcurrent=Math.max(maxConcurrent,current);await new Promise(r=>setTimeout(r,8));current--;return json({successful:true,obj:{priceArray:[{netPrice:999999}],stockArray:data.kbns[0]==='MISSING'?[]:[{stockQuantity:7,stockText:'Der Artikel ist im Lager verfügbar. Der Bestand beträgt 7 Stück.',followerSymbol:0}]}});}
+ throw Error('Unexpected merchant path');
+};
+const env={url:'https://db.invalid',anonKey:'public-test',serviceKey:'private-runtime-key-only-for-synthetic-tests'},handler=createHandler({fetch,env,md5,now:()=>clock,crypto:webcrypto});
+const request=(data,auth=true)=>handler(new Request('https://edge.invalid/stock',{method:'POST',headers:{...(auth?{Authorization:'Bearer synthetic'}:{}),'Content-Type':'application/json'},body:JSON.stringify(data)}));
+let response=await request({},false);assert.equal(response.status,401);assert.equal(queries.length,0);
+response=await request({action:'connect',company,supplier:'Neugart',shop:'efg',customer:'000011',username:'SYNTHETIC',password:'SYNTHETIC_PASSWORD'});assert.equal(response.status,200);const connected=await response.json();assert.equal(loginCount,1);assert.equal(connected.warehouses[0].id,'070070');for(const secret of ['SYNTHETIC_PASSWORD','private-session-cookie','CSRF_SECRET','private-runtime-key'])assert.ok(!JSON.stringify(connected).includes(secret),'opaque connection never exposes '+secret);
+const codec=createCodec(env.serviceKey,webcrypto,()=>clock),context={owner,company,supplier:'Neugart'};assert.equal((await codec.open(connected.connection,context)).cookies.sid,'private-session-cookie');await assert.rejects(codec.open(connected.connection,{...context,company:other}),/erneut verbinden/);await assert.rejects(codec.open(connected.connection.slice(0,-1)+'!',context),/erneut verbinden/);
+response=await request({action:'stock',company,supplier:'Neugart',connection:connected.connection,warehouse:'070070',material_ids:ids});assert.equal(response.status,200);const stocks=await response.json();assert.equal(stocks.items[0].sku,'000123');assert.equal(stocks.items[0].status,'in_stock');assert.equal(stocks.items[0].quantity,7);assert.equal(stocks.items[1].status,'unknown');assert.equal(stocks.items[1].quantity,null);assert.ok(!JSON.stringify(stocks).includes('netPrice'));assert.equal(loginCount,1,'subsequent stock queries reuse the encrypted session, never repeat login');assert.ok(maxConcurrent<=3);
+response=await request({action:'stock',company:other,supplier:'Neugart',connection:connected.connection,warehouse:'070070',material_ids:ids});assert.equal(response.status,403);
+role='employee';response=await request({action:'connect',company,supplier:'Neugart'});assert.equal(response.status,403);role='administrator';merchantUser=false;response=await request({action:'stock',company,supplier:'Neugart',connection:connected.connection,warehouse:'070070',material_ids:ids});assert.equal(response.status,401);assert.equal((await response.json()).error,'RECONNECT');merchantUser=true;
+clock+=13*3600000;await assert.rejects(codec.open(connected.connection,context),/erneut verbinden/);
+assert.equal(normalizeStock({successful:true,obj:{stockArray:[{stockQuantity:0,stockText:'Beschaffungsware, kein Lagerbestand.'}]}},'x',{},'now').status,'not_in_stock');assert.equal(normalizeStock({successful:true,obj:{stockArray:[{stockQuantity:5,stockText:'Nicht gefunden'}]}},'x',{},'now').status,'unknown');assert.equal(normalizeStock({successful:true,obj:{stockArray:[{stockQuantity:5,stockText:'verfügbar',followerSymbol:1}]}},'x',{},'now').status,'unknown');assert.equal(normalizeStock({successful:true,obj:{stockArray:[{},{}]}},'x',{},'now').status,'unknown');
+console.log('PASS stock edge: user and company authorization, source article IDs, customer match, exact warehouse, normal shop login/CSRF/cookies, encrypted owner-bound session with expiry/tamper rejection, no saved password or price leakage, one-article response mapping, missing stock stays unknown, expired merchant login requires reconnect; productionWrites=0, realShopWrites=0');

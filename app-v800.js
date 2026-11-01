@@ -346,7 +346,7 @@
         await new Promise((resolve,reject)=>{
           const script=document.createElement('script'),timer=setTimeout(()=>done(false),12000);
           function done(ok){clearTimeout(timer);script.onload=script.onerror=null;script.remove();ok?resolve():reject(Error('Einkauf nicht verfügbar.'));}
-          script.src=new URL(file+'?v=946',location.href).href;script.onload=()=>done(!!window[name]);script.onerror=()=>done(false);document.head.append(script);
+          const version=document.querySelector('meta[name="worktime-version"]')?.content||'947';script.src=new URL(file+'?v='+encodeURIComponent(version),location.href).href;script.onload=()=>done(!!window[name]);script.onerror=()=>done(false);document.head.append(script);
         });
       }
       if(!initializeShopping())throw Error('Einkauf nicht verfügbar.');
@@ -535,7 +535,9 @@
     const editor = selected
       ? '<section class="panel"><section class="page-head"><div><span class="eyebrow">Materialliste</span><h3>Material bearbeiten</h3></div><button type="button" class="secondary small" data-action="close-material-edit">Abbrechen</button></section><form data-form="material-edit" class="entry-form">' + materialEditFields(selected) + '<button class="primary wide">Änderungen speichern</button></form><p>Preis- und Namensänderungen werden nur auf offene, noch nicht abgerechnete Arbeitsscheine übertragen.</p></section>'
       : '';
-    return '<section class="page-head"><div><span class="eyebrow">Material</span><h2>Materialliste</h2></div></section>' + hourlyCards + '<section class="panel"><h3>Neues Material</h3><form data-form="material" class="entry-form"><label>Artikel<input name="name" required></label><label>Preis in €<input name="price" type="number" min="0" step="0.01" value="0"></label>' + unitSelect('unit','Stk') + '<button class="primary">Artikel speichern</button></form></section><section class="list-section"><h3>Material suchen</h3>' + (window.WorktimeMaterialBrowser?.view?.()||'') + list + '</section>' + editor;
+    const searchPanel='<section class="list-section">'+(window.WorktimeMaterialBrowser?.view?.()||'<h3>Material suchen</h3>')+list+'</section>';
+    const newMaterialPanel='<section class="panel"><h3>Neues Material</h3><form data-form="material" class="entry-form"><label>Artikel<input name="name" required></label><label>Preis in €<input name="price" type="number" min="0" step="0.01" value="0"></label>'+unitSelect('unit','Stk')+'<button class="primary">Artikel speichern</button></form></section>';
+    return '<section class="page-head"><div><span class="eyebrow">Material</span><h2>Materialliste</h2></div></section>'+searchPanel+editor+'<details class="panel material-administration"><summary>Material anlegen und Stundenpreise verwalten</summary>'+newMaterialPanel+hourlyCards+'</details>';
   }
   function orderInCurrentBusiness(order) { const person=state.rows.people.find(person=>same(person.id,order.employee_id))||teamEmployees().find(person=>same(person.id,order.employee_id));return Boolean(person)&&same(person.role==='business'?person.id:person.business_id,businessId()); }
   function invoiceGroups(invoiced) {

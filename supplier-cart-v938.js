@@ -3,6 +3,10 @@
  'use strict';
  const uploadEndpoint='https://www.gconlineplus.de/?page=PageOnlinePlusUpload';
  const endpoint='https://www.gconlineplus.de/ids.aspx',namespace='http://www.itek.de/Shop-Anbindung/Warenkorb/';
+ // Fixed HTTPS destinations only. An EFG account must start its IDS session
+ // on EFG, rather than losing cart context during a GC-to-EFG shop switch.
+ const shops=Object.freeze({gc:Object.freeze({id:'gc',name:'GC ONLINE PLUS',endpoint,uploadEndpoint}),efg:Object.freeze({id:'efg',name:'EFG ONLINE PLUS',endpoint:'https://efgonlineplus.de/ids.aspx',uploadEndpoint:'https://efgonlineplus.de/?page=PageOnlinePlusUpload'})});
+ function shopFor(supplier,choice=''){if(choice&&!Object.hasOwn(shops,choice))throw Error('Bitte GC ONLINE PLUS oder EFG ONLINE PLUS als Onlinezugang wählen.');return shops[choice||(/neugart|\befg\b/i.test(supplier||'')?'efg':'gc')];}
  const units={stk:'PCE',stück:'PCE',st:'PCE',pce:'PCE',m:'MTR',meter:'MTR',mtr:'MTR',kg:'KGM',kgm:'KGM',paar:'PR',pr:'PR',satz:'SET',set:'SET',l:'LTR',ltr:'LTR',m2:'MTK','m²':'MTK',mtk:'MTK',m3:'MTQ','m³':'MTQ',mtq:'MTQ',cm:'CMT',mm:'MMT',g:'GRM',km:'KTM'};
  const xml=v=>String(v??'').replace(/[<>&"']/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&apos;'}[c]));
  function clean(value,max,label,required=false){const s=String(value??'').trim();if((required&&!s)||[...s].length>max||/[\u0000-\u001f\u007f]/.test(s))throw Error(label+' fehlt, ist zu lang oder enthält ungültige Zeichen.');return s;}
@@ -16,5 +20,5 @@
  // No header, prices, customer data or spreadsheet formulas are emitted.
  function shopCSV({lines,supplier}){return normalize(lines,supplier).map(r=>{if(/[;",\r\n]/.test(r.sku)||/^[=+@-]/.test(r.sku))throw Error('Artikelnummer '+r.sku+' kann nicht sicher als GC-Importdatei ausgegeben werden. Bitte die Großhandelsartikelnummer prüfen.');return r.sku+';'+r.quantity.replace('.',',');}).join('\r\n')+'\r\n';}
  function parseResponse(text,Parser=globalThis.DOMParser){if(typeof text!=='string'||text.length>1048576||/<!DOCTYPE|<!ENTITY/i.test(text))throw Error('Ungültige oder zu große Warenkorbrückmeldung.');const doc=new Parser().parseFromString(text,'application/xml');if(doc.getElementsByTagName('parsererror').length||doc.documentElement.localName!=='Warenkorb'||![namespace,''].includes(doc.documentElement.namespaceURI||''))throw Error('Die Rückmeldung ist kein lesbarer IDS-Warenkorb.');const child=(node,name)=>[...node.children].find(n=>n.localName===name),get=(node,name)=>child(node,name)?.textContent||'';const order=child(doc.documentElement,'Order');if(!order)throw Error('In der Rückmeldung fehlt der Warenkorb.');const rows=[...order.children].filter(n=>n.localName==='OrderItem');if(rows.length>1000)throw Error('Die Rückmeldung enthält zu viele Positionen.');return rows.map(n=>({ref:get(child(n,'RefItems')||n,'Customer'),sku:get(n,'ArtNo'),quantity:get(n,'Qty'),unit:get(n,'QU'),name:get(n,'Langtext')||get(n,'Kurztext'),error:get(n,'Fehlertext'),errorCode:get(n,'Fehlercode')}));}
- return Object.freeze({endpoint,namespace,xml,quantity,unit,normalize,build,parseResponse,shopCSV,uploadEndpoint});
+ return Object.freeze({endpoint,namespace,xml,quantity,unit,normalize,build,parseResponse,shopCSV,uploadEndpoint,shopFor});
 });

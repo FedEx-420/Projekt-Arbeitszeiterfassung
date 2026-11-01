@@ -1,8 +1,8 @@
 -- Server-written transfer ledger. A repeated request never adds the same lines twice.
 create table if not exists public.supplier_cart_transfers_v949 (
   id uuid primary key,
-  user_id uuid not null references public.profiles(id),
-  company_id uuid not null references public.profiles(id),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  company_id uuid not null references public.profiles(id) on delete cascade,
   fingerprint text not null check (length(fingerprint)=64),
   state text not null default 'started' check (state in ('started','created','sent','confirmed','uncertain')),
   cart_ref text,

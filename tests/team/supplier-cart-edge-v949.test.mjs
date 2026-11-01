@@ -15,7 +15,7 @@ const fetch=async(url,options={})=>{const u=new URL(url),body=options.body?JSON.
  }
  assert.equal(u.origin,'https://efgonlineplus.de');assert.equal(options.redirect,'error');assert.ok(!/checkout|delete|sendOffer/.test(u.pathname),'never order or delete');
  const logged=options.headers.Cookie?.includes('sid=PRIVATE_COOKIE');
- if(body)assert.equal(u.searchParams.get('crsfKey'),md5((logged?'CSRF':'null')+u.searchParams.get('rand')));
+ assert.equal(u.searchParams.get('crsfKey'),md5((logged?'CSRF':'null')+u.searchParams.get('rand')));
  if(u.pathname==='/api/account/getsettingsremaining')return json({crsfKey:logged?'CSRF':null,user:logged?{companyNumber:'777',username:'TEST_USER',customerNumber:'000011',customer:{company:{isSap:false}}}:null,warehouses:[{mfv:'070',warehouseNumber:'070',name:'Testlager'}]});
  if(u.pathname==='/api/account/login'){assert.equal(body.password,'TEST_PASSWORD');return json({successful:true,mandatoryActions:[],crsfKey:'CSRF'},{'Set-Cookie':'sid=PRIVATE_COOKIE; Path=/; HttpOnly; Secure'});}
  assert.ok(logged);

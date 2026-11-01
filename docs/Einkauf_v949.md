@@ -25,3 +25,9 @@ Die Erkennung von Zubehör, Ersatzteilen und Beschreibungen „für …“ gilt 
 ## Prüfung
 
 Isolierte Tests prüfen den vollständigen Appablauf, vorhandene Entwürfe, den einzigen Übertragungsbutton, Teilantworten und falsche Mengen, wiederholte Anfragen, Kontowechsel, Kennwortverwerfen und Ansichten von 320 bis 1366 Pixeln. Die Servertests schließen Bestell- und Löschaufrufe aus und prüfen die Eindeutigkeit der zurückgelesenen Positionen. Ein Händlerzugang und ein Warenkorb sind erst nach einem echten Test als praktisch bestätigt zu betrachten.
+
+## Nachtrag Version 950
+
+Die zusätzliche Artikelsuche im gefüllten Einkauf wird erst beim Öffnen von „Weitere Artikel suchen“ aufgebaut. Dadurch muss die App nicht den gesamten großen Artikelstamm im Hintergrund für ein geschlossenes Menü prüfen. Außerdem enthalten auch die lesenden Händleranfragen die vom Shop verwendeten Prüfkennungen. Ein bereits begonnener Übertragungsversuch wird anhand seiner Kennung im selben Warenkorb kontrolliert.
+
+Der echte Test vom 02.11.2026 hat SKM816 mit Menge 1 im neu angelegten Neugart-Warenkorb bestätigt. Die erste automatische Rückleseantwort blieb wegen der fehlenden Prüfkennung unbestätigt; die App gab dafür keinen falschen Erfolg aus. Die Kennung wurde ergänzt. Kennwörter aus den Prüfungen wurden verworfen.

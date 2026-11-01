@@ -12,7 +12,7 @@ export function normalizeStock(raw,sku,warehouse,checkedAt){
 export function createMerchant({fetch,md5,now=Date.now}){
  async function call(session,path,data,timeoutMs=15000){
   const shop=shops[session.shop],url=new URL(shop.origin+path);url.searchParams.set('layout',shop.layout);
-  if(data!==undefined){const rand=String(crypto.getRandomValues(new Uint32Array(1))[0]%10000000);url.searchParams.set('rand',rand);url.searchParams.set('crsfKey',md5(String(session.csrf??'null')+rand));if(session.userHash)url.searchParams.set('u',session.userHash);}
+  {const rand=String(crypto.getRandomValues(new Uint32Array(1))[0]%10000000);url.searchParams.set('rand',rand);url.searchParams.set('crsfKey',md5(String(session.csrf??'null')+rand));if(session.userHash)url.searchParams.set('u',session.userHash);}
   const cookie=Object.entries(session.cookies||{}).map(([k,v])=>k+'='+v).join('; '),r=await fetch(url.href,{method:data===undefined?'GET':'POST',redirect:'error',signal:AbortSignal.timeout(timeoutMs),headers:{'Content-Type':'application/json; charset=UTF-8','Accept':'application/json','Accept-Language':'de-DE','Referer':shop.origin+'/',...(cookie?{Cookie:cookie}:{})},...(data===undefined?{}:{body:JSON.stringify(data)})});
   if(!r.ok)throw fail('SHOP_UNAVAILABLE','Der Händler antwortet gerade nicht auf die Bestandsabfrage.',502);
   const set=r.headers.getSetCookie?.()||[];for(const line of set){const part=line.split(';')[0],index=part.indexOf('=');if(index<1)continue;const name=part.slice(0,index),value=part.slice(index+1);if(!/^[A-Za-z0-9_.-]{1,100}$/.test(name)||/[\r\n;]/.test(value)||value.length>12000)continue;if(/(?:^|;)\s*max-age=0(?:;|$)/i.test(line))delete session.cookies[name];else session.cookies[name]=value;}

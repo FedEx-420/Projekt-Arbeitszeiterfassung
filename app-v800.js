@@ -13,6 +13,7 @@
     businessId: '', businessBrand: null, employeeId: '', customerId: '', customerSearch: '', materialId: '', orderId: '', timeEntryId: '', orderCustomer: '', orderOrigin: 'orders', billingKey: '', billingMode: 'open', menu: false, vacationForm: false, appointmentForm: false, composeMessage: false, mailboxFolder: 'received', notice: null, busy: false,
     rows: { entries: [], orders: [], items: [], customers: [], customerRates: [], days: [], vacations: [], messages: [], attachments: [], recipients: [], materials: [], appointments: [], planningRequests: [], payslips: [], documents: [] }
   };
+  let supplierCart=null, shoppingCatalogWizard=null, shoppingLoading=false, shoppingLoadFailed=false;
   const navigationFeature = window.WorktimeNavigation?.create({root,getOpen:()=>state.menu,setOpen:value=>{state.menu=value;}});
   /* BEGIN SESSION AUTH V859
    * Keep auth in the app bundle so previously cached index pages also work.
@@ -309,7 +310,7 @@
   }
 
   function loginView() { return `<main class="login-page"><section class="login-card"><div class="brand-mark">ZE</div><h1>Zeiterfassung</h1><p>Arbeitszeiten einfach und sicher erfassen.</p><form data-form="login"><label>Firma<input name="company" autocomplete="organization" placeholder="Firmenname" required></label><label>Benutzername<input name="username" autocomplete="username" required></label><label>Passwort<input name="password" type="password" autocomplete="current-password" required></label><label class="login-admin"><input name="administrator_login" type="checkbox"> Anmeldung als Administrator (nur dann ohne Firma)</label><label>Beim nächsten Mal auf diesem Gerät angemeldet bleiben?<select name="remember_device" required><option value="">Bitte auswählen</option><option value="yes">Ja, auf diesem Gerät</option><option value="no">Nein, nur für diese Sitzung</option></select></label><p class="device-help">Nur auf einem eigenen, geschützten Gerät wählen. Dein Passwort wird nicht gespeichert. Abmelden beendet die Geräteanmeldung.</p><button class="primary" ${state.busy ? 'disabled' : ''}>Anmelden</button></form><button class="link-button" type="button" data-action="forgot">Passwort vergessen?</button>${noticeHtml()}</section></main>`; }
-  function menuItems() { return [['home','Übersicht',true],['time','Zeiterfassung',canUse('time')],['orders','Arbeitsscheine',canUse('orders')],['calendar','Kalender',canUse('calendar')],['customers','Kunden',canUse('customers')],['mailbox','Postfach',true],['materials','Materialliste',isManager()],['invoices','Abrechnungen Kunden',isManager()],['invoices-paid','Abgerechnete Arbeitsscheine',isManager()],['settings','Einstellungen',true]].filter(([, , yes]) => yes); }
+  function menuItems() { return [['home','Übersicht',true],['time','Zeiterfassung',canUse('time')],['orders','Arbeitsscheine',canUse('orders')],['calendar','Kalender',canUse('calendar')],['customers','Kunden',canUse('customers')],['mailbox','Postfach',true],['materials','Materialliste',isManager()],['shopping','Einkauf',isManager()],['invoices','Abrechnungen Kunden',isManager()],['invoices-paid','Abgerechnete Arbeitsscheine',isManager()],['settings','Einstellungen',true]].filter(([, , yes]) => yes); }
   function selector() {
     if (!isManager()) return '';
     const businessesHtml = isAdmin() ? `<label>Firma ansehen<select data-select="business"><option value="">Firma auswählen</option>${businesses().map(person => `<option value="${person.id}" ${same(person.id, businessId()) ? 'selected' : ''}>${escape(person.company_name || person.username)}</option>`).join('')}</select></label>` : '';
@@ -323,7 +324,35 @@
     const context = `<section class="workspace-context" aria-label="Aktueller Bereich und Arbeitskonto"><div class="workspace-location"><span aria-hidden="true"></span><strong>${escape(window.WorktimeNavigation?.currentLabel(items,current) || 'Übersicht')}</strong></div>${selector()}</section>`;
     return `<div class="app-shell"><header class="topbar"><div class="brand-identity">${headerLogo ? `<img src="${escape(headerLogo)}" alt="Firmenlogo von ${escape(title)}">` : '<div class="brand-mark" aria-hidden="true">ZE</div>'}<div class="brand-caption"><h1>${escape(title)}</h1><p>${escape(state.profile?.username || '')} · ${roleName}</p></div></div><div class="top-actions">${navigation}</div></header><main class="content">${context}${viewHtml()}${noticeHtml()}</main></div>`;
   }
-  function viewHtml() { return ({ home: homeView, time: timeView, orders: ordersView, 'order-detail': orderDetailView, calendar: calendarView, customers: customersView, mailbox: mailboxView, materials: materialsView, invoices: invoicesView, 'invoices-paid': paidInvoicesView, 'billing-detail': billingDetailView, settings: settingsView }[state.view] || homeView)(); }
+  function viewHtml() { return ({ home: homeView, time: timeView, orders: ordersView, 'order-detail': orderDetailView, calendar: calendarView, customers: customersView, mailbox: mailboxView, materials: materialsView, shopping: shoppingView, invoices: invoicesView, 'invoices-paid': paidInvoicesView, 'billing-detail': billingDetailView, settings: settingsView }[state.view] || homeView)(); }
+
+  function shoppingView() {
+    if(!isManager())return '<section class="panel"><h2>Einkauf</h2><p>Der Einkauf ist für die Geschäftsleitung und die Administration verfügbar.</p></section>';
+    if(supplierCart)return supplierCart.view();
+    return `<section class="page-head"><h2>Einkauf</h2></section><section class="panel" data-shopping-unavailable><h3>${shoppingLoading?'Einkauf wird geladen …':'Einkauf nachladen'}</h3><p role="${shoppingLoadFailed?'alert':'status'}">${shoppingLoadFailed?'Der Einkauf konnte noch nicht vollständig geladen werden. Prüfe deine Internetverbindung und versuche es erneut.':'Ein Teil des Einkaufs ist auf diesem Gerät noch nicht verfügbar. Du kannst ihn hier nachladen.'}</p>${shoppingLoading?'<progress aria-label="Einkauf wird geladen"></progress>':''}<button type="button" class="primary" data-action="shopping-load" ${shoppingLoading?'disabled':''}>${shoppingLoading?'Wird geladen …':'Einkauf laden'}</button><p>Deine gespeicherten Artikel und Einkaufsentwürfe bleiben erhalten.</p><button type="button" class="secondary" data-action="nav" data-view="materials">Materialliste öffnen</button></section>`;
+  }
+  function initializeShopping() {
+    if(supplierCart)return true;
+    if(!window.WorktimeSupplierCart||!window.WorktimeSupplierCartUI)return false;
+    try{supplierCart=window.WorktimeSupplierCartUI.create({root,state,businessId,isManager,render:()=>render(),api,supabaseUrl:base,catalogWizard:shoppingCatalogWizard,escape});return !!supplierCart;}
+    catch{shoppingLoadFailed=true;return false;}
+  }
+  async function recoverShopping() {
+    if(!isManager()||!state.session||shoppingLoading)return;
+    shoppingLoading=true;shoppingLoadFailed=false;render();
+    try{
+      for(const [name,file] of [['WorktimeSupplierCart','supplier-cart-v938.js'],['WorktimePurchaseSearch','purchase-search-v939.js'],['WorktimeDirectUpload','supplier-direct-upload-v944.js'],['WorktimeSupplierCartUI','supplier-cart-ui-v938.js']]){
+        if(window[name])continue;
+        await new Promise((resolve,reject)=>{
+          const script=document.createElement('script'),timer=setTimeout(()=>done(false),12000);
+          function done(ok){clearTimeout(timer);script.onload=script.onerror=null;script.remove();ok?resolve():reject(Error('Einkauf nicht verfügbar.'));}
+          script.src=new URL(file+'?v=946',location.href).href;script.onload=()=>done(!!window[name]);script.onerror=()=>done(false);document.head.append(script);
+        });
+      }
+      if(!initializeShopping())throw Error('Einkauf nicht verfügbar.');
+    }catch{shoppingLoadFailed=true;}
+    finally{shoppingLoading=false;render();}
+  }
 
   function homeView() {
     const id = workerId(), extra = overtime(id), company = managerBusiness() || {}, logo = companyLogoUrl(company), companyName = company.company_name || 'Ihr Geschäftskonto';
@@ -915,6 +944,7 @@
     if (action === 'shift-order-date') { const input = button.closest('label')?.querySelector('input[name="work_date"]'); if (!input) return; input.value = addDate(input.value || state.date, n(button.dataset.days)); input.focus(); return; }
     if (action === 'menu') { if (navigationFeature) navigationFeature.toggle(); else { state.menu = !state.menu; render(); } return; }
     if (action === 'nav') { state.view = button.dataset.view; state.menu = false; state.vacationForm = false; state.composeMessage = false; state.orderId = ''; state.timeEntryId = ''; state.orderCustomer = ''; state.orderOrigin = 'orders'; state.billingKey = ''; render(); window.scrollTo({top:0,behavior:'instant'}); return; }
+    if (action === 'shopping-load') return recoverShopping();
     if (action === 'logout') return logout();
     if (action === 'forgot') return perform('Die zuständige Verwaltung wurde informiert.', () => api('/functions/v1/request-password-help', { method: 'POST', body: { username: root.querySelector('[name="username"]')?.value || '' } }));
     if (action === 'pick-day') { state.date = button.dataset.date; state.month = state.date.slice(0, 7); state.timeEntryId = ''; state.vacationForm = false; render(); return; }
@@ -1124,7 +1154,7 @@
     windowRef.document.write(`<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Zeiterfassungsnachweis</title><style>${pdfStyles()}</style></head><body><main class="pdf-page">${pdfBrandHeader('Zeiterfassungsnachweis', state.date.slice(0, 4))}<section class="pdf-grid"><article class="pdf-card"><span class="pdf-card-label">Mitarbeiter</span><b>${escape(person?.display_name || person?.username || '')}</b></article><article class="pdf-card"><span class="pdf-card-label">Jahresübersicht</span>${h(totalHours)} Arbeitsstunden<br>${h(overtime(id))} Überstunden<br>${vacationLeft(id)} Urlaubstage übrig · ${annualSick(id)} Krankheitstage</article></section><section class="pdf-section"><h2>Erfasste Zeiten</h2><table class="pdf-table"><thead><tr><th>Datum</th><th>Kunde</th><th>Von</th><th>Bis</th><th class="number">Pause</th><th class="number">Stunden</th></tr></thead><tbody>${lines || '<tr><td colspan="6" class="pdf-empty">Keine Zeiterfassungen vorhanden.</td></tr>'}</tbody></table></section><p class="pdf-note">Automatisch aus der Arbeitszeiterfassung erstellt.</p></main><script>window.onload=()=>window.print()<\/script></body></html>`); windowRef.document.close(); addPdfReturnBar(windowRef);
   }
   const deviceFeatures=window.WorktimeDeviceFeatures?.create({root,state,api,write,allRows,upload,remove,download,render,businessId,workerId,isManager,isAdmin,orderForEmployee,orderHours,dateText,timeText,h,planningMeta,planEmployeeIds,logout,canUse,locked,openPlanningOrder,teamPeriodFields,teamPersonFields,refreshPlanningData,loadTeamContext});
-  function render() { if (!root) return; if (!base || !key) { root.innerHTML = '<main class="login-page"><section class="login-card"><h1>Zeiterfassung</h1><p>Die App-Konfiguration fehlt.</p></section></main>'; return; } root.innerHTML = state.session && state.profile ? appView() : loginView(); setupCustomerSearch(); setupSignaturePads(); setupPlanningCustomerLookup(); updatePlanningWarnings(root.querySelector('form[data-form="planning"]')); updateAssignmentHint(root.querySelector('form[data-form="time"], form[data-form="order"]')); deviceFeatures?.afterRender(); }
+  function render() { if (!root) return; if (!base || !key) { root.innerHTML = '<main class="login-page"><section class="login-card"><h1>Zeiterfassung</h1><p>Die App-Konfiguration fehlt.</p></section></main>'; return; } root.innerHTML = state.session && state.profile ? appView() : loginView(); setupCustomerSearch(); setupSignaturePads(); setupPlanningCustomerLookup(); updatePlanningWarnings(root.querySelector('form[data-form="planning"]')); updateAssignmentHint(root.querySelector('form[data-form="time"], form[data-form="order"]')); deviceFeatures?.afterRender(); supplierCart?.afterRender(); }
   window.addEventListener('unhandledrejection', event => { event.preventDefault(); notice('Die Aktion konnte nicht ausgeführt werden. Bitte erneut versuchen.', true); render(); });
   state.session = parse(sessionStorage.getItem(storage) || localStorage.getItem(storage) || localStorage.getItem('zeiterfassung-session-v700'));
   if (state.session?.access_token) loadApp(); else render();
@@ -1190,8 +1220,8 @@
     return `<section class="page-head"><div><span class="eyebrow">Persönliche Nachweise</span><h2>Belege</h2></div></section><section class="panel"><div class="actions">${receiptTabs(section)}</div><h3>${escape(title)}</h3>${body}</section>`;
   }
   function planningView() { return '<section class="page-head"><div><span class="eyebrow">Konzeptvorschau</span><h2>Planungsübersicht</h2></div></section><section class="panel"><h3>Planung wird erst nach Freigabe aktiviert</h3><p>Diese Ansicht ändert keine Aufträge und legt keine Termine an. Die vorgeschlagene Umsetzung steht unten als Konzept bereit.</p></section>'; }
-  function menuItems() { return [['home','Übersicht',true],['time','Zeiterfassung',canUse('time')],['orders','Arbeitsscheine',canUse('orders')],['calendar','Kalender',canUse('calendar')],['customers','Kunden',canUse('customers')],['receipts','Belege',true],['planning','Planungsübersicht',true],['mailbox','Postfach',true],['materials','Materialliste',isManager()],['invoices','Abrechnungen Kunden',isManager()],['invoices-paid','Abgerechnete Arbeitsscheine',isManager()],['settings','Einstellungen',true]].filter(([, , yes]) => yes); }
-  function viewHtml() { return ({ home: homeView, time: timeView, orders: ordersView, 'order-detail': orderDetailView, calendar: calendarView, customers: customersView, receipts: receiptsView, planning: planningView, mailbox: mailboxView, materials: materialsView, invoices: invoicesView, 'invoices-paid': paidInvoicesView, 'billing-detail': billingDetailView, settings: settingsView }[state.view] || homeView)(); }
+  function menuItems() { return [['home','Übersicht',true],['time','Zeiterfassung',canUse('time')],['orders','Arbeitsscheine',canUse('orders')],['calendar','Kalender',canUse('calendar')],['customers','Kunden',canUse('customers')],['receipts','Belege',true],['planning','Planungsübersicht',true],['mailbox','Postfach',true],['materials','Materialliste',isManager()],['shopping','Einkauf',isManager()],['invoices','Abrechnungen Kunden',isManager()],['invoices-paid','Abgerechnete Arbeitsscheine',isManager()],['settings','Einstellungen',true]].filter(([, , yes]) => yes); }
+  function viewHtml() { return ({ home: homeView, time: timeView, orders: ordersView, 'order-detail': orderDetailView, calendar: calendarView, customers: customersView, receipts: receiptsView, planning: planningView, mailbox: mailboxView, materials: materialsView, shopping: shoppingView, invoices: invoicesView, 'invoices-paid': paidInvoicesView, 'billing-detail': billingDetailView, settings: settingsView }[state.view] || homeView)(); }
   function reportDateValid(value) {
     return /^\d{4}-\d{2}-\d{2}$/.test(String(value || '')) && Number.isFinite(Date.parse(value+'T12:00:00Z')) && new Date(value+'T12:00:00Z').toISOString().slice(0,10) === value;
   }
@@ -2132,6 +2162,7 @@
     render=()=>{renderBeforeCatalog();catalogFeature.afterRender();};
   }
   const catalogWizard=window.WorktimeCatalogWizard?.create({root,state,api,reload:()=>reload(),render:()=>render(),businessId,isManager,escape});
+  shoppingCatalogWizard=catalogWizard;
   if(catalogWizard){
     const oldMenu=menuItems,oldView=viewHtml,oldRender=render;
     menuItems=()=>{const items=oldMenu();return isManager()?[...items,['catalogs','Katalog hinzufügen'],['supplier-catalogs','Fachhändler Kataloge']]:items;};
@@ -2159,10 +2190,5 @@
   const selectionPhotos=window.WorktimeProductFeatures?.installSelections({root,state,businessId});
   const flowGuide=window.WorktimeAppFlow?.create({root,state,businessId});if(flowGuide){const renderBeforeFlow=render;render=()=>{renderBeforeFlow();flowGuide.afterRender();selectionPhotos?.afterRender();};flowGuide.afterRender();selectionPhotos?.afterRender();}
   window.WorktimeGermanProducts?.install({root,state,businessId,render:()=>render()});
-  const supplierCart=window.WorktimeSupplierCartUI?.create({root,state,businessId,isManager,render:()=>render(),api,supabaseUrl:base,catalogWizard,escape});
-  if(supplierCart){const beforeCartMenu=menuItems,beforeCartView=viewHtml,beforeCartRender=render;
-    menuItems=()=>{const items=beforeCartMenu();if(isManager())items.push(['shopping','Einkauf']);return items;};
-    viewHtml=()=>state.view==='shopping'&&isManager()?supplierCart.view():beforeCartView();
-    render=()=>{beforeCartRender();supplierCart.afterRender();};
-  }
+  initializeShopping();
 })();

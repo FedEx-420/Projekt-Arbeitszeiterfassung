@@ -1,4 +1,4 @@
-# Artikel automatisch in ONLINE PLUS übernehmen · Version 944
+# Artikel automatisch in ONLINE PLUS übernehmen · Version 945
 
 Die App kann die ausgewählten Artikel und Mengen direkt als CSV an einen
 verknüpften ONLINE-PLUS-Warenkorb übertragen. Die Datei entsteht im Browser;
@@ -79,3 +79,5 @@ Chromium mit iPhone-/CriOS-Kennung und Touch-Konfiguration. Das prüft die
 Verzweigung und die Formularübertragung, noch nicht WebKits Cookieverhalten
 auf einem echten iPhone. Eine App-Bestätigung wird nur bei passender positiver
 Shopantwort gezeigt.
+
+In Version 945 wird die Übernahmeschaltfläche direkt beim Einfügen eines gültigen Links aktiviert, ohne das Eingabefeld neu aufzubauen. Das vermeidet einen verlorenen ersten Tipp beim Einrichten auf dem Handy.

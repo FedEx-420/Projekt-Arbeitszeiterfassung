@@ -341,7 +341,7 @@
     if(!isManager()||!state.session||shoppingLoading)return;
     shoppingLoading=true;shoppingLoadFailed=false;render();
     try{
-      for(const [name,file] of [['WorktimeSupplierCart','supplier-cart-v938.js'],['WorktimePurchaseSearch','purchase-search-v939.js'],['WorktimeDirectUpload','supplier-direct-upload-v944.js'],['WorktimeSupplierCartUI','supplier-cart-ui-v938.js']]){
+      for(const [name,file] of [['WorktimeSupplierCart','supplier-cart-v938.js'],['WorktimePurchaseSearch','purchase-search-v939.js'],['WorktimeSupplierCartUI','supplier-cart-ui-v938.js']]){
         if(window[name])continue;
         await new Promise((resolve,reject)=>{
           const script=document.createElement('script'),timer=setTimeout(()=>done(false),12000);

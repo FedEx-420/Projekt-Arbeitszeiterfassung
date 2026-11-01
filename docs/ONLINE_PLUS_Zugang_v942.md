@@ -39,3 +39,18 @@ Annahme eines persönlichen Warenkorbs. Die Browser-Regression prüft die
 richtige Zieladresse und den vollständigen Inhalt ohne echte Shop-Schreibzugriffe.
 
 [EFG zu IDS und ONLINE PLUS](https://www.efg-gruppe.de/aktuelles/news/gruppe/2021/ids-25-update-suchen-finden-bestellen-aus-ihrer-fachhandwerkersoftware)
+
+## Ergebnis des weiteren Live-Abgleichs am 01.11.2026
+
+Benutzer und Kundennummer wurden in den Systeminformationen des angemeldeten
+Shops abgelesen und für einen erneuten GC-Aufruf übernommen. Auch damit erschien
+nach der Anmeldung die normale EFG-Startseite. Ein Kontrollimport derselben
+Position SKM816 mit Menge 1 über den offiziellen CSV-Upload wurde dagegen vom
+Shop bestätigt. Der Artikel steht im Warenkorb, ohne abgeschickte Bestellung.
+
+Eine pauschale Änderung des Neugart-Ziels auf EFG ist deshalb keine bestätigte
+Lösung. GC bleibt vorausgewählt. Für die weitere Eingrenzung ist die konkrete
+serverseitige Rückmeldung auf die WKS-Anfrage erforderlich. Die Ergebnisse
+beweisen noch nicht, ob eine Parserbesonderheit, Kontozuordnung, Weiterleitung
+oder ein anderer Aspekt der Anfrage die Ursache ist. Es gibt noch keinen
+bestätigten Fix der automatischen IDS-Artikelübernahme.

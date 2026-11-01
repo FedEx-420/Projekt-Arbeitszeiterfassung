@@ -24,6 +24,14 @@ Dateien auf deinem Rechner nicht ohne deine Auswahl in eine fremde Seite einsetz
 Es wird keine Bestellung automatisch abgesendet. Die App wiederholt eine direkte
 Übertragung nicht automatisch, damit keine doppelten Warenkörbe entstehen.
 
+## Bestätigter Kontrollimport am 01.11.2026
+
+Der Datei-Upload wurde inzwischen zusätzlich in einem echten, angemeldeten
+ONLINE-PLUS-Konto geprüft: SKM816 mit Menge 1 Stück wurde aus der von der App
+erstellten CSV übernommen und vom Shop bestätigt. Es wurde keine Bestellung
+abgeschickt. Dieser Kontrolltest bestätigt den Dateiweg für diese Position;
+die automatische IDS-Übernahme ist weiterhin nicht behoben.
+
 ## Technischer Stand und Prüfung
 
 Der öffentliche GC-Shopcode bietet `PageOnlinePlusUpload` und den CSV-Import an.

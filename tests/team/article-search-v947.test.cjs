@@ -11,3 +11,5 @@ assert.equal(A.matches(product('Berker S.1 Abdeckung',20),'Berker S1',{queryMatc
 console.log('PASS product intent for sockets, CEE/HDMI explicit requests, mains with USB, exact accessory IDs and arbitrary product names versus accessories');
 
 assert.equal(A.matches(product('SCHUKO Steckdose mit Abdeckung',21),'Steckdose'),true);assert.equal(A.matches(product('Steckdosenabdeckung Berker',22),'Steckdose'),false);
+
+assert.equal(A.matches(product('Berker High Definition Steckdose Q.1',23),'Steckdose'),false);assert.equal(A.matches(product('Berker High Definition Steckdose Q.1',23),'HDMI Steckdose'),true);assert.equal(A.matches(product('Berker HDMI Steckdose Q.1',23),'High Definition Steckdose'),true);assert.equal(A.rank([product('Berker LED-Steckdose SCHUKO S.1',24),product('Berker SCHUKO Steckdose S.1',25)],'Steckdose')[0].id,25);assert.equal(A.matches(product('Berker SCHUKO Steckdose mit USB',26),'Steckdose'),true);

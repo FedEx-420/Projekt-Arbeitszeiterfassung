@@ -31,3 +31,9 @@ Isolierte Tests prüfen den vollständigen Appablauf, vorhandene Entwürfe, den 
 Die zusätzliche Artikelsuche im gefüllten Einkauf wird erst beim Öffnen von „Weitere Artikel suchen“ aufgebaut. Dadurch muss die App nicht den gesamten großen Artikelstamm im Hintergrund für ein geschlossenes Menü prüfen. Außerdem enthalten auch die lesenden Händleranfragen die vom Shop verwendeten Prüfkennungen. Ein bereits begonnener Übertragungsversuch wird anhand seiner Kennung im selben Warenkorb kontrolliert.
 
 Der echte Test vom 02.11.2026 hat SKM816 mit Menge 1 im neu angelegten Neugart-Warenkorb bestätigt. Die erste automatische Rückleseantwort blieb wegen der fehlenden Prüfkennung unbestätigt; die App gab dafür keinen falschen Erfolg aus. Die Kennung wurde ergänzt. Kennwörter aus den Prüfungen wurden verworfen.
+
+## Abschließende Prüfung
+
+Nach der Korrektur hat die App denselben echten Neugart-Warenkorb automatisch zurückgelesen, SKM816 mit Soll- und Istmenge 1 bestätigt und die richtige Warenkorbseite geöffnet. Im Shop blieb die Menge 1; es wurde keine weitere Position hinzugefügt. Der serverseitige Übertragungsdatensatz ist als `confirmed` gespeichert.
+
+Version 951 blendet bei einem bestätigten Nullbestand auch die gesamte gemeinsame Artikelkarte aus, wenn kein anderes sichtbares Händlerangebot verbleibt. Beim Ausschalten des Lagerfilters erscheinen Artikelkarte und Angebote wieder.

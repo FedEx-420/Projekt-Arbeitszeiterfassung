@@ -11,6 +11,19 @@ ZEICHEN
 Ein erfolgreicher Test mit Beispieldaten ist kein Live-Test jedes Geschäftskontos.
 
 ALS NÄCHSTES
+[x] JUNG als zusätzliche eindeutige Bildquelle integrieren: 40 Produktbilder
+    ergänzt, automatische Fortsetzung vorbereitet; Kennungs-/Ladetests bestanden.
+[ ] Weitere Hersteller und Produktgruppen mit eindeutigen Bildern ergänzen.
+[x] Artikel-/Katalogsuche an konkreten Engpässen beschleunigen und messen.
+    Bestehende Browserabläufe weiter erfolgreich; keine pauschale Tempo-Garantie.
+[x] Große Kataloge paketweise schneller aus dem lokalen Speicher lesen.
+    Vergleich mit 20.000 Testartikeln: ca. 539 ms vorher / 231 ms danach.
+[x] Sortierung pro Katalogdatensatz entfernen und Suchmerkmale zwischenspeichern.
+    Vollständige Suche ohne Treffer mit begrenzten Sortieraufrufen geprüft.
+[ ] Weitere langsame Abläufe der App anhand messbarer Engpässe verbessern.
+    Eine vollständige Beschleunigung aller Menüs ist noch nicht nachgewiesen.
+[x] Neue Wünsche laufend in dieser Datei ergänzen und nach Umsetzung/Prüfung
+    selbstständig abhaken; teilweise erledigte Punkte bleiben offen.
 [x] Einkauf schneller und ruhiger starten: keine beliebigen Treffer oder laufenden
     Händlerabfragen, solange noch kein Suchbegriff oder Filter gewählt wurde.
     Im vollständigen Browserablauf mit vorhandenem Artikelstamm und verbundener
@@ -19,6 +32,15 @@ ALS NÄCHSTES
     erweitern. Eine flächendeckende Bildversorgung besteht noch nicht.
 [ ] Suchfragen und Filter anhand weiterer echter Produktgruppen überprüfen.
     Schwerpunkt: Schutzgeräte, Schalterprogramme, Leitungen und Zubehör.
+
+GERÄTEWECHSEL UND CLOUD
+[x] Zentralen Projekteinstieg und bereinigte Übergabe für den neuen Laptop
+    vorbereiten: PROJEKT_START.md; Code, Checkliste und Prüfberichte auf GitHub.
+[ ] Zusätzliche Codex-Cloud-Arbeitsumgebung im Konto erstellen und veröffentlichen.
+    Bisher keine Umgebung vorhanden; Anmeldung im geöffneten Browser erforderlich.
+[ ] Alte lokale Katalog-Originaldateien und ungesicherte Entwürfe vor dem
+    Gerätewechsel sichern; GitHub enthält diese privaten Dateien nicht.
+[ ] Zugriff auf App, Projekt und erforderliche Verbindungen am neuen Laptop prüfen.
 
 KATALOGE UND PREISE
 [x] DATANORM 4 und 5 sowie ZIP-Dateien mit Artikelstamm einlesen.

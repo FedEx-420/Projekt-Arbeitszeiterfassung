@@ -1,5 +1,7 @@
 # Arbeitszeit · Team
 
+**Projekt auf einem neuen Laptop fortsetzen:** [Zentraler Projekteinstieg](PROJEKT_START.md) · [Aktuelle Checkliste](CHECKLISTE_Arbeitszeiterfassung.txt)
+
 Installierbare Web-App für Android und iPhone mit gemeinsamer, geschützter Arbeitszeiterfassung.
 
 Neu in v872: [persönliche OwnTracks-Konfiguration herunterladen](RELEASE-V872.md), ohne Kontopasswörter weiterzugeben oder Verbindungsdaten abzutippen. Import und Standortfreigabe auf dem eigenen iPhone bewusst bestätigen. Eine gleichzeitige automatische Zuordnung zu mehreren Firmen ist noch nicht unterstützt.

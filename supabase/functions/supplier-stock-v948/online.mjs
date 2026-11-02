@@ -1,0 +1,34 @@
+/* Fixed ONLINE PLUS endpoints. All data comes from the caller's merchant session. */
+import * as featureModule from '../../../product-features-v928.js';
+import * as classifyModule from '../../../catalog-classify-v925.js';
+const F=featureModule.default||globalThis.WorktimeProductFeatures,C=classifyModule.default||globalThis.WorktimeCatalogClassify;
+const error=(message,code='SHOP_SEARCH',status=502)=>Object.assign(new Error(message),{code,status});
+const text=(v,max=1000)=>typeof v==='string'?v.replace(/<[^>]*>/g,'').replace(/[\u0000-\u001f]/g,' ').trim().slice(0,max):'';
+const number=v=>typeof v==='number'&&Number.isFinite(v)&&v>=0?v:null;
+function image(v){if(typeof v!=='string'||!v.trim())return '';try{const u=new URL(v,'https://gconlineplus.de/images/data/Zentral/');return u.protocol==='https:'&&!u.username&&!u.password&&['gconlineplus.de','www.gconlineplus.de','efgonlineplus.de','api.onlineplus.store'].includes(u.hostname)&&!/[\u0000-\u001f]/.test(v)?u.href:'';}catch{return '';}}
+const unit=v=>({ST:'Stk',STK:'Stk',STCK:'Stk',STUECK:'Stk','STÜCK':'Stk',C62:'Stk',PCE:'Stk',M:'M',MTR:'M',METER:'M',KG:'Kg',KGM:'Kg'})[text(v,40).toUpperCase()]||'';
+export function normalizeSearch(raw){if(!raw||!Array.isArray(raw.products)||!Number.isSafeInteger(raw.hits)||raw.hits<0||raw.products.length>200)throw error('Die Händler-Artikelsuche hat keine eindeutige Trefferliste geliefert.');const seen=new Set(),products=[];for(const p of raw.products){const sku=text(p.productNumber,120),name=text(p.description,200);if(!sku||!name||/[\u0000-\u001f]/.test(p.productNumber)||seen.has(sku))continue;seen.add(sku);products.push({sku,name,manufacturer_number:Array.isArray(p.supplierProductNumber)&&p.supplierProductNumber.filter(x=>typeof x==='string'&&x.trim()).length===1?text(p.supplierProductNumber.find(x=>typeof x==='string'&&x.trim()),120):'',gtin:Array.isArray(p.gtiNs)&&p.gtiNs.length===1?text(p.gtiNs[0],32):'',image_url:image(p.picturePath),locked:p.locked===true,price_hidden:p.priceHidden===true});}return {products,hits:raw.hits,search_id:text(raw.searchId,240),search_pass:Number.isSafeInteger(raw.searchpass)?raw.searchpass:1};}
+export function normalizeArticle(detail,pricing,sku,summary={}){const d=detail?.successful===true?detail.obj:null,k=d?.productKey,echo=k?.productnumber??k?.productNumber;
+ if(!d||typeof echo!=='string'||echo.toUpperCase()!==sku.toUpperCase())throw error('Der Händlerartikel konnte seiner Bestellnummer nicht eindeutig zugeordnet werden.');
+ const p=pricing?.successful===true&&Array.isArray(pricing.obj?.priceArray)&&pricing.obj.priceArray.length===1?pricing.obj.priceArray[0]:null;
+ const priceUnit=p?.priceUnit??p?.priceUnitDescription,scale=typeof priceUnit==='number'?priceUnit:typeof priceUnit==='string'&&/^\d+(?:\.\d+)?$/.test(priceUnit.trim())?Number(priceUnit):null;
+ const u=unit(p?.unit||d.quantityUnit||d.measurementUnit),ek=number(p?.netPrice),list=number(p?.grosPrice);
+ const hidden=summary.price_hidden||d.hidePrices===true||d.priceHidden===true;
+ if(!u||!Number.isFinite(scale)||scale<=0||scale>1000000||hidden||list===null||p?.grosPriceCurrency!=='EUR'||(ek!==null&&p?.netPriceCurrency!=='EUR'))throw error('Einheit oder eindeutiger Euro-Nettolistenpreis fehlt. Der Artikel wurde nicht übernommen.','ARTICLE_DATA',409);
+ const price=n=>n===null?null:Math.round(n/scale*10000)/10000;
+ if(price(list)>1000000||price(ek)>1000000)throw error('Der Händlerpreis liegt außerhalb des unterstützten Bereichs.','ARTICLE_DATA',409);
+ let manufacturer=text(d.oX_Supplier||d.manufacturerName,120);if(/^[A-Z]{1,3}\d{1,5}$/.test(manufacturer))manufacturer='';const mpn=text(d.oX_SupplierProductNumber||d.supplierProductNumber,120)||summary.manufacturer_number||'';
+ const attributes={};for(const a of Array.isArray(d.attributes)?d.attributes.slice(0,60):[]){const key=text(a.name,160),value=text(a.value,160);if(key&&value&&!['__proto__','constructor','prototype'].includes(key))attributes[key]=value;}
+ const name=text([d.description1,d.description2].filter(x=>typeof x==='string').join(' '),200)||summary.name,classification=C.describe({name,manufacturer}),features=F.forStorage(F.fromRow({name,...attributes}).features);
+ if(summary.locked||d.purchasingLock===true||d.locked===true)throw error('Dieser Artikel ist beim Händler für den Einkauf gesperrt.','ARTICLE_LOCKED',409);
+ return {article_number:sku,name,unit:u,purchase_price:price(ek),recommended_price_1:price(list),recommended_price_2:null,gtin:text(d.oX_GTIN,32)||summary.gtin||'',...classification,manufacturer_number:mpn,manufacturer_number_source:'merchant',image_url:image(d.images?.[0]?.imgThumb||d.images?.[0]?.img||summary.image_url),features,source_price_unit:scale};
+}
+export function createOnlineMerchant({call,refresh,fetch,now=Date.now}){
+ async function search(session,{query,page=0,warehouse,inStockOnly=true,searchId='',searchPass=1}){await refresh(session,true);const w=session.warehouses.find(w=>w.id===warehouse);if(!w)throw error('Bitte ein gültiges Händlerlager auswählen.','WAREHOUSE',400);
+  const u=new URL('https://api.onlineplus.store/api/v2/search/products/search');for(const [k,v]of Object.entries({searchterm:query,page,sp:searchPass,warehouse:w.stockId,rootSearchId:searchId}))u.searchParams.set(k,String(v));
+  const response=await fetch(u.href,{method:'POST',redirect:'error',signal:AbortSignal.timeout(20000),headers:{Accept:'application/json','Content-Type':'application/json','Accept-Language':'de-DE',Authorization:'Bearer '+session.apiToken},body:JSON.stringify({inStockOnly:inStockOnly,einkaufsgesperrtAusverkauftAusblenden:true})});
+  if(response.status===401||response.status===403)throw error('Die Händleranmeldung für die Artikelsuche ist abgelaufen. Bitte erneut verbinden.','RECONNECT',401);if(!response.ok)throw error('Die Online-Artikelsuche ist beim Händler gerade nicht verfügbar.');const body=await response.text();if(body.length>4000000)throw error('Die Händler-Trefferliste ist zu groß.');let data;try{data=JSON.parse(body);}catch{throw error('Die Händler-Artikelsuche hat keine lesbare Antwort geliefert.');}return normalizeSearch(data);
+ }
+ async function article(session,sku,warehouse,summary={}){await refresh(session,false);const w=session.warehouses.find(w=>w.id===warehouse);if(!w)throw error('Bitte ein gültiges Händlerlager auswählen.','WAREHOUSE',400);const [details,pricing]=await Promise.all([call(session,'/api/products/getproductdetailsbykbn?kbn='+encodeURIComponent(sku),undefined,12000),call(session,'/api/products/getnetpricesandstocksbykbnlist',{kbns:[sku],stockId:w.stockId},12000)]);return {data:normalizeArticle(details,pricing,sku,summary),pricing,warehouse:{id:w.id,name:w.name},checked_at:new Date(now()).toISOString()};}
+ return {search,article};
+}

@@ -30,9 +30,12 @@ jobs:
           node tests/team/invoice-suppliers-v922.test.cjs
           node tests/team/open-features-activation-v953.test.cjs
           node tests/team/open-features-activation-v953.test.cjs --existing
+          node tests/team/product-identity-v954.test.cjs
       - name: Article search, inventory and verified checkout fixtures
         run: |
           node tests/team/supplier-stock-edge-v948.test.mjs
+          node tests/team/supplier-online-edge-v954.test.mjs
+          node tests/team/supplier-online-browser-v954.test.cjs
           node tests/team/supplier-cart-edge-v949.test.mjs
           node tests/team/article-search-browser-v947.test.cjs
           node tests/team/supplier-stock-priority-v952.test.cjs

@@ -99,4 +99,4 @@ self.addEventListener('notificationclick',event=>{
   }));
 });
 
-for(const file of ["article-search-v947.js", "purchase-search-v939.js", "material-browser-v926.js", "product-features-v928.js", "app-v800.js", "catalog-ui-v908.js", "catalog-import-ui-v910.js", "catalog-workflow-v933.js", "supplier-cart-ui-v938.js", "invoice-ledger-ui-v908.js", "article-tools-v959.js", "article-tools-v959.css"]){const i=FILES.findIndex(url=>url.split('?')[0]==='./'+file);if(i>=0)FILES[i]='./'+file+'?v=959';else FILES.push('./'+file+'?v=959');}
+for(const file of ["article-search-v947.js", "purchase-search-v939.js", "material-browser-v926.js", "product-features-v928.js", "app-v800.js", "catalog-ui-v908.js", "catalog-import-ui-v910.js", "catalog-workflow-v933.js", "supplier-cart-ui-v938.js", "invoice-ledger-ui-v908.js", "article-tools-v959.js", "article-tools-v959.css", "offers-v857.js"]){const i=FILES.findIndex(url=>url.split('?')[0]==='./'+file);if(i>=0)FILES[i]='./'+file+'?v=959';else FILES.push('./'+file+'?v=959');}

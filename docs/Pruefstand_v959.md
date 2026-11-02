@@ -19,3 +19,8 @@
 - Neue Tabellen im Projekt eingerichtet; RLS, Policies und fehlende anonyme Leserechte anschließend per Metadaten bestätigt. Sicherheitsprüfung nennt keine neuen Favoritenobjekte; ältere Hinweise bestehen unabhängig davon weiter.
 
 Weitere Produktgruppen und echte Herstellerbilder bleiben laufende Arbeit; es gibt keine Garantie, dass ein Artikel ohne eindeutige Quelldaten bereits ein Foto besitzt.
+
+## Korrekturen aus dem Code Review
+
+- Bebilderte Angebotsauswahl übergibt die genaue Materialkennung und die sichtbare Katalogbezeichnung an die bestehende Auswahl. Geprüft mit zwei gleich bezeichneten Händlerartikeln, internen Namenszusätzen, unterschiedlichen VK-* und Einheiten: der angeklickte zweite Händler bleibt ausgewählt; ein nachträglich bearbeiteter Nettopreis wird beim erneuten Verlassen des Namensfelds erhalten.
+- HTML fordert die neuen Bild-/Favoriten-Dateien mit genau den vom Service Worker vorgeladenen URLs an. Ein isolierter Test vergleicht die tatsächlichen Seitenadressen mit der ausgeführten Cacheliste, einschließlich der korrigierten Angebotsdatei.

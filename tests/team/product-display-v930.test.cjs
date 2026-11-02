@@ -9,7 +9,7 @@ assert.equal(F.describe(m).color.value,'Polarweiß');assert.equal(F.describe(m).
 assert.equal(F.infer('BERKER Steckdose Q.3 anth').color.value,'Anthrazit');
 assert.equal(F.infer('BERKER Steckdose Q.3 alu-samt').color.value,'Aluminium');
 const original=m.name;
-const entry={gtin:'04011334233008',image_url:'https://assets.hager.com/product.webp',source_url:'https://hager.com/de/katalog/produkt/47229909-example',full_name:'Steckdose SCHUKO mit Abdeckplatte S.1 Polarweiß',brand:'Berker'};
+const entry={sku:'47229909',gtin:'04011334233008',image_url:'https://assets.hager.com/product.webp',source_url:'https://hager.com/de/katalog/produkt/47229909-example',full_name:'Steckdose SCHUKO mit Abdeckplatte S.1 Polarweiß',brand:'Berker'};
 D.setIndex({entries:{one:entry}});assert.equal(D.image(m),entry.image_url);assert.match(D.displayName(m),/Abdeckplatte/);assert.equal(m.name,original);
 assert.equal(D.image({...m,catalog_gtin:'4011334233009'}),'');
 D.setIndex({entries:{one:entry,two:{...entry,image_url:'https://assets.hager.com/other.webp'}}});assert.equal(D.image(m),'','ambiguous GTIN never picks a photo');

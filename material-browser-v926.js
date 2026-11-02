@@ -6,7 +6,7 @@
   let scope='',kind='category',filters={category:'',manufacturer:'',supplier:''},query='',page=0,answers={},questionIndex=0,includeUnknown=false,sort='relevance';
   let eligible=null,blockedCount=0,productMemo=null,queryMemo=new WeakMap(),baseMemo=new Map();
   function resetMemo(){eligible=null;blockedCount=0;productMemo=null;queryMemo=new WeakMap();baseMemo=new Map();}
-  let technical=new WeakMap();window.addEventListener('worktime-product-index',()=>{technical=new WeakMap();resetMemo();});const feature=m=>{if(!technical.has(m))technical.set(m,window.WorktimeProductFeatures?.describe(m)||{});return technical.get(m);};
+  let technical=new WeakMap();window.addEventListener('worktime-product-index',()=>{technical=new WeakMap();resetMemo();if(ensure()&&state.view==='materials'&&!state.busy&&!root.querySelector('form[data-form="material-edit"]'))render();});const feature=m=>{if(!technical.has(m))technical.set(m,window.WorktimeProductFeatures?.describe(m)||{});return technical.get(m);};
   const current=()=>isManager()&&state.profile&&businessId()?state.profile.id+':'+businessId():'';
   function ensure(){const next=current();if(next!==scope){scope=next;resetMemo();sort='relevance';kind='category';filters={category:'',manufacturer:'',supplier:''};query='';answers={};questionIndex=0;includeUnknown=false;page=0;answers={};questionIndex=0;includeUnknown=false;}return !!scope;}
   const names={category:'Kategorie',manufacturer:'Hersteller',supplier:'Großhändler'};

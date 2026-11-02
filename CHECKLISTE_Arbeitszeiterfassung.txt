@@ -90,8 +90,10 @@ KATALOGE UND PREISE
 [ ] Originalkataloge sicher geräteübergreifend bereitstellen. Bisher liegen sie
     im jeweiligen Browserprofil; sie erscheinen nicht automatisch auf einem
     neuen Laptop. Eine Cloud-Katalogablage ist noch nicht eingerichtet.
-[ ] Gespeicherte Originalkataloge im aktuellen Katalogmenü leichter analysieren
-    und eine verständliche druckbare/PDF-Übersicht anbieten.
+[x] Gespeicherte Kataloge über „Katalog prüfen / PDF-Auszug“ lesbar analysieren.
+    Alle Datensätze zählen, EK/VK/ungeklärte Preise unterscheiden, Auswahl filtern
+    und bis zu 200 Treffer als klar bezeichneten PDF-Auszug ausgeben (v961).
+    Originaldateien bleiben unverändert; 1.205-Artikel-/Konto-/PDF-Test bestanden.
 [ ] Beleg-/Katalogerkennung aus PDF und Bildern einschließlich OCR weiter
     verbessern. Diese Formate sind nicht als universeller Katalogimport fertig.
 [ ] Fehlende/unklare Preis- und Einheitsangaben in jedem unterstützten Importweg

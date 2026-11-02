@@ -49,6 +49,8 @@ jobs:
           node tests/team/article-tools-browser-v959.test.cjs
           python tests/team/wago-images-v958.test.py
           node tests/team/catalog-store-speed-v957.test.cjs
+          node tests/team/catalog-review-v961.test.cjs
+          node tests/team/catalog-review-browser-v961.test.cjs
           node tests/team/search-online-catalog-race-v957.test.cjs
           python tests/team/jung-image-extractor-v957.test.py
           node tests/team/article-search-browser-v947.test.cjs

@@ -1,0 +1,10 @@
+/* Only explicit manufacturer article numbers extend GTIN/manual product identity. */
+(function(root,factory){const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;else root.WorktimeProductIdentity=api;})(globalThis,function(){
+ 'use strict';
+ const variantKeys=['color','finish','rated_a','residual_ma','curve','voltage_v','poles','cross_mm2','length_m','frames','mounting'];
+ const brand=s=>String(s||'').trim().toLowerCase().replace(/[\s-]+/g,'').replace(/^doepke$/,'döpke');
+ function key(m){const b=brand(m.catalog_manufacturer),n=String(m.catalog_manufacturer_number||'').trim();return m.active!==false&&!['H','Pau'].includes(m.unit)&&b&&/\p{L}/u.test(b)&&!['unbekannt','unknown','keinhersteller','na','n/a'].includes(b)&&['catalog','manual'].includes(m.catalog_manufacturer_source||'catalog')&&['catalog','manual','merchant'].includes(m.catalog_manufacturer_number_source||'catalog')&&n&&n.length<=120&&!/[\u0000-\u001f]/.test(n)?JSON.stringify([m.business_id,m.unit||'Stk',b,n.toUpperCase()]):'';}
+ function compatibleBucket(rows,gtin){const codes=new Set(rows.map(m=>gtin(m.catalog_gtin)).filter(Boolean));if(codes.size>1)return false;for(const k of variantKeys){const known=new Set();for(const m of rows){const f=m.catalog_features?.[k];if(f?.conflict)return false;if(f?.value)known.add(f.value);}if(known.size>1)return false;}return true;}
+ function joinExplicit(rows,{join,gtin,allRows=rows}){const complete=[...new Map([...allRows,...rows].map(m=>[m.id,m])).values()],manual=new Set(complete.filter(m=>m.catalog_product_id).flatMap(m=>[m.id,m.catalog_product_id])),buckets=new Map(),visible=new Map();for(const m of complete){if(manual.has(m.id))continue;const k=key(m);if(k){if(!buckets.has(k))buckets.set(k,[]);buckets.get(k).push(m);}}for(const m of rows){const k=key(m);if(k&&!manual.has(m.id)){if(!visible.has(k))visible.set(k,[]);visible.get(k).push(m);}}for(const [k,bucket]of visible)if(bucket.length>1&&compatibleBucket(buckets.get(k)||bucket,gtin))for(const m of bucket.slice(1))join(bucket[0],m);}
+ return Object.freeze({key,brand,variantKeys,compatibleBucket,joinExplicit});
+});

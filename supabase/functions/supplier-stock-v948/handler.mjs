@@ -1,3 +1,4 @@
+import {createOnlineMerchant} from './online.mjs';
 /* Read-only ONLINE PLUS stock adapter. Merchant passwords are never persisted. */
 const te=new TextEncoder(),td=new TextDecoder(),uuid=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 const shops={efg:{origin:'https://efgonlineplus.de',layout:'EFG',domain:'efgonlineplus.de'},gc:{origin:'https://www.gconlineplus.de',layout:'GC',domain:'gconlineplus.de'}};
@@ -43,8 +44,10 @@ export function createMerchant({fetch,md5,now=Date.now}){
   if(!s.warehouses.length)throw fail('WAREHOUSE','Der Händler hat kein Lager zur Auswahl geliefert.',502);
   return s;
  }
- async function stocks(session,skus,warehouseId){const settings=await call(session,'/api/account/getsettingsremaining?domain='+encodeURIComponent(shops[session.shop].domain)),user=settings.user;if(!user||md5(['companyNumber','username','customerNumber'].map(k=>String(user[k]||'').trim().toUpperCase()).join('_'))!==session.userHash)throw fail('RECONNECT','Die Händleranmeldung ist abgelaufen. Bitte erneut verbinden.',401);session.csrf=settings.crsfKey??session.csrf;const warehouse=session.warehouses.find(w=>w.id===warehouseId);if(!warehouse)throw fail('WAREHOUSE','Bitte ein gültiges Händlerlager auswählen.');const results=new Array(skus.length),deadline=Date.now()+30000;let next=0;await Promise.all(Array.from({length:Math.min(3,skus.length)},async()=>{while(next<skus.length){const i=next++,sku=skus[i];try{if(Date.now()>=deadline)throw Error('Timeout');const answer=await call(session,'/api/products/getnetpricesandstocksbykbnlist',{kbns:[sku],stockId:warehouse.stockId},Math.max(1,Math.min(10000,deadline-Date.now())));results[i]=normalizeStock(answer,sku,{id:warehouse.id,name:warehouse.name},new Date(now()).toISOString());}catch(e){if(e.code==='RECONNECT')throw e;results[i]={sku,status:'unknown',quantity:null,text:'Die aktuelle Händlerabfrage konnte nicht abgeschlossen werden.',warehouse:{id:warehouse.id,name:warehouse.name},checked_at:new Date(now()).toISOString()};}}}));return results;}
- return {connect,stocks};
+ async function refreshSession(session,needsToken=false){const settings=await call(session,'/api/account/getsettingsremaining?domain='+encodeURIComponent(shops[session.shop].domain)),user=settings.user;if(!user||md5(['companyNumber','username','customerNumber'].map(k=>String(user[k]||'').trim().toUpperCase()).join('_'))!==session.userHash)throw fail('RECONNECT','Die Händleranmeldung ist abgelaufen. Bitte erneut verbinden.',401);session.csrf=settings.crsfKey??session.csrf;if(typeof settings.jsonWebToken==='string'&&settings.jsonWebToken.length<=20000)session.apiToken=settings.jsonWebToken;if(needsToken&&!/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(session.apiToken||''))throw fail('RECONNECT','Bitte den Fachhändler für die Online-Artikelsuche erneut verbinden.',401);return settings;}
+ async function stocks(session,skus,warehouseId){await refreshSession(session);const warehouse=session.warehouses.find(w=>w.id===warehouseId);if(!warehouse)throw fail('WAREHOUSE','Bitte ein gültiges Händlerlager auswählen.');const results=new Array(skus.length),deadline=Date.now()+30000;let next=0;await Promise.all(Array.from({length:Math.min(3,skus.length)},async()=>{while(next<skus.length){const i=next++,sku=skus[i];try{if(Date.now()>=deadline)throw Error('Timeout');const answer=await call(session,'/api/products/getnetpricesandstocksbykbnlist',{kbns:[sku],stockId:warehouse.stockId},Math.max(1,Math.min(10000,deadline-Date.now())));results[i]=normalizeStock(answer,sku,{id:warehouse.id,name:warehouse.name},new Date(now()).toISOString());}catch(e){if(e.code==='RECONNECT')throw e;results[i]={sku,status:'unknown',quantity:null,text:'Die aktuelle Händlerabfrage konnte nicht abgeschlossen werden.',warehouse:{id:warehouse.id,name:warehouse.name},checked_at:new Date(now()).toISOString()};}}}));return results;}
+ const online=createOnlineMerchant({call,refresh:refreshSession,fetch,now});
+ return {connect,stocks,onlineSearch:online.search,onlineArticle:online.article};
 }
 export function createHandler({fetch=globalThis.fetch,env,md5,now=Date.now,crypto=globalThis.crypto}){
  const codec=createCodec(env.serviceKey,crypto,now),merchant=createMerchant({fetch,md5,now});
@@ -65,6 +68,40 @@ export function createHandler({fetch=globalThis.fetch,env,md5,now=Date.now,crypt
    if(body.action==='connect'){
     for(const [k,max] of [['username',50],['password',50],['customer',40]])if(typeof body[k]!=='string'||!body[k].length||body[k].length>max)throw fail('CREDENTIALS','Bitte Kundennummer, Benutzername und Kennwort vollständig eingeben.');
     const session=await merchant.connect(body);body.password='';return json({company,supplier,connection:await codec.seal(session,context),expires_at:new Date(session.expires).toISOString(),warehouses:session.warehouses.map(({id,name})=>({id,name}))});
+   }
+   if(['search','article','import_article'].includes(body.action)){
+    const session=await codec.open(body.connection,context);if(!session.cookies||!session.userHash||!Array.isArray(session.warehouses))throw fail('RECONNECT','Bitte den Fachh\u00e4ndler erneut verbinden.',401);
+    const warehouse=session.warehouses.find(w=>w.id===body.warehouse);if(!warehouse)throw fail('WAREHOUSE','Bitte ein g\u00fcltiges H\u00e4ndlerlager ausw\u00e4hlen.');
+    const openProof=async(token,kind)=>{try{return await codec.open(token,{...context,supplier:supplier+':'+kind});}catch{throw fail('SEARCH_EXPIRED','Die gepr\u00fcfte Auswahl ist abgelaufen oder ung\u00fcltig. Bitte die Online-Suche aktualisieren.',409);}};
+    const attach=async data=>({company,supplier,warehouse:warehouse.id,connection:await codec.seal(session,context),expires_at:new Date(session.expires).toISOString(),...data});
+    if(body.action==='search'){
+     const query=typeof body.query==='string'?body.query.trim():'';if(query.length<2||query.length>200||/[\u0000-\u001f]/.test(query))throw fail('QUERY','Bitte 2 bis 200 Zeichen als Suchbegriff eingeben.');
+     const inStockOnly=body.in_stock_only!==false;let cursor={page:0,offset:0,search_id:'',search_pass:1,page_size:0};
+     if(body.cursor){const c=await openProof(body.cursor,'search');if(c.query!==query||c.warehouse!==warehouse.id||c.in_stock_only!==inStockOnly)throw fail('CURSOR','Die Suche hat sich ge\u00e4ndert. Bitte neu suchen.');cursor=c;}
+     const result=await merchant.onlineSearch(session,{query,page:cursor.page,warehouse:warehouse.id,inStockOnly,searchId:cursor.search_id,searchPass:cursor.search_pass});
+     const selected=result.products.slice(cursor.offset,cursor.offset+20),pageSize=cursor.page_size||result.products.length;
+     const moreInPage=cursor.offset+selected.length<result.products.length,more=selected.length>0&&(moreInPage||(cursor.page+1)*pageSize<result.hits);
+     const next=more?await codec.seal({shop:session.shop,expires:now()+15*60000,query,warehouse:warehouse.id,in_stock_only:inStockOnly,page:moreInPage?cursor.page:cursor.page+1,offset:moreInPage?cursor.offset+selected.length:0,search_id:result.search_id,search_pass:result.search_pass,page_size:pageSize},{...context,supplier:supplier+':search'}):null;
+     const items=await Promise.all(selected.map(async p=>({...p,item_ref:await codec.seal({shop:session.shop,expires:now()+15*60000,warehouse:warehouse.id,summary:p},{...context,supplier:supplier+':item'})})));
+     return json(await attach({items,total:result.hits,cursor:next}));
+    }
+    if(body.action==='article'){
+     const ref=await openProof(body.item_ref,'item');if(ref.warehouse!==warehouse.id||!ref.summary?.sku)throw fail('ARTICLE','Der Suchtreffer passt nicht zum gew\u00e4hlten Lager.');
+     const article=await merchant.onlineArticle(session,ref.summary.sku,warehouse.id,ref.summary);
+     const q=new URLSearchParams({select:'id,catalog_revision',business_id:'eq.'+company,catalog_supplier:'eq.'+supplier,catalog_article_number:'eq.'+article.data.article_number});
+     const existingResponse=await fetch(env.url+'/rest/v1/materials?'+q,{headers:dbHeaders,signal:AbortSignal.timeout(8000)});if(!existingResponse.ok)throw fail('MATERIALS','Die Materialzuordnung konnte nicht gepr\u00fcft werden.',502);const existing=await existingResponse.json();if(!Array.isArray(existing)||existing.length>1)throw fail('MATERIALS','Die Materialzuordnung ist nicht eindeutig.',409);
+     const data={...article.data,expected_id:existing[0]?.id||null,expected_revision:existing[0]?.catalog_revision||null},stock=normalizeStock(article.pricing,data.article_number,article.warehouse,article.checked_at);
+     const proof=await codec.seal({shop:session.shop,expires:now()+5*60000,warehouse:warehouse.id,data},{...context,supplier:supplier+':offer'});
+     return json(await attach({data,stock,offer_ref:proof,offer_expires_at:new Date(now()+5*60000).toISOString()}));
+    }
+    const offer=await openProof(body.offer_ref,'offer');if(offer.warehouse!==warehouse.id||!offer.data?.article_number)throw fail('ARTICLE','Der gepr\u00fcfte Artikel passt nicht zu dieser Auswahl.');
+    const row=offer.data;
+    const rpc=await fetch(env.url+'/rest/v1/rpc/import_material_catalog_v954',{method:'POST',headers:{...dbHeaders,'Content-Type':'application/json'},signal:AbortSignal.timeout(20000),body:JSON.stringify({p_company:company,p_supplier:supplier,p_rows:[row],p_confirm_net_eur:true,p_use_vk1:true})});
+    if(!rpc.ok){const e=await rpc.json().catch(()=>({}));throw fail('ARTICLE_IMPORT',e.code==='40001'?'Der Artikel wurde inzwischen ge\u00e4ndert. Bitte die Suche aktualisieren.':'Der Artikel konnte nicht best\u00e4tigt gespeichert werden. Bitte die Materialliste pr\u00fcfen.',rpc.status>=500?502:409);}
+    const result=await rpc.json(),counts=['created','updated','unchanged'].map(k=>result?.[k]);if(result.company_id!==company||result.catalog_import_version!==911||result.standard_price_source!=='recommended_price_1'||counts.some(n=>!Number.isSafeInteger(n)||n<0)||counts.reduce((a,b)=>a+b,0)!==1)throw fail('ARTICLE_IMPORT','Die Speicherung wurde nicht eindeutig best\u00e4tigt. Bitte die Materialliste pr\u00fcfen.',502);
+    const q=new URLSearchParams({select:'*',business_id:'eq.'+company,catalog_supplier:'eq.'+supplier,catalog_article_number:'eq.'+row.article_number,active:'eq.true'}),response=await fetch(env.url+'/rest/v1/materials?'+q,{headers:dbHeaders,signal:AbortSignal.timeout(8000)});const found=response.ok?await response.json():null;
+    if(!Array.isArray(found)||found.length!==1||found[0].business_id!==company||found[0].catalog_supplier!==supplier||found[0].catalog_article_number!==row.article_number)throw fail('ARTICLE_IMPORT','Der gespeicherte Artikel konnte nicht eindeutig geladen werden. Bitte die Materialliste pr\u00fcfen.',502);
+    return json(await attach({material:found[0]}));
    }
    if(body.action==='stock_catalog'){
     const session=await codec.open(body.connection,context),articles=body.articles;

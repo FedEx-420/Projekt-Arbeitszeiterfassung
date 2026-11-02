@@ -1,13 +1,15 @@
 /* Supplier rows retain their IDs; only the visible product card is shared. */
 (function(root,factory){const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;else root.WorktimeCatalogProducts=api;})(globalThis,function(){
  'use strict';
+ const identity=typeof module==='object'&&module.exports?require('./product-identity-v954.js'):globalThis.WorktimeProductIdentity;let identityContext=null;
  function gtin(raw){const s=String(raw??'').trim();if(!/^(?:\d{8}|\d{12}|\d{13}|\d{14})$/.test(s)||/^0+$/.test(s))return null;let sum=0;for(let i=s.length-2,j=0;i>=0;i--,j++)sum+=Number(s[i])*(j%2?1:3);return (sum+Number(s.at(-1)))%10?null:s.padStart(14,'0');}
  const name=m=>m.catalog_product_name||m.name;
  function groups(rows){
   const parent=new Map(rows.map(m=>[m.id,m.id])),byId=new Map(rows.map(m=>[m.id,m])),tokens=new Map();
   const find=id=>{let p=parent.get(id);while(p!==parent.get(p))p=parent.get(p);while(id!==p){const next=parent.get(id);parent.set(id,p);id=next;}return p;};
   const join=(a,b)=>{if(a.business_id===b.business_id&&(a.unit||'Stk')===(b.unit||'Stk')){const x=find(a.id),y=find(b.id);parent.set(x<y?y:x,x<y?x:y);}};
-  for(const m of rows){const target=byId.get(m.catalog_product_id);if(target)join(m,target);const g=gtin(m.catalog_gtin);if(g){const key=JSON.stringify([m.business_id,m.unit||'Stk',g]);if(tokens.has(key))join(m,tokens.get(key));else tokens.set(key,m);}}
+  for(const m of rows){const manualKey='manual:'+JSON.stringify([m.business_id,m.unit||'Stk',m.catalog_product_id||m.id]);if(tokens.has(manualKey))join(m,tokens.get(manualKey));else tokens.set(manualKey,m);const target=byId.get(m.catalog_product_id);if(target)join(m,target);const g=gtin(m.catalog_gtin);if(g){const key=JSON.stringify([m.business_id,m.unit||'Stk',g]);if(tokens.has(key))join(m,tokens.get(key));else tokens.set(key,m);}}
+  identity?.joinExplicit(rows,{join,gtin,allRows:identityContext?.()||rows});
   const out=new Map();for(const m of rows){const id=find(m.id);if(!out.has(id))out.set(id,{id,name:name(byId.get(id)),unit:m.unit||'Stk',members:[]});out.get(id).members.push(m);}return [...out.values()];
  }
  function decorate({root,materials,api,businessId,reload,render,isManager}){
@@ -34,5 +36,5 @@
   syncVisibility(root);
  }
  function syncVisibility(root){let visible=0,total=0;for(const card of root.querySelectorAll('[data-product-card]')){total++;const offers=[...card.querySelectorAll('[data-material-catalog-card]')];card.hidden=!offers.some(c=>!c.hidden);if(!card.hidden){visible++;offers.forEach(c=>c.hidden=false);}}const count=root.querySelector('[data-material-search-count]');if(total&&count)count.textContent=visible+' von '+total+' Artikeln · Händlerangebote jeweils unter dem Artikel';}
- return Object.freeze({gtin,name,groups,decorate,syncVisibility});
+ return Object.freeze({gtin,name,groups,decorate,syncVisibility,setIdentityContext:fn=>{identityContext=fn;}});
 });

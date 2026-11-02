@@ -1,6 +1,7 @@
 /* Guided browsing limits rendered products; account/company state stays isolated. */
 (()=>{'use strict';const api={},search=window.WorktimeArticleSearch;
  api.create=({root,state,businessId,isManager,render,escape:esc})=>{
+  window.WorktimeCatalogProducts?.setIdentityContext?.(()=>state.rows.materials||[]);
   const metadata=new WeakMap();
   let scope='',kind='category',filters={category:'',manufacturer:'',supplier:''},query='',page=0,answers={},questionIndex=0,includeUnknown=false,sort='relevance';
   let eligible=null,blockedCount=0,productMemo=null,queryMemo=new WeakMap(),baseMemo=new Map();

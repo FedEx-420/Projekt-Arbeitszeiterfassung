@@ -36,7 +36,7 @@
     const target=(page+1)*20;let count=expand?0:resultPool().length;
     while(valid()&&cursor.catalog<catalogs.length&&(expand?catalogPool.length<before+20:count<=target)){
      const source=catalogs[cursor.catalog];if(filters.supplier&&source.supplier!==filters.supplier){cursor.catalog++;cursor.after=-1;continue;}
-     const entries=await S.batch('articles',source.id,cursor.after,250);if(!valid())return;if(!entries.length){cursor.catalog++;cursor.after=-1;continue;}
+     const entries=await S.batch('articles',source.id,cursor.after,250);if(!valid())return;if(!expand){count=resultPool().length;if(count>target)break;}if(!entries.length){cursor.catalog++;cursor.after=-1;continue;}
      for(const entry of entries){cursor.after=entry.index;if(append(entry,source)&&!expand){count++;if(count>target)count=resultPool().length;}if(expand?catalogPool.length>=before+20:count>target)break;}
      progress='Katalog „'+(source.supplier||source.masterName)+'“ · '+number(cursor.after+1)+' von '+number(source.count)+' Artikeln geprüft';const label=root.querySelector('.ps-progress span');if(label)label.textContent=progress;
     }

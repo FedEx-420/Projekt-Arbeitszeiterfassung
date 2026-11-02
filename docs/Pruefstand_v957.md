@@ -17,4 +17,10 @@
 - `purchase-catalog-pages-v952.test.cjs`: zusätzlich eine vollständige erfolglose Katalogsuche, die weniger als 20 Sortieraufrufe benötigt; keine erneute Sortierung für jeden gescannten Datensatz.
 - Bestehende vollständige Browserabläufe für Online-Suche, Lagerbestände vor Auswahl, strenge Serie/Farbe, Katalogimport aller passenden Artikel, Wiederaufnahme und Kontotrennung sowie Ansichten bei 320/390/1366 Pixeln.
 
+## Nachprüfung aus dem Code Review
+
+- Nachgeladene Bilder lösen während einer Materialbearbeitung oder eines laufenden Speichervorgangs keinen kompletten Neuaufbau der Seite aus. Ein Browsertest verändert einen Artikelnamen ohne Speichern und bestätigt, dass dieser nach dem Bildereignis erhalten bleibt.
+- Der Sortierzähler wird vor dem Laden des Suchmoduls eingebaut und muss tatsächlich Aufrufe sehen. Dieselbe Prüfung schlägt gegen die bisherige Suche mit Sortierung pro Datensatz fehl.
+- Treffen Online-Ergebnisse während eines Katalog-Lesevorgangs ein, wird die Trefferanzahl an der Paketgrenze aktualisiert. Der neue Browserfall mit fünf lokalen Treffern, eintreffenden Online-Artikeln und 10.000 unpassenden Katalogartikeln beendet den Suchvorgang nach einem Paket und gibt die Hinzufügen-Schaltflächen frei.
+
 Es wurden keine echten Bestellungen oder Produktionsrechnungen für diese Prüfungen erstellt. Fotos für weitere Hersteller, messbare Verbesserungen anderer App-Bereiche, ein aktueller vollständiger iPhone-Live-Test sowie die Cloudablage privater Originalkataloge bleiben offen.

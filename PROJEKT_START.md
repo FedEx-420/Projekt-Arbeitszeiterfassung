@@ -33,19 +33,21 @@ Private Kataloge, Einkaufspreise, Kundendaten, Chatprotokolle und Zugangsdaten w
 
 - [Prüfbericht: gemeinsame Artikelbilder, Funktionssuche und Favoriten](docs/Pruefstand_v959.md)
 - [Neue Bildquelle Gira und weitere Berker/Hager-Grundgeräte](docs/Pruefstand_v960.md)
+- [Lesbare Katalogprüfung und PDF-Auszüge](docs/Pruefstand_v961.md)
 
 ## Aktueller Schwerpunkt
 
-Stand der Arbeit an v960:
+Stand der Arbeit an v961:
 
 - Herstellerbilder werden über eindeutige GTIN oder bestätigte Herstellerartikelnummer zugeordnet. Großhändlernummern und ähnlich klingende Namen reichen dafür nicht aus.
 - Zusätzlich zu Hager/Berker/Elcom wurde der öffentliche JUNG-Katalog als weitere Bildquelle angebunden. Die erste Ergänzung umfasst 40 geprüfte Produktreferenzen; der geplante Aktualisierungslauf ergänzt weitere.
-- WAGO ist als weitere eindeutige Bildquelle integriert: erste 26 Referenzen, darunter 221-412. JUNG umfasst inzwischen 80 geprüfte Referenzen; häufige Standardartikel und unterschiedliche Produktgruppen werden bevorzugt gesammelt. Der gesamte Bildindex enthält bei dieser Veröffentlichung 2.111 Einträge.
+- WAGO ist als weitere eindeutige Bildquelle integriert: erste 26 Referenzen, darunter 221-412. JUNG umfasst inzwischen 80 geprüfte Referenzen; häufige Standardartikel und unterschiedliche Produktgruppen werden bevorzugt gesammelt. Der gesamte Bildindex enthielt beim Stand v958 2.111 Einträge.
 - Der lokale Bildindex wird sofort geladen; die aktuelle Onlinefassung folgt im Hintergrund.
 - Kataloge werden paketweise aus IndexedDB gelesen. Die Einkaufssuche baut und sortiert die Trefferliste nicht mehr bei jedem geprüften Katalogartikel erneut auf.
 - Suchvorschläge vermeiden wiederholte Textnormalisierung und doppelte technische Filterung. Gleiche Kennungen, strenge Serie/Farbe und geänderte Artikeltexte sind gesondert geprüft; die Messung im Prüfbericht betrifft nur den konkreten lokalen Ablauf.
 - v959 verwendet gemeinsame Artikelbild-/Sternanzeigen und persönliche Cloud-Favoritenlisten je Benutzer/Firma. Favoriten übernehmen keine Preise oder Bestandsversprechen. Normale Schalterfunktionen stehen vor nicht angefragten Sondervarianten; lokale Funktionssuchen prüfen den ganzen Katalog. Bei aktiver Online-Suche bleibt das frühzeitige Beenden unabhängiger lokaler Scans erhalten.
 - v960 ergänzt Gira mit zunächst 40 eindeutigen Bildreferenzen und weitere 53 Berker/Hager-Referenzen, darunter den alten Wechselschalter 3036. Der öffentliche Bildindex umfasst damit 2.204 Einträge. Die automatische Sammlung berücksichtigt jetzt mehrere Grundgeräte-/Produktgruppen; interner SKU-Zusatz und ausdrücklich angegebene Herstellerreferenz werden getrennt geprüft.
+- v961 ergänzt unter „Kataloge → Fachhändler Kataloge → Katalog prüfen / PDF-Auszug“ eine schreibgeschützte Auswertung aller gespeicherten Datensätze mit Preisübersicht, Filtern und einem ausdrücklich auf 200 Treffer begrenzten PDF-Auszug. Originaldateien und Materialpreise werden dadurch nicht geändert.
 - Die Checkliste trennt umgesetzte, geprüfte Punkte von teilweise erledigten und offenen Wünschen. Eine vollständig schnelle App oder Bilder für jeden Artikel sind noch nicht nachgewiesen.
 
 ## Für die nächste Codex-Sitzung

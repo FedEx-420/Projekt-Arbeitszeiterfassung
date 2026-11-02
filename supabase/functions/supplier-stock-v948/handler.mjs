@@ -1,4 +1,4 @@
-import {createOnlineMerchant} from './online.mjs';
+import {createOnlineMerchant,toImportRow} from './online.mjs';
 /* Read-only ONLINE PLUS stock adapter. Merchant passwords are never persisted. */
 const te=new TextEncoder(),td=new TextDecoder(),uuid=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 const shops={efg:{origin:'https://efgonlineplus.de',layout:'EFG',domain:'efgonlineplus.de'},gc:{origin:'https://www.gconlineplus.de',layout:'GC',domain:'gconlineplus.de'}};
@@ -95,7 +95,7 @@ export function createHandler({fetch=globalThis.fetch,env,md5,now=Date.now,crypt
      return json(await attach({data,stock,offer_ref:proof,offer_expires_at:new Date(now()+5*60000).toISOString()}));
     }
     const offer=await openProof(body.offer_ref,'offer');if(offer.warehouse!==warehouse.id||!offer.data?.article_number)throw fail('ARTICLE','Der gepr\u00fcfte Artikel passt nicht zu dieser Auswahl.');
-    const row=offer.data;
+    const row=toImportRow(offer.data);
     const rpc=await fetch(env.url+'/rest/v1/rpc/import_material_catalog_v954',{method:'POST',headers:{...dbHeaders,'Content-Type':'application/json'},signal:AbortSignal.timeout(20000),body:JSON.stringify({p_company:company,p_supplier:supplier,p_rows:[row],p_confirm_net_eur:true,p_use_vk1:true})});
     if(!rpc.ok){const e=await rpc.json().catch(()=>({}));throw fail('ARTICLE_IMPORT',e.code==='40001'?'Der Artikel wurde inzwischen ge\u00e4ndert. Bitte die Suche aktualisieren.':'Der Artikel konnte nicht best\u00e4tigt gespeichert werden. Bitte die Materialliste pr\u00fcfen.',rpc.status>=500?502:409);}
     const result=await rpc.json(),counts=['created','updated','unchanged'].map(k=>result?.[k]);if(result.company_id!==company||result.catalog_import_version!==911||result.standard_price_source!=='recommended_price_1'||counts.some(n=>!Number.isSafeInteger(n)||n<0)||counts.reduce((a,b)=>a+b,0)!==1)throw fail('ARTICLE_IMPORT','Die Speicherung wurde nicht eindeutig best\u00e4tigt. Bitte die Materialliste pr\u00fcfen.',502);

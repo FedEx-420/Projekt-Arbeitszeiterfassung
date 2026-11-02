@@ -383,7 +383,7 @@
   const materialUnit = material => normalizeUnit(material?.unit,isHourlyMaterial(material));
   const itemUnit = item => normalizeUnit(item?.unit,isHourlyMaterial(item?.position_name || item?.name));
   function unitSelect(name,value,attributes='') { return `<label>Einheit<select name="${escape(name)}" class="material-unit" ${attributes}>${MATERIAL_UNITS.map(unit=>`<option value="${unit}" ${unit===value?'selected':''}>${unit}</option>`).join('')}</select></label>`; }
-  function materialRow(item = {}) { return `<div class="material-row"><label>Material<input name="material" list="materials" value="${escape(item.position_name || item.name || '')}"></label><label>Menge<input name="quantity" type="number" min="0.25" step="0.25" value="${escape(item.quantity || 1)}"></label>${unitSelect('unit',itemUnit(item),`data-material-unit data-unit-explicit="${Boolean(item.id || item.unit)}"`)}</div>`; }
+  function materialRow(item = {}) { return `<div class="material-row" data-material-id="${escape(item.material_id||'')}"><label>Material<input name="material" list="materials" value="${escape(item.position_name || item.name || '')}"></label><label>Menge<input name="quantity" type="number" min="0.25" step="0.25" value="${escape(item.quantity || 1)}"></label>${unitSelect('unit',itemUnit(item),`data-material-unit data-unit-explicit="${Boolean(item.id || item.unit)}"`)}</div>`; }
   root.addEventListener('change',event=>{if(event.target.matches('[data-material-unit]'))event.target.dataset.unitExplicit='true';});
   root.addEventListener('input',event=>{
     if(event.target.name!=='material')return;
@@ -524,7 +524,7 @@
   }
 
   function materialEditFields(material) {
-    return '<input type="hidden" name="id" value="' + escape(material.id) + '"><label>Artikel<input name="name" required value="' + escape(material.name) + '"></label><label>Preis in €<input name="price" type="number" min="0" step="0.01" value="' + n(material.unit_price) + '"></label>' + unitSelect('unit',materialUnit(material));
+    return (window.WorktimeArticleTools?.html(material)||'')+'<input type="hidden" name="id" value="' + escape(material.id) + '"><label>Artikel<input name="name" required value="' + escape(material.name) + '"></label><label>Preis in €<input name="price" type="number" min="0" step="0.01" value="' + n(material.unit_price) + '"></label>' + unitSelect('unit',materialUnit(material));
   }
   function materialsView() {
     const materials = state.rows.materials.filter(row => same(row.business_id, businessId()) && row.active !== false);
@@ -569,7 +569,7 @@
     const invoiced = state.billingMode === 'paid', group = invoiceGroups(invoiced).find(item => same(item.key, state.billingKey));
     if (!group) return `<section class="panel"><h2>Abrechnung nicht gefunden</h2><button type="button" class="secondary" data-action="close-billing">Zurück</button></section>`;
     const total = group.orders.reduce((sum, row) => sum + orderHours(row), 0);
-    const combinedDetails = group.orders.map(row => { const materials = state.rows.items.filter(item => same(item.work_order_id, row.id)); return `<div class="row-card"><div><b>${dateText(row.work_date)} · ${escape(row.title || 'Arbeitsschein')}</b><span>${timeText(row.start_time)} – ${timeText(row.end_time)} · Pause ${h(row.pause_hours)} · ${h(row.executed_hours)}</span>${row.documentation ? `<p>${escape(row.documentation)}</p>` : ''}${materials.length ? `<p><b>Material:</b> ${materials.map(item => `${escape(item.position_name)} (${n(item.quantity).toLocaleString('de-DE')} ${escape(itemUnit(item))})`).join(', ')}</p>` : ''}</div></div>`; }).join('');
+    const combinedDetails = group.orders.map(row => { const materials = state.rows.items.filter(item => same(item.work_order_id, row.id)); return `<div class="row-card"><div><b>${dateText(row.work_date)} · ${escape(row.title || 'Arbeitsschein')}</b><span>${timeText(row.start_time)} – ${timeText(row.end_time)} · Pause ${h(row.pause_hours)} · ${h(row.executed_hours)}</span>${row.documentation ? `<p>${escape(row.documentation)}</p>` : ''}${materials.length ? `<p><b>Material:</b> ${materials.map(item => `${window.WorktimeArticleTools?.html(state.rows.materials.find(m=>same(m.id,item.material_id)&&same(m.business_id,businessId())))||''}${escape(item.position_name)} (${n(item.quantity).toLocaleString('de-DE')} ${escape(itemUnit(item))})`).join(', ')}</p>` : ''}</div></div>`; }).join('');
     return `<section class="page-head"><div><span class="eyebrow">${invoiced ? 'Bereits abgerechnet' : 'Ein gemeinsamer offener Arbeitsschein'}</span><h2>${escape(group.customerName)}</h2><p>${group.orders.length} zusammengefügte Einträge · ${h(total)}</p></div><div class="actions">${invoiced ? '' : '<button type="button" class="primary" data-action="invoice-group">Rechnung erstellen</button><button type="button" class="secondary" data-action="mark-invoice-group">Als abgerechnet markieren</button>'}<button type="button" class="secondary" data-action="billing-pdf">Arbeitsnachweis als PDF</button><button type="button" class="secondary" data-action="close-billing">Zurück</button></div></section><section class="panel"><h3>Gesamter Arbeitsschein</h3>${combinedDetails}</section>`;
   }
 
@@ -2189,6 +2189,8 @@
     },true);
     root.addEventListener('click',event=>{const button=event.target.closest('[data-action="nav"]');if(button?.dataset.view==='invoices-paid')invoiceLedger.load().then(()=>{if(state.view==='invoices-paid')render();});});
   }
+  const articleTools=window.WorktimeArticleTools?.create({root,state,businessId,api});
+  const beforeArticleTools=render;render=()=>{beforeArticleTools();articleTools?.afterRender();};
   const selectionPhotos=window.WorktimeProductFeatures?.installSelections({root,state,businessId});
   const flowGuide=window.WorktimeAppFlow?.create({root,state,businessId});if(flowGuide){const renderBeforeFlow=render;render=()=>{renderBeforeFlow();flowGuide.afterRender();selectionPhotos?.afterRender();};flowGuide.afterRender();selectionPhotos?.afterRender();}
   window.WorktimeGermanProducts?.install({root,state,businessId,render:()=>render()});

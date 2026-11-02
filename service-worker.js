@@ -1,4 +1,4 @@
-const CACHE = 'arbeitszeit-neu-v958';
+const CACHE = 'arbeitszeit-neu-v959';
 const FILES = ['./','./index.html','./styles-v700.css','./responsive-v701.css','./navigation-v710.css','./menu-v720.css','./calendar-v800.css?v=2','./home-v827.css?v=3','./signature-v828.css?v=2','./planned-orders-v855.css','./offers-v857.css?v=908','./material-units-v860.css','./vendor/pdf-lib-1.17.1.min.js','./planning-pdf.js?v=854','./documents-pdf-v857.js?v=908','./offers-v857.js?v=908','./app-v800.js?v=908','./receipt-pdf-v863-1.js','./arrival-timer-v865.js?v=875','./iphone-shortcuts-v870.js','./iphone-shortcuts-v870.css','./owntracks-v871.js?v=908','./owntracks-v871.css?v=906','./device-features-v863.js?v=908','./device-features-v863.css?v=873','./config.js?v=875','./manifest.webmanifest','./icon.svg'];
 FILES.push('./presentation-v900.css','./platform-v900.js','./guidance-v900.js?v=907','./help-topics-v900.js','./navigation-v901.js?v=908','./navigation-v901.css');
 FILES.push('./legal-templates-v900.js','./legal-v900.js');
@@ -98,3 +98,5 @@ self.addEventListener('notificationclick',event=>{
     return self.clients.openWindow(url);
   }));
 });
+
+for(const file of ["article-search-v947.js", "purchase-search-v939.js", "material-browser-v926.js", "product-features-v928.js", "app-v800.js", "catalog-ui-v908.js", "catalog-import-ui-v910.js", "catalog-workflow-v933.js", "supplier-cart-ui-v938.js", "invoice-ledger-ui-v908.js", "article-tools-v959.js", "article-tools-v959.css", "offers-v857.js"]){const i=FILES.findIndex(url=>url.split('?')[0]==='./'+file);if(i>=0)FILES[i]='./'+file+'?v=959';else FILES.push('./'+file+'?v=959');}

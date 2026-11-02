@@ -31,9 +31,11 @@ Nach einer Veröffentlichung liefert GitHub Pages den neuen Stand automatisch au
 
 Private Kataloge, Einkaufspreise, Kundendaten, Chatprotokolle und Zugangsdaten werden nicht in dieses Repository hochgeladen. Das Chat-Textarchiv bleibt im eigenen privaten ChatGPT-Projekt. Die hier gepflegte fachliche/technische Übergabe und der Repository-Stand ermöglichen die Weiterentwicklung; lokale Originaldateien und ungesicherte Eingaben müssen separat gesichert werden.
 
+- [Prüfbericht: gemeinsame Artikelbilder, Funktionssuche und Favoriten](docs/Pruefstand_v959.md)
+
 ## Aktueller Schwerpunkt
 
-Stand der Arbeit an v958:
+Stand der Arbeit an v959:
 
 - Herstellerbilder werden über eindeutige GTIN oder bestätigte Herstellerartikelnummer zugeordnet. Großhändlernummern und ähnlich klingende Namen reichen dafür nicht aus.
 - Zusätzlich zu Hager/Berker/Elcom wurde der öffentliche JUNG-Katalog als weitere Bildquelle angebunden. Die erste Ergänzung umfasst 40 geprüfte Produktreferenzen; der geplante Aktualisierungslauf ergänzt weitere.
@@ -41,6 +43,7 @@ Stand der Arbeit an v958:
 - Der lokale Bildindex wird sofort geladen; die aktuelle Onlinefassung folgt im Hintergrund.
 - Kataloge werden paketweise aus IndexedDB gelesen. Die Einkaufssuche baut und sortiert die Trefferliste nicht mehr bei jedem geprüften Katalogartikel erneut auf.
 - Suchvorschläge vermeiden wiederholte Textnormalisierung und doppelte technische Filterung. Gleiche Kennungen, strenge Serie/Farbe und geänderte Artikeltexte sind gesondert geprüft; die Messung im Prüfbericht betrifft nur den konkreten lokalen Ablauf.
+- v959 verwendet gemeinsame Artikelbild-/Sternanzeigen und persönliche Cloud-Favoritenlisten je Benutzer/Firma. Favoriten übernehmen keine Preise oder Bestandsversprechen. Normale Schalterfunktionen stehen vor nicht angefragten Sondervarianten; lokale Funktionssuchen prüfen den ganzen Katalog. Bei aktiver Online-Suche bleibt das frühzeitige Beenden unabhängiger lokaler Scans erhalten.
 - Die Checkliste trennt umgesetzte, geprüfte Punkte von teilweise erledigten und offenen Wünschen. Eine vollständig schnelle App oder Bilder für jeden Artikel sind noch nicht nachgewiesen.
 
 ## Für die nächste Codex-Sitzung

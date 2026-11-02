@@ -11,6 +11,14 @@ ZEICHEN
 Ein erfolgreicher Test mit Beispieldaten ist kein Live-Test jedes Geschäftskontos.
 
 ALS NÄCHSTES
+[x] Gemeinsame Bildanzeige für Artikel in Suche/Vorschlägen, Materialbearbeitung,
+    Katalogvorschau, Einkauf sowie Arbeitsschein-/Angebots-/Rechnungspositionen.
+    Fehlende eindeutige Fotos bleiben als fehlend gekennzeichnet (v959).
+[x] Suche nach normaler Produktfunktion priorisieren, z. B. Berker-Wechselschalter-
+    Einsatz vor Kontrollvarianten; Materialliste und 1.201-Artikel-Katalog geprüft.
+[x] Benennbare, kontogeschützte Cloud-Favoritenlisten mit Stern an Artikeln anbieten;
+    Artikel aus Materialliste/Katalogsuche hinzufügen und wiederfinden.
+    Eigentümer-/Firmenrechte, Wiederholung und Browserablauf geprüft (v959).
 [x] JUNG als zusätzliche eindeutige Bildquelle integrieren: 40 Produktbilder
     ergänzt, automatische Fortsetzung vorbereitet; Kennungs-/Ladetests bestanden.
 [x] WAGO als weitere eindeutige Bildquelle integrieren: erste 26 Produktreferenzen,

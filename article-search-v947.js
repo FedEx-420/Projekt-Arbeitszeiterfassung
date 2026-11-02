@@ -24,7 +24,20 @@
   }
   return {accept:true,bonus:Number.isFinite(position)?7000:0};
  }
- function score(m,query){const q=normalize(query),c=compact(query);if(!q)return 0;const ids=identifiers(m).map(compact);if(ids.includes(c))return 100000;if(ids.some(v=>v.startsWith(c)))return 60000;const name=normalize(m.catalog_product_name||m.name),i=intent(m,query),extras=/\bsteckdose(?:n)?\b/.test(q)?['led','usb','orientier','kontroll','zeitschalt','abschliess','beleucht'].filter(t=>name.includes(t)&&!q.includes(t)).length*2500:0;return (i.accept?i.bonus:-20000)-extras+(name===q?4000:name.startsWith(q)?2000:name.includes(q)?1000:0)+q.split(' ').reduce((sum,t)=>sum+(name.split(' ').includes(t)?30:name.includes(t)?10:0),0);}
+
+ // Function intent outranks unrequested special variants; this is not a sales-popularity claim.
+ function functionBonus(m,query){
+  const q=normalize(query),name=normalize(m.catalog_product_name||m.name);
+  const kinds=[['wechselschalter',/wechsel\s*schalter/],['kreuzschalter',/kreuz\s*schalter/],['serienschalter',/serien\s*schalter/],['taster',/taster/],['steckdose',/steckdose/],['leitungsschutzschalter',/leitungsschutzschalter/],['fehlerstromschutzschalter',/fehlerstromschutzschalter|fi schalter/]];
+  const wanted=kinds.find(([,rx])=>rx.test(q));if(!wanted)return 0;
+  if(!wanted[1].test(name))return -15000;
+  const variants=[['kontroll',/kontroll|rueckmeld/],['beleuchtet',/beleuchtet|beleuchtung|glimm|led/],['orientierung',/orientierung/],['jalousie',/jalousie|rollladen/],['elektronik',/elektroni|smart|funk|knx|busankoppler/],['zweipolig',/zweipol|2 pol|2pol/],['aufputz',/aufputz|\bap\b/],['feuchtraum',/feuchtraum|wassergeschuetzt/]];
+  let penalty=0;for(const [,rx] of variants)if(rx.test(name)&&!rx.test(q))penalty+=18000;
+  const accessory=/wippe|abdeckung|zentralplatte|rahmen|ersatz|zubehoer|adapter/;
+  if(accessory.test(name)&&!accessory.test(q))penalty+=30000;
+  return 14000-penalty+(/einsatz/.test(name)&&!accessory.test(name)?2000:0);
+ }
+ function score(m,query){const q=normalize(query),c=compact(query);if(!q)return 0;const ids=identifiers(m).map(compact);if(ids.includes(c))return 100000;if(ids.some(v=>v.startsWith(c)))return 60000;const name=normalize(m.catalog_product_name||m.name),i=intent(m,query),extras=/\bsteckdose(?:n)?\b/.test(q)?['led','usb','orientier','kontroll','zeitschalt','abschliess','beleucht'].filter(t=>name.includes(t)&&!q.includes(t)).length*2500:0;return functionBonus(m,query)+(i.accept?i.bonus:-20000)-extras+(name===q?4000:name.startsWith(q)?2000:name.includes(q)?1000:0)+q.split(' ').reduce((sum,t)=>sum+(name.split(' ').includes(t)?30:name.includes(t)?10:0),0);}
  function rank(rows,query,get=r=>r){return rows.map((row,index)=>({row,index,score:score(get(row),query)})).sort((a,b)=>b.score-a.score||a.index-b.index).map(x=>x.row);}
  function matches(m,query,featureAPI,extra=[]){if(!String(query||'').trim())return true;const q=compact(query);if(identifiers(m).some(v=>compact(v)===q))return true;
   if(!intent(m,query).accept)return false;
@@ -35,5 +48,6 @@
  }
  function facets(rows,getValue,selected=''){const counts=new Map();for(const m of rows){const raw=getValue(m),values=Array.isArray(raw)?raw:[raw];for(const value of new Set(values.filter(Boolean)))counts.set(String(value),(counts.get(String(value))||0)+1);}if(selected&&!counts.has(selected))counts.set(selected,0);return [...counts].sort((a,b)=>a[0].localeCompare(b[0],'de',{numeric:true})).map(([value,count])=>({value,count}));}
  function suggestions(rows,query,{describe=m=>({manufacturer:m.catalog_manufacturer,category:m.catalog_category}),features,limit=5,prioritize=rows=>rows,preFiltered=false}={}){if(normalize(query).length<2)return {articles:[],groups:[]};const articles=prioritize(rank(preFiltered?rows:rows.filter(m=>matches(m,query,features)),query)).slice(0,limit),groups=[];for(const key of ['manufacturer','category']){const seen=new Set();for(const m of rows){const value=describe(m)[key];if(value&&!seen.has(value)&&normalize(value).includes(normalize(query))){seen.add(value);groups.push({key,value});if(seen.size>=3)break;}}}return{articles,groups};}
- return Object.freeze({normalize,compact,identifiers,intent,score,rank,matches,facets,suggestions});
+ const completeRanking=query=>/schalter|taster|steckdose|dimmer|bohrer|schraube|leitung|kabel|sicherung|leuchte/i.test(String(query||""));
+ return Object.freeze({completeRanking,normalize,compact,identifiers,intent,score,rank,matches,facets,suggestions});
 });

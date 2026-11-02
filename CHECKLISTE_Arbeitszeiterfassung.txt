@@ -13,6 +13,13 @@ Ein erfolgreicher Test mit Beispieldaten ist kein Live-Test jedes Geschäftskont
 ALS NÄCHSTES
 [x] JUNG als zusätzliche eindeutige Bildquelle integrieren: 40 Produktbilder
     ergänzt, automatische Fortsetzung vorbereitet; Kennungs-/Ladetests bestanden.
+[x] WAGO als weitere eindeutige Bildquelle integrieren: erste 26 Produktreferenzen,
+    darunter 221-412; echte Bildanzeige und Kennungs-/Quellenprüfungen bestanden.
+[x] Weitere 40 JUNG-Bildzuordnungen ergänzen; häufige Standardartikel und mehrere
+    Produktgruppen bevorzugen. Insgesamt 80 JUNG-Referenzen im öffentlichen Index.
+[x] Suchvorschläge durch begrenzten Textcache und entfallende doppelte Filterung
+    beschleunigen. Lokaler 6.000-Artikel-Vergleich: ca. 1,90 s vorher / 0,75 s danach.
+    Treffergruppen, strenge Filter und geänderte Artikelnamen gesondert geprüft.
 [ ] Weitere Hersteller und Produktgruppen mit eindeutigen Bildern ergänzen.
 [x] Artikel-/Katalogsuche an konkreten Engpässen beschleunigen und messen.
     Bestehende Browserabläufe weiter erfolgreich; keine pauschale Tempo-Garantie.

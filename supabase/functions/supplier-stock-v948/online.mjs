@@ -13,13 +13,13 @@ export function normalizeSearch(raw){if(!raw||!Array.isArray(raw.products)||!Num
 export function normalizeArticle(detail,pricing,sku,summary={}){const d=detail?.successful===true?detail.obj:null,k=d?.productKey,echo=k?.productnumber??k?.productNumber;
  if(!d||typeof echo!=='string'||echo.toUpperCase()!==sku.toUpperCase())throw error('Der Händlerartikel konnte seiner Bestellnummer nicht eindeutig zugeordnet werden.');
  const p=pricing?.successful===true&&Array.isArray(pricing.obj?.priceArray)&&pricing.obj.priceArray.length===1?pricing.obj.priceArray[0]:null;
- const priceUnit=p?.priceUnit??p?.priceUnitDescription,scale=typeof priceUnit==='number'?priceUnit:typeof priceUnit==='string'&&/^\d+(?:\.\d+)?$/.test(priceUnit.trim())?Number(priceUnit):null;
+ const priceUnit=p?.priceUnit??p?.priceUnitDescription,match=typeof priceUnit==='string'?/^(?:per\s+)?(\d+(?:\.\d+)?)$/i.exec(priceUnit.trim()):null,scale=typeof priceUnit==='number'?priceUnit:match?Number(match[1]):null;
  const u=unit(p?.unit||d.quantityUnit||d.measurementUnit),ek=number(p?.netPrice),list=number(p?.grosPrice);
  const hidden=summary.price_hidden||d.hidePrices===true||d.priceHidden===true;
  if(!u||!Number.isFinite(scale)||scale<=0||scale>1000000||hidden||list===null||p?.grosPriceCurrency!=='EUR'||(ek!==null&&p?.netPriceCurrency!=='EUR'))throw error('Einheit oder eindeutiger Euro-Nettolistenpreis fehlt. Der Artikel wurde nicht übernommen.','ARTICLE_DATA',409);
  const price=n=>n===null?null:Math.round(n/scale*10000)/10000;
  if(price(list)>1000000||price(ek)>1000000)throw error('Der Händlerpreis liegt außerhalb des unterstützten Bereichs.','ARTICLE_DATA',409);
- let manufacturer=text(d.oX_Supplier||d.manufacturerName,120);if(/^[A-Z]{1,3}\d{1,5}$/.test(manufacturer))manufacturer='';const mpn=text(d.oX_SupplierProductNumber||d.supplierProductNumber,120)||summary.manufacturer_number||'';
+ let manufacturer=text(d.oX_Supplier||d.manufacturerName,120);if(/^[A-Z]{1,8}\d{1,5}$/.test(manufacturer))manufacturer='';const mpn=text(d.oX_SupplierProductNumber||d.supplierProductNumber,120)||summary.manufacturer_number||'';
  const attributes={};for(const a of Array.isArray(d.attributes)?d.attributes.slice(0,60):[]){const key=text(a.name,160),value=text(a.value,160);if(key&&value&&!['__proto__','constructor','prototype'].includes(key))attributes[key]=value;}
  const name=text([d.description1,d.description2].filter(x=>typeof x==='string').join(' '),200)||summary.name,classification=C.describe({name,manufacturer}),features=F.forStorage(F.fromRow({name,...attributes}).features);
  if(summary.locked||d.purchasingLock===true||d.locked===true)throw error('Dieser Artikel ist beim Händler für den Einkauf gesperrt.','ARTICLE_LOCKED',409);

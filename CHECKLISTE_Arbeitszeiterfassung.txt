@@ -36,8 +36,16 @@ ALS NÄCHSTES
 GERÄTEWECHSEL UND CLOUD
 [x] Zentralen Projekteinstieg und bereinigte Übergabe für den neuen Laptop
     vorbereiten: PROJEKT_START.md; Code, Checkliste und Prüfberichte auf GitHub.
-[ ] Zusätzliche Codex-Cloud-Arbeitsumgebung im Konto erstellen und veröffentlichen.
-    Bisher keine Umgebung vorhanden; Anmeldung im geöffneten Browser erforderlich.
+[x] Privates ChatGPT-Projekt „Arbeitszeiterfassung“ anheften, Übergabe-Chat zuordnen
+    und dauerhafte Anweisungen mit Verweisen auf den aktuellen GitHub-Stand speichern.
+[x] Historisches Textarchiv der verfügbaren sichtbaren Chatnachrichten im privaten
+    Projekt-Chat als Anhang sichern; Bilder und Originalkataloge sind nicht enthalten.
+[x] Zusätzliche private Codex-Cloud-Arbeitsumgebung „Projekt-Arbeitszeiterfassung“
+    mit dem bestehenden Repository erstellen und veröffentlichen; startbar bestätigt.
+[ ] Browsertests in einer frisch gestarteten Cloud-Instanz vollständig abschließen.
+    Abhängigkeiten, Git, Webserver, 12 andere CI-Prüfläufe und 3 Python-Tests bestanden.
+    Der Chromium-Download war in der Einrichtungsinstanz durch Netzwerkregeln blockiert.
+    Gezielte Download-Domains sind inzwischen in der veröffentlichten Konfiguration.
 [ ] Alte lokale Katalog-Originaldateien und ungesicherte Entwürfe vor dem
     Gerätewechsel sichern; GitHub enthält diese privaten Dateien nicht.
 [ ] Zugriff auf App, Projekt und erforderliche Verbindungen am neuen Laptop prüfen.

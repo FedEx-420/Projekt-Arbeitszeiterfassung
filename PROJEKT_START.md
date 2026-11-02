@@ -14,7 +14,7 @@ Nach einer Veröffentlichung liefert GitHub Pages den neuen Stand automatisch au
 ## Auf dem neuen Laptop
 
 1. Diese Seite als Lesezeichen speichern. Für die Nutzung der Arbeitszeit-App genügt der App-Link und die gewohnte Anmeldung.
-2. Für die Weiterentwicklung mit demselben GitHub- und ChatGPT-Konto anmelden und dieses Repository in Codex öffnen oder in einer Codex-Cloud-Arbeitsumgebung auswählen.
+2. Für die Weiterentwicklung mit demselben GitHub- und ChatGPT-Konto anmelden. Das angeheftete ChatGPT-Projekt heißt „Arbeitszeiterfassung“ und enthält den Chat „Projektübergabe Arbeitszeiterfassung“. Für Codearbeit in Codex „Ausführen in → Cloud“ und die private Umgebung „Projekt-Arbeitszeiterfassung“ auswählen; das bestehende Repository ist dort hinterlegt.
 3. Im neuen Chat sagen: „Arbeite am Projekt FedEx-420/Projekt-Arbeitszeiterfassung weiter. Lies zuerst AGENTS.md, PROJEKT_START.md und CHECKLISTE_Arbeitszeiterfassung.txt. Priorität haben eindeutige Artikelbilder und schnelle Artikel-/Katalogsuche.“
 4. Nur falls erforderlich die GitHub-/Supabase-Verbindung erneut freigeben. Kennwörter gehören in die jeweiligen Anmeldeformulare, niemals in Projektdateien oder den Chat.
 
@@ -26,9 +26,9 @@ Nach einer Veröffentlichung liefert GitHub Pages den neuen Stand automatisch au
 | Geschäftsdaten, die erfolgreich in der App gespeichert wurden | Bestehendes Supabase-Projekt; auf dem neuen Gerät mit dem richtigen App-Konto anmelden |
 | Originaldateien gespeicherter Fachhändlerkataloge und deren lokaler Suchindex | Bisher im jeweiligen Browserprofil. Im alten Browser unter „Kataloge → Fachhändler Kataloge → Originaldateien herunterladen“ sichern und auf dem neuen Gerät wieder einlesen. Eine gemeinsame Cloudablage ist noch offen. |
 | Noch nicht übernommene Eingaben, einzelne Entwürfe, Downloads und Screenshots | Können ausschließlich auf dem bisherigen Gerät liegen; vor dessen Zurücksetzen separat sichern |
-| Vollständiger bisheriger Chatverlauf | Ist nicht Bestandteil des GitHub-Projekts. Chat-Synchronisierung und Dateizugriff sind unterschiedliche Funktionen; ein neuer Cloud-Chat übernimmt den alten lokalen Chat nicht automatisch. |
+| Historische Chattexte | Ein Textarchiv der im bisherigen lokalen Chatprotokoll verfügbaren Nutzertexte und sichtbaren Antworten liegt im privaten ChatGPT-Projekt im Chat „Projektübergabe Arbeitszeiterfassung“. Es ist eine Momentaufnahme vom 02.11.2026, enthält keine Bilddateien/Tool-Rohdaten/Originalkataloge und ersetzt keine laufende Gesprächssynchronisierung. Der ursprüngliche lokale Codex-Chat wurde nicht in eine native Cloud-Konversation umgewandelt. |
 
-Private Kataloge, Einkaufspreise, Kundendaten, Chatprotokolle und Zugangsdaten werden nicht in dieses Repository hochgeladen. Für den Gerätewechsel genügt für die Weiterentwicklung die hier gepflegte fachliche/technische Übergabe; sie ist kein vollständiger Export aller privaten Inhalte.
+Private Kataloge, Einkaufspreise, Kundendaten, Chatprotokolle und Zugangsdaten werden nicht in dieses Repository hochgeladen. Das Chat-Textarchiv bleibt im eigenen privaten ChatGPT-Projekt. Die hier gepflegte fachliche/technische Übergabe und der Repository-Stand ermöglichen die Weiterentwicklung; lokale Originaldateien und ungesicherte Eingaben müssen separat gesichert werden.
 
 ## Aktueller Schwerpunkt
 
@@ -46,6 +46,8 @@ Stand der Arbeit an v957:
 
 Neue Wünsche in `CHECKLISTE_Arbeitszeiterfassung.txt` ergänzen. Erst nach Umsetzung und passender Prüfung abhaken. Nach einem abgeschlossenen Arbeitsblock Änderungen prüfen und im GitHub-Projekt sichern; veröffentlichte App-Dateien anschließend gegen den zusammengeführten Commit prüfen. Ungespeicherte lokale Änderungen werden nicht allein durch die Existenz des GitHub-Projekts gesichert.
 
-Eine zusätzliche Codex-Cloud-Arbeitsumgebung wurde angefragt. Sie darf erst als eingerichtet gelten, wenn sie im Konto veröffentlicht und startbar ist. Die vorbereitete Übergabe hier funktioniert unabhängig davon.
+Die private Codex-Cloud-Umgebung „Projekt-Arbeitszeiterfassung“ ist veröffentlicht und wird im Konto als startbar angezeigt. Repository, installierte Node-Abhängigkeiten, Git-Zugriff und lokaler HTTP-Start wurden in der Einrichtung geprüft; 12 nicht-browserbasierte CI-Prüfläufe und die drei Python-Tests bestanden. Die zehn Browser-Testbefehle bleiben bis zu einem erfolgreichen Lauf in der frischen Cloud-Instanz offen: Der gepinnte Chromium-Download war in der Einrichtungsinstanz durch die dort noch aktive Netzwerkpolicy blockiert. Die veröffentlichte Konfiguration enthält die gezielten Download-Domains. Es wurden keine Produktionszugänge oder echten Bestellungen/Rechnungen für die Einrichtung benutzt.
+
+Ein neuer Cloud-Chat startet mit dem veröffentlichten Stand der Umgebung. Änderungen am Programm nach Prüfung committen und auf GitHub sichern; mehrere bestehende Chats teilen nicht automatisch denselben laufenden Arbeitsordner. Für den aktuellen Entwicklungsstand immer den tatsächlichen Repository-Commit prüfen. Das ChatGPT-Projekt enthält dauerhafte Anweisungen, die auf die jeweils aktuellen Projektdateien verweisen.
 
 Offizielle Hinweise: [Codex-Cloud-Arbeitsumgebungen](https://learn.chatgpt.com/docs/environments/cloud-environments), [Projekte, Chats und Dateizugriff](https://learn.chatgpt.com/docs/projects).

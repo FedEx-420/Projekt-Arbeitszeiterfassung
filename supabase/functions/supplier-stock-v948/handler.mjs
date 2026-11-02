@@ -116,6 +116,6 @@ export function createHandler({fetch=globalThis.fetch,env,md5,now=Date.now,crypt
    const skus=[...new Set(materials.map(m=>m.catalog_article_number))];if(skus.some(s=>typeof s!=='string'||s.length>120))throw fail('ARTICLES','Eine Artikelnummer ist ungültig.');
    const results=await merchant.stocks(session,skus,body.warehouse),bySKU=new Map(results.map(r=>[r.sku,r]));
    return json({company,supplier,warehouse:body.warehouse,connection:await codec.seal(session,context),expires_at:new Date(session.expires).toISOString(),items:materials.map(m=>({material_id:m.id,...bySKU.get(m.catalog_article_number)}))});
-  }catch(e){return json({error:e.code||'UNAVAILABLE',code:e.code||'UNAVAILABLE',message:e.code?e.message:'Die Bestandsabfrage konnte nicht abgeschlossen werden. Bitte später erneut versuchen.'},e.status||502);}
+  }catch(e){return json({error:e.code==='ARTICLE_DATA'?e.message:e.code||'UNAVAILABLE',code:e.code||'UNAVAILABLE',message:e.code?e.message:'Die Bestandsabfrage konnte nicht abgeschlossen werden. Bitte später erneut versuchen.'},e.status||502);}
  };
 }

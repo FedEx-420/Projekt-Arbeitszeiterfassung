@@ -41,6 +41,8 @@ jobs:
           node tests/team/product-display-v930.test.cjs
           node tests/team/image-sources-v957.test.cjs
           node tests/team/wago-display-v958.test.cjs
+          node tests/team/manufacturer-display-v960.test.cjs
+          python tests/team/manufacturer-images-v960.test.py
           node tests/team/search-speed-v958.test.cjs
           node tests/team/article-intent-v959.test.cjs
           node tests/team/favorites-database-v959.test.cjs

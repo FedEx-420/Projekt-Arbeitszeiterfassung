@@ -1,0 +1,130 @@
+ARBEITSZEITERFASSUNG – GEMEINSAME CHECKLISTE
+Stand: 02.11.2026
+
+Diese Datei ist die zentrale Aufgabenliste des Projekts. Die Desktop-Verknüpfung
+„Arbeitszeiterfassung - Checkliste“ öffnet genau diese Datei, keine zweite Kopie.
+Ich aktualisiere die Häkchen bei den weiteren Arbeiten.
+
+ZEICHEN
+[x] Umgesetzt; die genannte Prüfung ist erfolgt.
+[ ] Noch offen, teilweise umgesetzt oder noch abschließend zu prüfen.
+Ein erfolgreicher Test mit Beispieldaten ist kein Live-Test jedes Geschäftskontos.
+
+ALS NÄCHSTES
+[x] Einkauf schneller und ruhiger starten: keine beliebigen Treffer oder laufenden
+    Händlerabfragen, solange noch kein Suchbegriff oder Filter gewählt wurde.
+    Im vollständigen Browserablauf mit vorhandenem Artikelstamm und verbundener
+    Händleranmeldung getestet (v956).
+[ ] Automatische Bildzuordnung über weitere eindeutige Hersteller-/Händlerquellen
+    erweitern. Eine flächendeckende Bildversorgung besteht noch nicht.
+[ ] Suchfragen und Filter anhand weiterer echter Produktgruppen überprüfen.
+    Schwerpunkt: Schutzgeräte, Schalterprogramme, Leitungen und Zubehör.
+
+KATALOGE UND PREISE
+[x] DATANORM 4 und 5 sowie ZIP-Dateien mit Artikelstamm einlesen.
+[x] Artikelstamm mit separater Preispflege verbinden; .001-Dateien unterstützen.
+[x] CSV, TSV, TXT, JSON, XLSX und BMEcat-XML als Katalogquellen unterstützen.
+[x] Eindeutige EK-/VK-Angaben übernehmen; Listenpreis als VK * verwenden, wenn
+    kein ausdrücklicher normaler Verkaufspreis vorhanden ist.
+[x] Preise je 100 Einheiten korrekt auf eine Materialeinheit umrechnen.
+    Auch das echte Neugart-Format „Per 100“ ist geprüft.
+[x] Hersteller/Kategorien vor dem Import auswählen; Häkchen allein starten keine
+    erneute Katalogsuche. Suchstart über den gemeinsamen Button.
+[x] Alle passenden Katalogartikel übernehmen; keine feste 1000er-Importgrenze.
+[x] Fortschritt anzeigen und nach bestätigten Speicherpaketen fortsetzen können.
+[x] Fehlerhafte Artikel vor der Übernahme anzeigen beziehungsweise korrigieren.
+[x] Bestehende Händlerartikel bei erneutem Import aktualisieren statt duplizieren.
+[x] Kategorien, Hersteller und Großhändler mit prüfbarer Gruppenauswahl verwalten;
+    betroffene Artikel erst nach ausdrücklicher Bestätigung entfernen.
+[x] Kataloge in eigenem Menü mit lokaler Bibliothek und Originaldateien anbieten.
+[x] In der Materialliste „Aus Katalogdatei entnehmen“ standardmäßig ausgeschaltet
+    lassen und erst nach Auswahl eine Katalogquelle abfragen.
+[ ] Originalkataloge sicher geräteübergreifend bereitstellen. Bisher liegen sie
+    im jeweiligen Browserprofil; sie erscheinen nicht automatisch auf einem
+    neuen Laptop. Eine Cloud-Katalogablage ist noch nicht eingerichtet.
+[ ] Gespeicherte Originalkataloge im aktuellen Katalogmenü leichter analysieren
+    und eine verständliche druckbare/PDF-Übersicht anbieten.
+[ ] Beleg-/Katalogerkennung aus PDF und Bildern einschließlich OCR weiter
+    verbessern. Diese Formate sind nicht als universeller Katalogimport fertig.
+[ ] Fehlende/unklare Preis- und Einheitsangaben in jedem unterstützten Importweg
+    einheitlich zur verständlichen Nachbearbeitung anbieten.
+
+ARTIKELSUCHE, HERSTELLER UND BILDER
+[x] Hersteller, Kategorien und Händler zum Eingrenzen anbieten; Materialtreffer
+    seitenweise statt als endlose Liste darstellen.
+[x] Technische Fragen nach Funktion, Serie, Farbe und weiteren Merkmalen anbieten.
+[x] Berker S.1 strikt von Integro trennen; passende Serien-/Farbfilter testen.
+[x] Gewöhnliche Stromsteckdosen von HDMI/CEE-Produkten und Zubehör unterscheiden.
+[x] Vollständige Artikelnamen anzeigen; eindeutige bekannte Abkürzungen auflösen.
+[x] Hersteller/Kategorien bei fehlenden eindeutigen Feldern aus plausiblen
+    Bezeichnungen ableiten; interne Händlercodes nicht als Herstellernamen zeigen.
+[x] Gleiche Artikel über gültige GTIN oder ausdrückliche Zuordnung zusammenfassen.
+[x] Ohne GTIN gleiche ausdrückliche Hersteller-Artikelnummer, Hersteller und Einheit
+    nutzen. Widersprüche in sämtlichen gespeicherten technischen Merkmalen oder
+    Barcodes verhindern die automatische Zusammenführung.
+[x] Händlerangebote und deren EK/VK getrennt unter einer gemeinsamen Zuordnung
+    erhalten; historische Dokumente behalten ihre gespeicherten Angaben.
+[x] Vorhandene echte Bildlinks und den eindeutigen Hersteller-Bildindex automatisch
+    verwenden. Fehlende Bilder werden nicht durch ähnliche Produkte ersetzt.
+[x] Bekannte fremde Länderausführungen auch ohne Länderfeld ausfiltern, ohne
+    sämtliche Artikel mit fehlender Länderangabe auszublenden.
+[ ] Deutschland-Zuordnung für weitere Produktgruppen durch verlässliche Daten
+    verbessern. Der bestehende Filter beweist keine pauschale rechtliche Zulassung.
+[ ] Suchführung für noch nicht ausreichend erfasste Merkmale/Produktgruppen
+    erweitern und mit repräsentativen Artikeln prüfen.
+
+EINKAUF UND HÄNDLERANBINDUNG
+[x] Neugart/GC/EFG mit eigener Händleranmeldung verbinden.
+[x] Online-Sortiment auch ohne vorherigen Katalogimport durchsuchen.
+[x] Preis und Lagerbestand vor dem Hinzufügen anzeigen; verfügbare Artikel
+    priorisieren und bestätigte Nullbestände standardmäßig ausblenden.
+[x] Bestand dem gewählten Händler, Artikel und Lager zuordnen. Unklare Bestände
+    werden nicht als „auf Lager“ ausgegeben.
+[x] Abgelaufene Angebote erneut prüfen; geänderte Angaben vor Übernahme zeigen.
+[x] Echte Online-Suche und Übernahme eines Artikels in den Einkaufsentwurf prüfen.
+    Live-Test mit exakter Artikelnummer, Stückpreis, Hersteller und Menge erfolgt.
+[x] Automatische Warenkorbübertragung mit bestätigendem Rückvergleich umsetzen;
+    keine Pflicht zum manuellen Datei-Upload. Früherer Live-Test erfolgreich.
+[x] iPhone-Weiterleitung ohne leeres about:blank vorbereiten und in passenden
+    Browserfixtures prüfen; der Menüeintrag Einkauf ist vorhanden.
+[ ] Den aktuellen Gesamtweg auf einem echten iPhone mit Chrome erneut prüfen:
+    Suche, Bestandsfilter, Mengen, Übergabe und sichtbarer Händlerwarenkorb.
+[ ] Weitere Großhändler wie Gautzsch/GO Online anbinden, soweit eine geeignete
+    Schnittstelle und erforderliche Zugangsdaten verfügbar sind. Neugart ist
+    keine automatische Anbindung aller anderen Händler.
+
+ARBEITSSCHEINE, ANGEBOTE UND RECHNUNGEN
+[x] Überlappende Einzel-Arbeitsscheine ohne Konflikthinweis erlauben und vollständig
+    zählen; Konfliktprüfung bei mehreren Mitarbeitern und Abwesenheiten erhalten.
+[x] Offene Arbeitsscheine gemeinsam auswählen, als abgerechnet markieren oder
+    nach konkreter Bestätigung entfernen; abgerechnete Scheine schützen.
+[x] Rechnungserstellung aus alten/neuen Scheinen sowie Firmenrechte mit
+    isolierten Datenbank- und Oberflächentests prüfen; Serverfunktionen aktivieren.
+[x] Rechnungs- und Stornonummern automatisch je Firma/Jahr vergeben; keine
+    Nummernvergabe durch Vorschauen und keine neuen Nummern bei identischem Retry.
+[x] Individuelle Netto-Materialpreise im Rechnungsentwurf, VK * als Vorgabe und
+    EK zur Kontrolle; Steuerbeträge und endgültige Preise gemeinsam prüfen.
+[x] Händlerquelle in Angeboten/Rechnungen berücksichtigen und abgeschlossene
+    Dokumente gegen nachträgliche Katalogänderungen schützen.
+[x] Netto-Eingaben klar beschriften und Bruttowerte separat darstellen.
+[ ] Einen kontrollierten fachlichen Gesamtdurchlauf mit den tatsächlichen
+    Benutzerrollen abschließen. Es wurden keine echten Rechnungen nur zum Test
+    erstellt; nicht jedes produktive Konto ist dadurch bereits live abgenommen.
+
+BEDIENUNG, QUALITÄT UND ABSICHERUNG
+[x] Betroffene Such-, Preis- und Einkaufsansichten bei 320/390/1366 Pixeln prüfen.
+[x] Automatische relevante Datenbank-/Browserprüfungen und Code Review einrichten.
+[x] Bisherige konkrete Review-Fehler zu Artikelzuordnung, Preisen, Suche und
+    Anmeldewechseln beheben; aktuelle Korrektur erfolgreich geprüft.
+[ ] Alle übrigen Menüs systematisch auf Handy und Laptop durchgehen, einschließlich
+    Angebote/PLZ, Dialoge, Tastaturbedienung und verständlicher Fehlermeldungen.
+[ ] Historische Tests auf die aktuellen Abläufe bringen; eine vollständig grüne
+    historische Gesamttestsuite ist bisher nicht nachgewiesen.
+[ ] Verbleibende ältere Sicherheits-/Authentifizierungshinweise gezielt prüfen
+    und beheben, ohne notwendige Verwaltungsrechte oder bestehende Daten zu ändern.
+
+ABGRENZUNG
+Diese Liste ist der aktuelle, prüfbare Projektstand aus unseren bisherigen
+Wünschen. Offene Punkte werden erst nach Umsetzung und passender Prüfung
+abgehakt. Passwörter, Kundendaten, private Einkaufspreise und private Kataloge
+gehören nicht in diese Datei. Tests dürfen keine echten Bestellungen auslösen.

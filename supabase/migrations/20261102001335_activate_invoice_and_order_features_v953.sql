@@ -1,5 +1,7 @@
 -- Activate the previously prepared v918/v919/v922/v934 features as one transaction.
--- Installs functions only. Existing work orders, invoices, times and prices are unchanged.
+-- Installs or refreshes the same public function signatures; supports already installed originals.
+-- Existing work orders, invoices, times and prices are unchanged. Function owner/ACL
+-- metadata is preserved by CREATE OR REPLACE; explicit grants retain the original API policy.
 BEGIN;
 SET LOCAL lock_timeout='5s';
 SET LOCAL statement_timeout='90s';
@@ -53,7 +55,7 @@ $migration$;
 
 
 
-create function public.prepare_invoice_batch_v919(p_company uuid,p_order_ids jsonb,p_prices jsonb default '{}'::jsonb)
+create or replace function public.prepare_invoice_batch_v919(p_company uuid,p_order_ids jsonb,p_prices jsonb default '{}'::jsonb)
 returns jsonb language plpgsql security invoker set search_path='' as $function$
 declare prepared jsonb;src jsonb;o jsonb;wrapped jsonb;line jsonb;m jsonb;changed_items jsonb;order_items jsonb;
  orders jsonb:='[]';items jsonb:='[]';days jsonb:='[]';day jsonb;keys text[]:='{}';key text;
@@ -113,7 +115,7 @@ begin
    if existing.source_snapshot->'invoice_price_overrides_v919' is distinct from p_prices then raise exception 'Diese Abschlusskennung wurde bereits mit anderen Materialpreisen verwendet.';end if;$retry$;
  if (length(body)-length(replace(body,needle,'')))/length(needle)<>1 then raise exception 'Unbekannte Wiederholungsprüfung im Rechnungsabschluss.';end if;
  body:=replace(body,needle,replacement);
- execute 'create function public.issue_invoice_batch_v919(p_id uuid,p_company uuid,p_number text,p_issued date,p_selection jsonb,p_tax jsonb,p_parties jsonb default null,p_prices jsonb default ''{}''::jsonb) returns public.invoice_batches_v908 language plpgsql security invoker set search_path='''' as '||quote_literal(body);
+ execute 'create or replace function public.issue_invoice_batch_v919(p_id uuid,p_company uuid,p_number text,p_issued date,p_selection jsonb,p_tax jsonb,p_parties jsonb default null,p_prices jsonb default ''{}''::jsonb) returns public.invoice_batches_v908 language plpgsql security invoker set search_path='''' as '||quote_literal(body);
 end;
 $migration$;
 revoke all on function public.issue_invoice_batch_v919(uuid,uuid,text,date,jsonb,jsonb,jsonb,jsonb) from public,anon;
@@ -124,7 +126,7 @@ grant execute on function public.issue_invoice_batch_v919(uuid,uuid,text,date,js
 
 
 
-create function public.prepare_invoice_batch_v922(p_company uuid,p_order_ids jsonb,p_prices jsonb default '{}'::jsonb,p_sources jsonb default '{}'::jsonb)
+create or replace function public.prepare_invoice_batch_v922(p_company uuid,p_order_ids jsonb,p_prices jsonb default '{}'::jsonb,p_sources jsonb default '{}'::jsonb)
 returns jsonb language plpgsql security invoker set search_path='' as $function$
 declare prepared jsonb;src jsonb;o jsonb;wrapped jsonb;line jsonb;m jsonb;changed_items jsonb;order_items jsonb;
  orders jsonb:='[]';items jsonb:='[]';days jsonb:='[]';day jsonb;keys text[]:='{}';key text;
@@ -205,7 +207,7 @@ begin
  if (length(body)-length(replace(body,needle,'')))/length(needle)<>1 then raise exception 'Unbekannte Abschlussprüfung.';end if;
  body:=replace(body,needle,$guard$ if found then
   if existing.source_snapshot->'invoice_sources_v922' is distinct from p_sources then raise exception 'Diese Abschlusskennung wurde bereits mit einer anderen Händlerauswahl verwendet.';end if;$guard$);
- execute 'create function public.issue_invoice_batch_v922(p_id uuid,p_company uuid,p_number text,p_issued date,p_selection jsonb,p_tax jsonb,p_parties jsonb default null,p_prices jsonb default ''{}''::jsonb,p_sources jsonb default ''{}''::jsonb) returns public.invoice_batches_v908 language plpgsql security invoker set search_path='''' as '||quote_literal(body);
+ execute 'create or replace function public.issue_invoice_batch_v922(p_id uuid,p_company uuid,p_number text,p_issued date,p_selection jsonb,p_tax jsonb,p_parties jsonb default null,p_prices jsonb default ''{}''::jsonb,p_sources jsonb default ''{}''::jsonb) returns public.invoice_batches_v908 language plpgsql security invoker set search_path='''' as '||quote_literal(body);
 end;$migration$;
 revoke all on function public.issue_invoice_batch_v922(uuid,uuid,text,date,jsonb,jsonb,jsonb,jsonb,jsonb) from public,anon;
 grant execute on function public.issue_invoice_batch_v922(uuid,uuid,text,date,jsonb,jsonb,jsonb,jsonb,jsonb) to authenticated;

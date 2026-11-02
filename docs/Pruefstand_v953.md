@@ -11,7 +11,7 @@ Die vorherige Oberflaeche war vorhanden, aber vier Serverfunktionen fehlten. Die
 
 Die Live-Statusabfrage bestaetigt alle zwoelf bislang erfassten Installationsmerkmale. Das ist ein Installationsnachweis; echte Rechnungen und Arbeitsscheine wurden zum Testen weder erzeugt noch geloescht. Die neuen Rechnungsfunktionen verwenden Aufruferrechte und sind fuer anonyme Nutzer gesperrt. Die Metadaten der vorhandenen Arbeitsscheinfunktion bleiben durch die Migration unveraendert.
 
-Eine Windows-Zeilenenden-Unvertraeglichkeit in der alten v918-Installationsdatei wurde behoben. Der Sicherheitsvergleich arbeitet nun fuer LF und CRLF gleich. Die TXT-Kopie 11 dient der Sicherung; die Aktivierung wurde bereits ausgefuehrt und darf nicht blind wiederholt werden.
+Eine Windows-Zeilenenden-Unvertraeglichkeit in der alten v918-Installationsdatei wurde behoben. Der Sicherheitsvergleich arbeitet nun fuer LF und CRLF gleich. Die TXT-Kopie 11 dient der Sicherung; die Aktivierung wurde bereits ausgefuehrt. Nach einem Code-Review-Hinweis unterstuetzt die Migration auch vollstaendig installierte Originalerweiterungen und erneute Ausfuehrung; beide Wege sowie unveraenderte Funktionsrechte sind getestet. Eine erneute Installation ist nicht erforderlich.
 
 ## Bereits vorhanden und in passenden isolierten Tests abgedeckt
 

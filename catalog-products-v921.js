@@ -12,7 +12,7 @@
  }
  function decorate({root,materials,api,businessId,reload,render,isManager}){
   if(!materials.some(m=>Object.hasOwn(m,'catalog_gtin')))return;
-  const productGroups=groups(materials),cardsById=new Map([...root.querySelectorAll('[data-action="edit-material"]')].map(b=>[b.dataset.id,b.closest('.row-card')]));
+  const productGroups=globalThis.WorktimeSupplierAvailability?.prioritizeGroups(groups(materials))||groups(materials),cardsById=new Map([...root.querySelectorAll('[data-action="edit-material"]')].map(b=>[b.dataset.id,b.closest('.row-card')]));
   for(const group of productGroups){
    const cards=group.members.map(m=>({m,card:cardsById.get(m.id)})).filter(x=>x.card);
    if(!cards.length||cards[0].card.closest('[data-product-card]'))continue;

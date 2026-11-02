@@ -40,6 +40,9 @@ jobs:
           node tests/team/supplier-cart-edge-v949.test.mjs
           node tests/team/product-display-v930.test.cjs
           node tests/team/image-sources-v957.test.cjs
+          node tests/team/wago-display-v958.test.cjs
+          node tests/team/search-speed-v958.test.cjs
+          python tests/team/wago-images-v958.test.py
           node tests/team/catalog-store-speed-v957.test.cjs
           node tests/team/search-online-catalog-race-v957.test.cjs
           python tests/team/jung-image-extractor-v957.test.py

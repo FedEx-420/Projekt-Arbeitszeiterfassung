@@ -1,7 +1,9 @@
 /* Search and facet helpers shared by material browsing and purchasing. */
 (function(root,factory){const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;else root.WorktimeArticleSearch=api;})(globalThis,()=>{
  'use strict';
- const normalize=v=>String(v??'').toLocaleLowerCase('de').replace(/ä/g,'ae').replace(/ö/g,'oe').replace(/ü/g,'ue').replace(/ß/g,'ss').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,' ').trim().replace(/\bhigh definition(?: multimedia interface)?\b/g,'hdmi');
+ const normalizeRaw=v=>String(v??'').toLocaleLowerCase('de').replace(/ä/g,'ae').replace(/ö/g,'oe').replace(/ü/g,'ue').replace(/ß/g,'ss').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,' ').trim().replace(/\bhigh definition(?: multimedia interface)?\b/g,'hdmi');
+ const normalized=new Map();
+ function normalize(value){const raw=String(value??'');if(raw.length>1024)return normalizeRaw(raw);if(normalized.has(raw))return normalized.get(raw);const result=normalizeRaw(raw);if(normalized.size>=5000)normalized.delete(normalized.keys().next().value);normalized.set(raw,result);return result;}
  const compact=v=>normalize(v).replace(/ /g,'');
  const identifiers=m=>[m.catalog_article_number,m.catalog_manufacturer_number,m.catalog_gtin].filter(Boolean).map(String);
  const fields=m=>[m.name,m.catalog_product_name,m.catalog_manufacturer,m.catalog_category,m.catalog_supplier,...identifiers(m)];
@@ -26,12 +28,12 @@
  function rank(rows,query,get=r=>r){return rows.map((row,index)=>({row,index,score:score(get(row),query)})).sort((a,b)=>b.score-a.score||a.index-b.index).map(x=>x.row);}
  function matches(m,query,featureAPI,extra=[]){if(!String(query||'').trim())return true;const q=compact(query);if(identifiers(m).some(v=>compact(v)===q))return true;
   if(!intent(m,query).accept)return false;
-  const text=fields(m).concat(extra).filter(Boolean),normalized=text.map(normalize).join(' '),tokens=normalize(query).split(' ');
+  const text=fields(m).concat(extra).filter(Boolean);
   // Preserve the existing strict series recognition (S.1 must never become Integro).
   if(featureAPI?.queryMatches)return featureAPI.queryMatches(m,String(query).replace(/\bhigh[-\s]+definition(?:[-\s]+multimedia[-\s]+interface)?\b/gi,'HDMI'),text.concat(text.map(normalize)));
-  return tokens.every(t=>normalized.includes(t));
+  const normalizedText=text.map(normalize).join(' '),tokens=normalize(query).split(' ');return tokens.every(t=>normalizedText.includes(t));
  }
  function facets(rows,getValue,selected=''){const counts=new Map();for(const m of rows){const raw=getValue(m),values=Array.isArray(raw)?raw:[raw];for(const value of new Set(values.filter(Boolean)))counts.set(String(value),(counts.get(String(value))||0)+1);}if(selected&&!counts.has(selected))counts.set(selected,0);return [...counts].sort((a,b)=>a[0].localeCompare(b[0],'de',{numeric:true})).map(([value,count])=>({value,count}));}
- function suggestions(rows,query,{describe=m=>({manufacturer:m.catalog_manufacturer,category:m.catalog_category}),features,limit=5,prioritize=rows=>rows}={}){if(normalize(query).length<2)return {articles:[],groups:[]};const articles=prioritize(rank(rows.filter(m=>matches(m,query,features)),query)).slice(0,limit),groups=[];for(const key of ['manufacturer','category']){const seen=new Set();for(const m of rows){const value=describe(m)[key];if(value&&!seen.has(value)&&normalize(value).includes(normalize(query))){seen.add(value);groups.push({key,value});if(seen.size>=3)break;}}}return{articles,groups};}
+ function suggestions(rows,query,{describe=m=>({manufacturer:m.catalog_manufacturer,category:m.catalog_category}),features,limit=5,prioritize=rows=>rows,preFiltered=false}={}){if(normalize(query).length<2)return {articles:[],groups:[]};const articles=prioritize(rank(preFiltered?rows:rows.filter(m=>matches(m,query,features)),query)).slice(0,limit),groups=[];for(const key of ['manufacturer','category']){const seen=new Set();for(const m of rows){const value=describe(m)[key];if(value&&!seen.has(value)&&normalize(value).includes(normalize(query))){seen.add(value);groups.push({key,value});if(seen.size>=3)break;}}}return{articles,groups};}
  return Object.freeze({normalize,compact,identifiers,intent,score,rank,matches,facets,suggestions});
 });

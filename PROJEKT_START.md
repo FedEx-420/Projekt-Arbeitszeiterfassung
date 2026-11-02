@@ -10,6 +10,7 @@ Nach einer Veröffentlichung liefert GitHub Pages den neuen Stand automatisch au
 - [Aktuelle Änderungen und Code Reviews](https://github.com/FedEx-420/Projekt-Arbeitszeiterfassung/pulls?q=is%3Apr)
 - [Automatische Prüfungen und Veröffentlichungen](https://github.com/FedEx-420/Projekt-Arbeitszeiterfassung/actions)
 - [Letzter Prüfbericht zu Bildern und Suchgeschwindigkeit](docs/Pruefstand_v957.md)
+- [Erweiterung: WAGO-Bilder, zusätzliche JUNG-Artikel und Suchvorschläge](docs/Pruefstand_v958.md)
 
 ## Auf dem neuen Laptop
 
@@ -32,12 +33,14 @@ Private Kataloge, Einkaufspreise, Kundendaten, Chatprotokolle und Zugangsdaten w
 
 ## Aktueller Schwerpunkt
 
-Stand der Arbeit an v957:
+Stand der Arbeit an v958:
 
 - Herstellerbilder werden über eindeutige GTIN oder bestätigte Herstellerartikelnummer zugeordnet. Großhändlernummern und ähnlich klingende Namen reichen dafür nicht aus.
 - Zusätzlich zu Hager/Berker/Elcom wurde der öffentliche JUNG-Katalog als weitere Bildquelle angebunden. Die erste Ergänzung umfasst 40 geprüfte Produktreferenzen; der geplante Aktualisierungslauf ergänzt weitere.
+- WAGO ist als weitere eindeutige Bildquelle integriert: erste 26 Referenzen, darunter 221-412. JUNG umfasst inzwischen 80 geprüfte Referenzen; häufige Standardartikel und unterschiedliche Produktgruppen werden bevorzugt gesammelt. Der gesamte Bildindex enthält bei dieser Veröffentlichung 2.111 Einträge.
 - Der lokale Bildindex wird sofort geladen; die aktuelle Onlinefassung folgt im Hintergrund.
 - Kataloge werden paketweise aus IndexedDB gelesen. Die Einkaufssuche baut und sortiert die Trefferliste nicht mehr bei jedem geprüften Katalogartikel erneut auf.
+- Suchvorschläge vermeiden wiederholte Textnormalisierung und doppelte technische Filterung. Gleiche Kennungen, strenge Serie/Farbe und geänderte Artikeltexte sind gesondert geprüft; die Messung im Prüfbericht betrifft nur den konkreten lokalen Ablauf.
 - Die Checkliste trennt umgesetzte, geprüfte Punkte von teilweise erledigten und offenen Wünschen. Eine vollständig schnelle App oder Bilder für jeden Artikel sind noch nicht nachgewiesen.
 
 ## Für die nächste Codex-Sitzung

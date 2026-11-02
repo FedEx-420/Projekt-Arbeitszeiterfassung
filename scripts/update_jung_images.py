@@ -106,6 +106,24 @@ class Source:
         return sorted(set(urls))
 
 
+def choose(urls, limit):
+    common = ['LS-1520-WW', 'LS-1520-SW', 'AS-1520-WW', 'A-1520-WW']
+    by_sku = {u.rsplit('/', 1)[-1]: u for u in urls}
+    selected = [by_sku[k] for k in common if k in by_sku]
+    kinds = ['/SCHUKO-Steckdose-', '/Wippe-', '/Rahmen-', '/Taster-', '/Dimmer-']
+    buckets = [[] for _ in range(len(kinds) + 1)]
+    for url in urls:
+        if url in selected:
+            continue
+        bucket = next((i for i, kind in enumerate(kinds) if kind in url), len(kinds))
+        buckets[bucket].append(url)
+    while len(selected) < limit and any(buckets):
+        for bucket in buckets:
+            if bucket and len(selected) < limit:
+                selected.append(bucket.pop(0))
+    return selected[:limit]
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--limit', type=int, default=40)
@@ -119,9 +137,9 @@ def main():
     source = Source()
     now = time.time()
     urls = [u for u in source.products() if now - state.get(hashlib.sha256(u.encode()).hexdigest()[:20], 0) > 30 * 86400]
-    urls.sort(key=lambda u: (0 if '/SCHUKO-Steckdose-' in u else 1 if '/Wippe-' in u else 2 if '/Rahmen-' in u else 3, u))
+    chosen = choose(urls, args.limit)
     success = 0
-    for url in urls[:args.limit]:
+    for url in chosen:
         try:
             entry = extract(source.fetch(url).decode('utf-8'), url)
             state[hashlib.sha256(url.encode()).hexdigest()[:20]] = now
@@ -136,7 +154,7 @@ def main():
     index['source'] = 'Public Hager/Berker/Elcom and JUNG manufacturer catalogs'
     target.write_text(json.dumps(index, ensure_ascii=False, separators=(',', ':')) + '\n', encoding='utf-8')
     statefile.write_text(json.dumps(state, separators=(',', ':')) + '\n', encoding='utf-8')
-    print(json.dumps({'checked': min(len(urls), args.limit), 'verified_images': success, 'total_images': len(index['entries'])}))
+    print(json.dumps({'checked': len(chosen), 'verified_images': success, 'total_images': len(index['entries'])}))
 
 
 if __name__ == '__main__':

@@ -26,6 +26,7 @@ begin
  if not prior.prosecdef or not ('search_path=pg_catalog, public, pg_temp'=any(prior.proconfig)) then
   raise exception 'Unbekannte Sicherheitskonfiguration. Änderung nicht angewendet.';
  end if;
+ old_block:=replace(old_block,E'\r\n',E'\n');new_block:=replace(new_block,E'\r\n',E'\n');
  definition:=replace(pg_get_functiondef(target),E'\r\n',E'\n');
  if position(new_block in definition)>0 then return;end if;
  if (length(definition)-length(replace(definition,old_block,'')))/length(old_block)<>1

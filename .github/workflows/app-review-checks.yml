@@ -1,0 +1,44 @@
+name: App review checks
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: app-review-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.25.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Invoice and work-order rules in disposable databases
+        run: |
+          node tests/team/work-order-overlaps-v918.test.cjs
+          node tests/team/invoice-prices-v919.test.cjs
+          node tests/team/invoice-suppliers-v922.test.cjs
+          node tests/team/open-features-activation-v953.test.cjs
+      - name: Article search, inventory and verified checkout fixtures
+        run: |
+          node tests/team/supplier-stock-edge-v948.test.mjs
+          node tests/team/supplier-cart-edge-v949.test.mjs
+          node tests/team/article-search-browser-v947.test.cjs
+          node tests/team/supplier-stock-priority-v952.test.cjs
+          node tests/team/purchase-catalog-pages-v952.test.cjs
+          node tests/team/supplier-cart-browser-v949.test.cjs
+      - name: Invoice price and bulk work-order interfaces
+        run: |
+          node tests/team/invoice-auto-browser-v934.test.cjs
+          node tests/team/invoice-suppliers-browser-v922.test.cjs
+          node tests/team/open-order-tools-browser-v934.test.cjs

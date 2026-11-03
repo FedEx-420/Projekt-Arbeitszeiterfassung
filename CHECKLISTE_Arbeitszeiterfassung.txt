@@ -176,6 +176,8 @@ BEDIENUNG, QUALITÄT UND ABSICHERUNG
 [x] Automatische relevante Datenbank-/Browserprüfungen und Code Review einrichten.
 [x] Bisherige konkrete Review-Fehler zu Artikelzuordnung, Preisen, Suche und
     Anmeldewechseln beheben; aktuelle Korrektur erfolgreich geprüft.
+[x] Standortfreigabe in den Einstellungen nach einer Aktion aufgeklappt lassen.
+    Sichtbare Rückmeldung und 18 isolierte Geräteprüfungen bestanden (v964).
 [ ] Alle übrigen Menüs systematisch auf Handy und Laptop durchgehen, einschließlich
     Angebote/PLZ, Dialoge, Tastaturbedienung und verständlicher Fehlermeldungen.
 [x] Historische Tests für Planung und gemeinsame Stammdatenfunktionen aktualisieren.

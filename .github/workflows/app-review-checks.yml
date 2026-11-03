@@ -67,6 +67,11 @@ jobs:
           node tests/team/planning.test.cjs
           node tests/team/time-account-pdf.test.cjs
           node tests/team/catalog-helpers.test.cjs
+      - name: Startup session and scoped work-order readback
+        run: |
+          node tests/team/session-auth.test.cjs
+          node tests/team/login-startup-browser.test.cjs
+          node tests/team/team-browser.test.cjs --save-only
       - name: Device permissions and account isolation
         run: node tests/team/device-permissions.test.cjs
       - name: Large search and navigation in Firefox

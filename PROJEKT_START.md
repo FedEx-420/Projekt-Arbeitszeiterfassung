@@ -39,7 +39,7 @@ Private Kataloge, Einkaufspreise, Kundendaten, Chatprotokolle und Zugangsdaten w
 
 ## Aktueller Schwerpunkt
 
-Stand der Arbeit an v966:
+Stand der Arbeit an v967:
 
 - Herstellerbilder werden über eindeutige GTIN oder bestätigte Herstellerartikelnummer zugeordnet. Großhändlernummern und ähnlich klingende Namen reichen dafür nicht aus.
 - Zusätzlich zu Hager/Berker/Elcom wurde der öffentliche JUNG-Katalog als weitere Bildquelle angebunden. Die erste Ergänzung umfasst 40 geprüfte Produktreferenzen; der geplante Aktualisierungslauf ergänzt weitere.
@@ -74,6 +74,8 @@ v966 zeigt numerische Katalogpreise im Korrekturdialog im erwarteten Dezimalform
 Der Katalog-Browsertest deckt nun auch BMEcat und DATANORM 4 und 5 ab. Er prüft Korrektur und bestätigte Übernahme einschließlich exakter Artikelnummern, Preisbasis je 100 und Trennung von BMEcat-Bruttoempfehlung und Nettoverkaufspreis.
 
 Der Bildindex enthält 40 weitere Gira-Produktbilder und insgesamt 2.622 Referenzen. Alle neuen Zuordnungen wurden über die exakte GTIN und Gira-Herstellerartikelnummer geprüft.
+
+v967 entfernt den zweiten vollständigen Datenabruf nach dem Login. Die App zeigt nach der Profilprüfung die Startansicht mit Ladehinweis. Vorübergehende Verbindungsfehler lassen eine gespeicherte Anmeldung bestehen. Der Team-Arbeitsschein wird nach Bestätigung über gezielte Lesezugriffe aktualisiert. Der echte Admin-Bestand wurde nicht gemessen.
 
 ## Für die nächste Codex-Sitzung
 

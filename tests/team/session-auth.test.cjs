@@ -11,7 +11,7 @@ function environment(handler,initial=session(),shared={map:new Map(),locks:locks
   let current=initial;
   const localStorage={getItem:key=>shared.map.get(key)||null,setItem:(key,value)=>shared.map.set(key,String(value)),removeItem:key=>shared.map.delete(key)};
   if(initial&&!localStorage.getItem(storageName))localStorage.setItem(storageName,JSON.stringify(initial));
-  const scope={window:{},navigator:{locks:shared.locks},localStorage,Headers,atob,Date:{now:()=>clock*1000},fetch:handler};vm.runInNewContext(source,scope);
+  const scope={window:{},navigator:{locks:shared.locks},localStorage,Headers,AbortSignal,atob,Date:{now:()=>clock*1000},fetch:handler};vm.runInNewContext(source,scope);
   const auth=scope.window.WorktimeAuth.create({base:'https://test.invalid',key:'public-test',storage:storageName,getSession:()=>current,setSession:value=>{current=value;}});
   return {auth,localStorage,get:()=>current,set:value=>{current=value;},shared};
 }

@@ -13,6 +13,7 @@
     businessId: '', businessBrand: null, employeeId: '', customerId: '', customerSearch: '', materialId: '', orderId: '', timeEntryId: '', orderCustomer: '', orderOrigin: 'orders', billingKey: '', billingMode: 'open', menu: false, vacationForm: false, appointmentForm: false, composeMessage: false, mailboxFolder: 'received', notice: null, busy: false,
     rows: { entries: [], orders: [], items: [], customers: [], customerRates: [], days: [], vacations: [], messages: [], attachments: [], recipients: [], materials: [], appointments: [], planningRequests: [], payslips: [], documents: [] }
   };
+  let startupStage = '', startupGeneration = 0;
   let supplierCart=null, shoppingCatalogWizard=null, shoppingLoading=false, shoppingLoadFailed=false;
   const navigationFeature = window.WorktimeNavigation?.create({root,getOpen:()=>state.menu,setOpen:value=>{state.menu=value;}});
   /* BEGIN SESSION AUTH V859
@@ -54,7 +55,7 @@
         if(!current.refresh_token)throw expired();
         const storedBefore=activeStore().getItem(storage);
         let response;
-        try{response=await fetch(base+'/auth/v1/token?grant_type=refresh_token',{method:'POST',headers:{apikey:key,'Content-Type':'application/json'},body:JSON.stringify({refresh_token:current.refresh_token})});}
+        try{response=await fetch(base+'/auth/v1/token?grant_type=refresh_token',{method:'POST',headers:{apikey:key,'Content-Type':'application/json'},body:JSON.stringify({refresh_token:current.refresh_token}),signal:AbortSignal.timeout(15000)});}
         catch{throw failure('Die Anmeldung konnte gerade nicht erneuert werden. Bitte die Verbindung prüfen und nochmals speichern.','SESSION_REFRESH_UNAVAILABLE');}
         let data;try{data=await response.json();}catch{data=null;}
         if(!response.ok){if(response.status===400||response.status===401||response.status===403)throw expired();throw failure('Die Anmeldung konnte gerade nicht erneuert werden. Bitte später nochmals speichern.','SESSION_REFRESH_UNAVAILABLE');}
@@ -140,7 +141,7 @@
   async function api(path, options = {}) {
     const headers = { apikey: key, ...(options.headers || {}) };
     if (options.body !== undefined) headers['Content-Type'] = 'application/json';
-    const response = await auth.request(path, { method: options.method || 'GET', headers, body: options.body === undefined ? undefined : JSON.stringify(options.body) });
+    const response = await auth.request(path, { method: options.method || 'GET', headers, signal: options.signal, body: options.body === undefined ? undefined : JSON.stringify(options.body) });
     const text = await response.text(); const body = parse(text);
     if (!response.ok) throw Object.assign(new Error(body?.error || body?.message || body?.error_description || 'Die Anfrage konnte nicht verarbeitet werden.'),{status:response.status,code:body?.code});
     return body;
@@ -180,34 +181,79 @@
     if (!administratorLogin && !loginCompanyKey(company || '')) throw new Error('Bitte die Firma eingeben. Nur das Administratorkonto meldet sich ohne Firma an.');
     let data = null, lastError = null;
     for (const email of loginEmails(name, company, administratorLogin)) {
-      try { data = await api('/auth/v1/token?grant_type=password', { method: 'POST', body: { email, password } }); break; }
+      try { data = await api('/auth/v1/token?grant_type=password', { method: 'POST', body: { email, password }, signal: AbortSignal.timeout(15000) }); break; }
       catch (error) { lastError = error; }
     }
     if (!data) throw lastError || new Error('Firma, Benutzername oder Passwort sind nicht korrekt.');
     auth.install(data,rememberDevice);
-    const own = await rows('profiles', `select=role&id=eq.${encodeURIComponent(data.user.id)}`), role = own?.[0]?.role;
-    if ((administratorLogin && role !== 'administrator') || (!administratorLogin && role === 'administrator')) {
-      try { await api('/auth/v1/logout', { method: 'POST' }); } catch { /* Session wird anschließend lokal verworfen. */ }
-      auth.clear();
-      throw new Error(administratorLogin ? 'Dieses Konto ist kein Administratorkonto.' : 'Das Administratorkonto meldet sich ohne Firma an.');
-    }
-    state.view = 'home'; state.menu = false; state.customerId = ''; state.customerSearch = ''; state.orderId = ''; state.timeEntryId = ''; state.billingKey = ''; state.vacationForm = false; state.composeMessage = false;
-    await loadApp();
+    await loadApp(administratorLogin);
   }
-  function logout() { planningSync.reset(); auth.clear(); state.profile = null; state.businessBrand = null; render(); }
 
-  async function loadApp() {
-    if (!state.session?.user?.id) return render();
-    state.view = 'home'; state.menu = false; state.customerId = ''; state.orderId = ''; state.timeEntryId = ''; state.billingKey = ''; state.vacationForm = false; state.composeMessage = false;
-    state.busy = true; render();
+  function logout() {
+    startupGeneration++;
+    startupStage = '';
+    planningSync.reset();
+    auth.clear();
+    state.profile = state.businessBrand = null;
+    state.people = [];
+    state.teamContext = null;
+    state.businessId = state.employeeId = '';
+    for (const name of Object.keys(state.rows)) state.rows[name] = [];
+    state.busy = false;
+    notice('');
+    render();
+  }
+
+  function startupView() {
+    const loadingData = startupStage === 'data';
+    const retry = startupStage === 'retry';
+    const heading = loadingData ? 'Startseite' : 'Zeiterfassung';
+    const message = retry ? 'Die Verbindung konnte gerade nicht hergestellt werden. Deine Anmeldung bleibt auf diesem Gerät gespeichert.'
+      : loadingData ? 'Du bist angemeldet. Deine Arbeitsdaten werden geladen …' : 'Anmeldung wird geprüft …';
+    return `<main class="login-page"><section class="login-card"><div class="brand-mark">ZE</div><h1>${heading}</h1><p role="status">${message}</p>${retry ? '<button type="button" class="primary" data-action="retry-startup">Erneut versuchen</button>' : ''}<button type="button" class="link-button" data-action="logout">Abmelden</button></section></main>`;
+  }
+
+  async function loadApp(administratorLogin) {
+    const user = state.session?.user?.id;
+    if (!user) return render();
+    const generation = ++startupGeneration;
+    const current = () => generation === startupGeneration && state.session?.user?.id === user;
+    state.view = 'home'; state.menu = false; state.customerId = ''; state.customerSearch = ''; state.orderId = ''; state.timeEntryId = ''; state.billingKey = ''; state.vacationForm = false; state.composeMessage = false;
+    startupStage = 'verify';
+    state.busy = true;
+    render();
     try {
-      const own = await rows('profiles', `select=*&id=eq.${encodeURIComponent(state.session.user.id)}`);
-      state.profile = own?.[0] || null;
-      if (!state.profile) throw new Error('Dieses Konto ist nicht eingerichtet.');
-      await reload();
+      const rows = await api(`/rest/v1/profiles?select=*&id=eq.${encodeURIComponent(user)}`, { signal: AbortSignal.timeout(15000) });
+      if (!current()) return;
+      const profile = rows?.find(row => row.id === user);
+      if (!profile) throw Object.assign(new Error('Dieses Konto ist nicht eingerichtet.'), { code: 'PROFILE_MISSING' });
+      if (administratorLogin !== undefined && administratorLogin !== (profile.role === 'administrator')) {
+        const message = administratorLogin ? 'Dieses Konto ist kein Administratorkonto.' : 'Das Administratorkonto meldet sich ohne Firma an.';
+        throw Object.assign(new Error(message), { code: 'LOGIN_ROLE_MISMATCH' });
+      }
+      state.profile = profile;
+      startupStage = 'data';
+      render();
+      await reload(current);
+      if (current()) startupStage = '';
     } catch (error) {
-      auth.clear(); state.profile = null; notice(error.message || 'Die Anmeldung ist fehlgeschlagen.', true);
-    } finally { state.busy = false; render(); window.scrollTo({top:0,left:0,behavior:'instant'}); }
+      if (!current()) return;
+      const invalid = ['SESSION_EXPIRED', 'PROFILE_MISSING', 'LOGIN_ROLE_MISMATCH'].includes(error.code) || error.status === 401 || error.status === 403;
+      state.profile = null;
+      if (invalid || administratorLogin !== undefined) {
+        auth.clear();
+        startupStage = '';
+        notice(error.message || 'Die Anmeldung ist fehlgeschlagen.', true);
+      } else {
+        startupStage = 'retry';
+      }
+    } finally {
+      if (generation === startupGeneration) {
+        state.busy = false;
+        render();
+        window.scrollTo({top:0,left:0,behavior:'instant'});
+      }
+    }
   }
   async function reload() {
     const load = async (name, table, query = 'select=*') => { try { state.rows[name] = await rows(table, query) || []; } catch { state.rows[name] = []; } };
@@ -227,10 +273,21 @@
     if (!workers().some(person => same(person.id, state.employeeId))) state.employeeId = workers()[0]?.id || state.profile.id;
   }
   async function perform(message, task) {
+    const generation = startupGeneration;
+    const current = () => generation === startupGeneration;
     state.busy = true; render();
-    try { await task(); await reload(); notice(message); }
-    catch (error) { try { await reload(); } catch { /* Originalfehler erhalten */ } notice(error.message || 'Die Aktion konnte nicht gespeichert werden.', true); }
-    finally { state.busy = false; render(); }
+    try {
+      const result = await task();
+      if (!current()) return;
+      if (result !== savedOrderSynchronized) await reload(current);
+      if (current()) notice(message);
+    } catch (error) {
+      if (!current()) return;
+      try { await reload(current); } catch { /* Originalfehler erhalten */ }
+      if (current()) notice(error.message || 'Die Aktion konnte nicht gespeichert werden.', true);
+    } finally {
+      if (current()) { state.busy = false; render(); }
+    }
   }
 
   function businesses() { return state.people.filter(person => person.role === 'business'); }
@@ -951,6 +1008,7 @@
     if (action === 'nav') { state.view = button.dataset.view; state.menu = false; state.vacationForm = false; state.composeMessage = false; state.orderId = ''; state.timeEntryId = ''; state.orderCustomer = ''; state.orderOrigin = 'orders'; state.billingKey = ''; render(); window.scrollTo({top:0,behavior:'instant'}); return; }
     if (action === 'shopping-load') return recoverShopping();
     if (action === 'logout') return logout();
+    if (action === 'retry-startup' && startupStage === 'retry') return loadApp();
     if (action === 'forgot') return perform('Die zuständige Verwaltung wurde informiert.', () => api('/functions/v1/request-password-help', { method: 'POST', body: { username: root.querySelector('[name="username"]')?.value || '' } }));
     if (action === 'pick-day') { state.date = button.dataset.date; state.month = state.date.slice(0, 7); state.timeEntryId = ''; state.vacationForm = false; render(); return; }
     if (action === 'month') { const date = new Date(`${state.month}-01T12:00:00`); date.setMonth(date.getMonth() + n(button.dataset.value)); state.month = date.toISOString().slice(0, 7); render(); return; }
@@ -1060,7 +1118,7 @@
     if (input.matches('[data-select="employee"]')) { state.employeeId = input.value; state.timeEntryId = ''; render(); }
   });
 
-  root.addEventListener('submit', event => {
+  root.addEventListener('submit', async event => {
     const form = event.target; if (!(form instanceof HTMLFormElement)) return;
     event.preventDefault(); const name = form.dataset.form;
     const submitters = {
@@ -1083,7 +1141,23 @@
       'business-update': () => account('business-update', { businessId: businessId(), companyName: form.elements.company.value, username: form.elements.username.value, password: form.elements.password.value })
     };
     const submit = submitters[name];
-    if (submit) return perform(name === 'login' ? '' : 'Änderung wurde sofort gespeichert.', async () => { await submit(); if (name === 'vacation') state.vacationForm = false; });
+    if (!submit || state.busy) return;
+    if (name === 'login') {
+      state.busy = true;
+      form.querySelector('button[type=submit], button.primary').disabled = true;
+      try { await submit(); }
+      catch (error) {
+        state.busy = false;
+        notice(error.message || 'Die Anmeldung ist fehlgeschlagen.', true);
+        render();
+      }
+      return;
+    }
+    return perform('Änderung wurde sofort gespeichert.', async () => {
+      const result = await submit();
+      if (name === 'vacation') state.vacationForm = false;
+      return result;
+    });
   });
 
   function printInvoicePdf(group) {
@@ -1159,7 +1233,7 @@
     windowRef.document.write(`<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Zeiterfassungsnachweis</title><style>${pdfStyles()}</style></head><body><main class="pdf-page">${pdfBrandHeader('Zeiterfassungsnachweis', state.date.slice(0, 4))}<section class="pdf-grid"><article class="pdf-card"><span class="pdf-card-label">Mitarbeiter</span><b>${escape(person?.display_name || person?.username || '')}</b></article><article class="pdf-card"><span class="pdf-card-label">Jahresübersicht</span>${h(totalHours)} Arbeitsstunden<br>${h(overtime(id))} Überstunden<br>${vacationLeft(id)} Urlaubstage übrig · ${annualSick(id)} Krankheitstage</article></section><section class="pdf-section"><h2>Erfasste Zeiten</h2><table class="pdf-table"><thead><tr><th>Datum</th><th>Kunde</th><th>Von</th><th>Bis</th><th class="number">Pause</th><th class="number">Stunden</th></tr></thead><tbody>${lines || '<tr><td colspan="6" class="pdf-empty">Keine Zeiterfassungen vorhanden.</td></tr>'}</tbody></table></section><p class="pdf-note">Automatisch aus der Arbeitszeiterfassung erstellt.</p></main><script>window.onload=()=>window.print()<\/script></body></html>`); windowRef.document.close(); addPdfReturnBar(windowRef);
   }
   const deviceFeatures=window.WorktimeDeviceFeatures?.create({root,state,api,write,allRows,upload,remove,download,render,businessId,workerId,isManager,isAdmin,orderForEmployee,orderHours,dateText,timeText,h,planningMeta,planEmployeeIds,logout,canUse,locked,openPlanningOrder,teamPeriodFields,teamPersonFields,refreshPlanningData,loadTeamContext});
-  function render() { if (!root) return; if (!base || !key) { root.innerHTML = '<main class="login-page"><section class="login-card"><h1>Zeiterfassung</h1><p>Die App-Konfiguration fehlt.</p></section></main>'; return; } root.innerHTML = state.session && state.profile ? appView() : loginView(); setupCustomerSearch(); setupSignaturePads(); setupPlanningCustomerLookup(); updatePlanningWarnings(root.querySelector('form[data-form="planning"]')); updateAssignmentHint(root.querySelector('form[data-form="time"], form[data-form="order"]')); deviceFeatures?.afterRender(); supplierCart?.afterRender(); }
+  function render() { if (!root) return; if (!base || !key) { root.innerHTML = '<main class="login-page"><section class="login-card"><h1>Zeiterfassung</h1><p>Die App-Konfiguration fehlt.</p></section></main>'; return; } if (startupStage) { root.innerHTML = startupView(); return; } root.innerHTML = state.session && state.profile ? appView() : loginView(); setupCustomerSearch(); setupSignaturePads(); setupPlanningCustomerLookup(); updatePlanningWarnings(root.querySelector('form[data-form="planning"]')); updateAssignmentHint(root.querySelector('form[data-form="time"], form[data-form="order"]')); deviceFeatures?.afterRender(); supplierCart?.afterRender(); }
   window.addEventListener('unhandledrejection', event => { event.preventDefault(); notice('Die Aktion konnte nicht ausgeführt werden. Bitte erneut versuchen.', true); render(); });
   state.session = parse(sessionStorage.getItem(storage) || localStorage.getItem(storage) || localStorage.getItem('zeiterfassung-session-v700'));
   if (state.session?.access_token) loadApp(); else render();
@@ -1178,24 +1252,27 @@
     }
     throw lastError || new Error('Die Daten konnten nicht geladen werden.');
   }
-  async function reload() {
+  async function reload(isCurrent = () => true) {
     planningSync.reset();
     const issues = [];
-    const load = async (name, table, query = 'select=*') => { try { state.rows[name] = await allRows(table, query); } catch { issues.push(name); } };
-    const loadRecipients = async () => { try { state.rows.recipients = (await api('/functions/v1/mailbox-send', { method: 'POST', body: { action: 'recipients' } }))?.recipients || []; } catch { issues.push('recipients'); } };
+    const load = async (name, table, query = 'select=*') => { try { const data = await allRows(table, query); if (isCurrent()) state.rows[name] = data; } catch { issues.push(name); } };
+    const loadRecipients = async () => { try { const data = await api('/functions/v1/mailbox-send', { method: 'POST', body: { action: 'recipients' } }); if (isCurrent()) state.rows.recipients = data?.recipients || []; } catch { issues.push('recipients'); } };
     await Promise.all([
       load('people', 'profiles'), load('entries', 'time_entries', 'select=*&order=work_date.desc,created_at.desc'), load('orders', 'work_orders', 'select=*&order=work_date.desc,created_at.desc'),
       load('items', 'work_order_items'), load('customers', 'customers', 'select=*&order=name.asc'), load('days', 'work_days'), load('vacations', 'vacation_requests', 'select=*&order=created_at.desc'),
       load('messages', 'mailbox_messages', 'select=*&order=created_at.desc'), load('attachments', 'mailbox_attachments', 'select=*&order=created_at.asc'), load('materials', 'materials', 'select=*&order=name.asc'), load('appointments', 'appointments'),
-      load('payslips', 'employee_payslips', 'select=*&order=created_at.desc'), load('documents', 'work_order_documents'), load('workweeks','employee_workweeks_v905','select=*&order=employee_id.asc,effective_from.asc'), loadRecipients(), loadPlanningRequests()
+      load('payslips', 'employee_payslips', 'select=*&order=created_at.desc'), load('documents', 'work_order_documents'), load('workweeks','employee_workweeks_v905','select=*&order=employee_id.asc,effective_from.asc'), loadRecipients(), loadPlanningRequests(isCurrent)
     ]);
+    if (!isCurrent()) return;
     state.people = state.rows.people;
-    try { state.rows.customerRates = await allRows('customer_hourly_rates','select=*&order=customer_id.asc'); state.customerRatesReady=true; } catch { state.customerRatesReady=false; issues.push('customerRates'); }
-    if (!isManager()) { try { state.businessBrand = (await api('/rest/v1/rpc/current_business_branding', { method: 'POST', body: {} }))?.[0] || null; } catch { state.businessBrand = null; } } else state.businessBrand = null;
+    try { const rates = await allRows('customer_hourly_rates','select=*&order=customer_id.asc'); if (!isCurrent()) return; state.rows.customerRates = rates; state.customerRatesReady=true; } catch { if (!isCurrent()) return; state.customerRatesReady=false; issues.push('customerRates'); }
+    if (!isManager()) { try { const data = await api('/rest/v1/rpc/current_business_branding', { method: 'POST', body: {} }); if (!isCurrent()) return; state.businessBrand = data?.[0] || null; } catch { if (!isCurrent()) return; state.businessBrand = null; } } else state.businessBrand = null;
     if (isAdmin() && !businesses().some(person => same(person.id, state.businessId))) state.businessId = businesses()[0]?.id || '';
     if (!workers().some(person => same(person.id, state.employeeId))) state.employeeId = workers()[0]?.id || state.profile.id;
     await loadTeamContext();
+    if (!isCurrent()) return;
     await deviceFeatures?.load();
+    if (!isCurrent()) return;
     if (issues.length) notice('Ein Teil der Daten konnte gerade nicht erneut synchronisiert werden. Bereits geladene Aufträge bleiben sichtbar.', true);
   }
   function recordedPeriods(id = workerId(), date = '') {
@@ -1345,9 +1422,9 @@
     const allowed = new Set(planningPeople().map(person => String(person.id)));
     return state.rows.appointments.filter(row => planEmployeeIds(row).some(id => allowed.has(id)));
   }
-  async function loadPlanningRequests() {
-    try { state.rows.planningRequests = await allRows('planning_requests', 'select=*&order=created_at.desc,id.asc'); state.planningRequestsReady = true; }
-    catch { state.planningRequestsReady = false; /* Preserve loaded proposals during temporary outages. */ }
+  async function loadPlanningRequests(isCurrent = () => true) {
+    try { const data = await allRows('planning_requests', 'select=*&order=created_at.desc,id.asc'); if (!isCurrent()) return; state.rows.planningRequests = data; state.planningRequestsReady = true; }
+    catch { if (!isCurrent()) return; state.planningRequestsReady = false; /* Preserve loaded proposals during temporary outages. */ }
   }
   function planningRequests() {
     return (state.rows.planningRequests || []).filter(row => same(row.business_id,businessId()) && (isManager() || same(row.submitted_by,state.profile?.id))).map(row => ({...row,_planningRequest:true}));
@@ -1571,7 +1648,7 @@
   }
   // Check before perform() re-renders: declining the extra-entry warning must
   // retain every typed field, signature and selected attachment.
-  root.addEventListener('submit', event => {
+  root.addEventListener('submit', async event => {
     const form = event.target;
     if (!(form instanceof HTMLFormElement) || state.busy) return;
     const matches = matchingDayAssignments(form);
@@ -1820,7 +1897,7 @@
       });
     }
   });
-  root.addEventListener('submit', event => {
+  root.addEventListener('submit', async event => {
     const form = event.target;
     if (form instanceof HTMLFormElement && form.dataset.form==='planning-pdf') { event.preventDefault();if (!state.busy) perform('Die Planungs-PDF wurde erstellt.',()=>downloadPlanningPdf(form));return; }
     if (!(form instanceof HTMLFormElement) || form.dataset.form !== 'planning') return;
@@ -1941,6 +2018,28 @@
     if (selected.some(id => !periods.some(period => same(period.employee_id,id)))) throw new Error('Für jeden ausgewählten Mitarbeiter muss mindestens ein Zeitabschnitt eingetragen werden.');
     return periods;
   }
+  const savedOrderSynchronized = Symbol('savedOrderSynchronized');
+  async function syncSavedTeamOrder(order, planId, isCurrent) {
+    const orderId = encodeURIComponent(order.id);
+    const [entries, items, documents, plans] = await Promise.all([
+      allRows('time_entries', `select=*&team_work_order_id=eq.${orderId}`),
+      allRows('work_order_items', `select=*&work_order_id=eq.${orderId}`),
+      allRows('work_order_documents', `select=*&work_order_id=eq.${orderId}`),
+      planId ? rows('appointments', `select=*&id=eq.${encodeURIComponent(planId)}`) : []
+    ]);
+    if (!isCurrent()) return;
+    const belongsToOrder = row => same(row.work_order_id, order.id) || same(row.team_work_order_id, order.id);
+    const replace = (name, fresh, matches) => {
+      state.rows[name] = [...state.rows[name].filter(row => !matches(row)), ...fresh.filter(matches)];
+    };
+    replace('orders', [order], row => same(row.id, order.id));
+    replace('entries', entries, belongsToOrder);
+    replace('items', items, belongsToOrder);
+    replace('documents', documents, belongsToOrder);
+    if (planId) replace('appointments', plans || [], row => same(row.id, planId));
+    planningSync.reset();
+  }
+
   async function saveTeamOrder(form, existing = null) {
     if (!teamEnabled()) throw new Error('Die Mehrpersonen-Buchung ist noch nicht verbunden. Bestehende Daten bleiben erhalten.');
     const planId = String(form.elements.planning_id?.value || ''), owner = existing?.employee_id || form.querySelector('[data-team-times]')?.dataset.teamOwner || workerId();
@@ -1956,15 +2055,23 @@
       if (material && !isHourlyMaterial(material)) items.push({ material_id:material.id, quantity:Math.max(0.25,n(quantities[index]?.value || 1)), unit:units[index]?.dataset.unitExplicit==='true' ? normalizeUnit(units[index].value) : materialUnit(material) });
     }
     const timerId=form.dataset.timerId,timerDevice=form.dataset.timerDevice;
+    const actor = state.profile.id, company = businessId(), generation = startupGeneration;
+    const isCurrent = () => state.profile?.id === actor && businessId() === company && startupGeneration === generation;
     const saved = await api('/rest/v1/rpc/'+(timerId?(timerDevice?'save_team_work_order_from_device_timer':'save_team_work_order_from_timer'):'save_team_work_order'),{method:'POST',body:{...(timerId?{p_timer_id:timerId}:{}),...(timerDevice?{p_device:timerDevice}:{}),p_order:{ ...(existing ? {id:existing.id} : {}),employee_id:owner,work_date:date,customer_id:customer?.id||null,title:String(form.elements.title.value || '').trim(),documentation,work_kind:workKind,...signature},p_periods:periods,p_items:items,p_plan_id:planId || null}});
     const order = Array.isArray(saved) ? saved[0] : saved;
     if (!order?.id) throw new Error('Der gemeinsame Arbeitsschein konnte nicht gespeichert werden.');
+    if (!isCurrent()) return savedOrderSynchronized;
     if (timerId) deviceFeatures?.timerSaved(timerId);
     state.orderCustomer=''; state.planPrefill=null; state.orderId=order.id; state.view='order-detail';
+    state.date = order.work_date; state.month = state.date.slice(0, 7);
     // Core data is already committed atomically. A failed file upload never
     // causes the next attempt to create another work order.
-    try { await saveDocuments(form,order,state.profile.id); }
+    try { await saveDocuments(form,order,actor); }
     catch { throw new Error('Der Arbeitsschein und alle Mitarbeiterzeiten sind gespeichert. Ein Dokument konnte nicht hochgeladen werden; bitte hier erneut hinzufügen.'); }
+    if (!isCurrent()) return savedOrderSynchronized;
+    try { await syncSavedTeamOrder(order, planId, isCurrent); }
+    catch { return; } // A readback failure falls back to the existing complete refresh.
+    return savedOrderSynchronized;
   }
   function teamExecutionHtml(order) { return orderPeriods(order).map(period => `<div class="pdf-execution-row"><b>${escape(period.employee_name || personName(teamPerson(period.employee_id)))}</b><br>${timeText(period.start_time)} bis ${timeText(period.end_time)} · Pause ${h(period.pause_hours)} · ${h(period.executed_hours)}</div>`).join(''); }
   root.addEventListener('change',event => {

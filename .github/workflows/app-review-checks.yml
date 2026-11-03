@@ -44,6 +44,8 @@ jobs:
           node tests/team/manufacturer-display-v960.test.cjs
           python tests/team/manufacturer-images-v960.test.py
           node tests/team/search-speed-v958.test.cjs
+          node tests/team/search-responsive-v962.test.cjs
+          node tests/team/search-latency-browser-v962.test.cjs
           node tests/team/article-intent-v959.test.cjs
           node tests/team/favorites-database-v959.test.cjs
           node tests/team/article-tools-browser-v959.test.cjs

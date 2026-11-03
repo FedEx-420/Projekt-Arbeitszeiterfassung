@@ -63,6 +63,8 @@ Die Angebotsmaske wurde bei 320, 390, 844, 1366 und 1920 Pixeln Browserbreite ge
 
 Die Angebotsprüfung deckt auch Wiederherstellung und Speicherung nach Sitzungsablauf ab. Sieben Browserfälle verwenden den aktuellen Steuerdialog und die echte Angebotsfunktion in einer isolierten Testdatenbank.
 
+Der modernisierte Zeitkonto-Test prüft die aktuelle PDF-Vorschau und den Download. Die 13 isolierten Fälle umfassen Kontotrennung, Abwesenheiten und einen mehrseitigen Bericht mit 60 Arbeitsperioden und Firmenlogo.
+
 ## Für die nächste Codex-Sitzung
 
 `AGENTS.md` enthält die verbindlichen Projektregeln. Firmen-/Mitarbeitergrenzen, abgeschlossene Dokumente, exakte Preise und Artikelidentität erhalten. Keine echten Bestellungen oder Produktionsrechnungen für Tests auslösen. Die relevante Prüfung steht in `.github/workflows/app-review-checks.yml`; sie nutzt isolierte Datenbank- und Händlerfixtures.

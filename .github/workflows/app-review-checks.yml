@@ -62,6 +62,7 @@ jobs:
       - name: Planning and shared catalog helpers
         run: |
           node tests/team/planning.test.cjs
+          node tests/team/time-account-pdf.test.cjs
           node tests/team/catalog-helpers.test.cjs
       - name: Device permissions and account isolation
         run: node tests/team/device-permissions.test.cjs

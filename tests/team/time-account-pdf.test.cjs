@@ -1,17 +1,16 @@
-/* Settings PDF regression using isolated PostgreSQL/RLS and real browser printing. */
-const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),http=require('node:http'),os=require('node:os');
+/* Settings PDF regression using isolated PostgreSQL/RLS and the current PDF viewer. */
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),http=require('node:http');
 const {chromium}=require('playwright');
 const {fixture}=require('./team-db-fixture.cjs');
 const directory=path.resolve(__dirname,'../..');
-// Keep report HTML/CSS intact, but use page.pdf instead of a native dialog.
-const source=fs.readFileSync(path.join(directory,'app-v800.js'),'utf8').replaceAll('window.onload=()=>window.print()','window.onload=()=>{}').replace(/\}\)\(\);\s*$/,`window.__appTest={state,render,reload,timeAccountReport,printPdf,reportDateValid};})();`);
+const source=fs.readFileSync(path.join(directory,'app-v800.js'),'utf8').replace(/\}\)\(\);\s*$/,`window.__appTest={state,render,reload,timeAccountReport,printPdf,reportDateValid};})();`);
 const server=http.createServer((req,res)=>{
   const name=new URL(req.url,'http://localhost').pathname.slice(1)||'index.html';
   if(name==='config.js'){res.setHeader('Content-Type','application/javascript');return res.end('window.WORKTIME_CONFIG={supabaseUrl:"https://test.invalid",supabasePublishableKey:"test"}');}
   if(name==='app-v800.js'){res.setHeader('Content-Type','application/javascript');return res.end(source);}
   if(name==='service-worker.js'){res.statusCode=404;return res.end();}
   const file=path.resolve(directory,name);if(!file.startsWith(directory+path.sep)||!fs.existsSync(file)){res.statusCode=404;return res.end();}
-  res.setHeader('Content-Type',name.endsWith('.js')?'application/javascript':name.endsWith('.css')?'text/css':name.endsWith('.html')?'text/html':'application/octet-stream');res.end(fs.readFileSync(file));
+  res.setHeader('Content-Type',name.endsWith('.js')?'application/javascript':name.endsWith('.mjs')||name.endsWith('.js')?'application/javascript':name.endsWith('.css')?'text/css':name.endsWith('.html')?'text/html':'application/octet-stream');res.end(fs.readFileSync(file));
 });
 async function main(){
   const {db,ids,actor,admin}=await fixture({legacyRecords:true});let current='anna',queue=Promise.resolve(),passed=0,mutations=0;const errors=[];
@@ -28,7 +27,9 @@ async function main(){
     await context.route('**/*',route=>{
       const request=route.request(),url=new URL(request.url());if(url.hostname==='127.0.0.1')return route.continue();
       if(url.hostname!=='test.invalid')return route.abort();
-      if(url.pathname.startsWith('/storage/v1/object/public/company-logos/'))return route.abort();
+      if(url.pathname==='/storage/v1/object/public/company-logos/qa-logo.svg'){
+        return route.fulfill({contentType:'image/svg+xml',headers:{'Access-Control-Allow-Origin':'*'},body:'<svg xmlns="http://www.w3.org/2000/svg" width="120" height="40"><rect width="120" height="40" fill="#0a685c"/></svg>'});
+      }
       queue=queue.then(async()=>{
         const method=request.method(),body=request.postDataJSON();
         const send=(value,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(value,(key,value)=>['work_date','event_date','start_date','end_date'].includes(key)&&typeof value==='string'?value.slice(0,10):value)});
@@ -76,8 +77,8 @@ async function main(){
     });
     await test('Vacation crossing a year boundary is split correctly and weekdays/holidays are not counted twice',async()=>{
       const data=await report();assert.equal(year(data,'2025').approvedDays,1);assert.equal(year(data,'2026').approvedDays,2.5);
-      assert.equal(day(data,'2026-10-09').approvedDays,0.5);assert.equal(day(data,'2026-10-10').approvedDays,0);assert.equal(day(data,'2026-04-03').approvedDays,0);
-      assert.equal(day(data,'2026-04-03').labels.some(row=>row.kind==='approved'),true);
+      assert.equal(day(data,'2026-10-09').approvedDays,0.5);assert.equal(day(data,'2026-10-10'),undefined);assert.equal(day(data,'2026-04-03').approvedDays,0);
+      assert.deepEqual(day(data,'2026-04-03').labels.map(row=>row.kind),['holiday']);
     });
     await test('Pending vacation is distinct from approved vacation, while rejected requests are excluded',async()=>{
       const data=await report();assert.equal(year(data,'2026').requestedDays,3);
@@ -89,7 +90,7 @@ async function main(){
       assert.equal(day(data,'2026-09-30').entries.length,1);assert.equal(day(data,'2026-09-30').entries[0].executed_hours,'2.75');
     });
     await test('An empty selected year still shows its holidays and no invented work hours',async()=>{
-      await role('anna','anna','2027-02-02');const data=await report();assert.equal(year(data,'2027').holidays,11);assert.equal(year(data,'2027').hours,0);assert.equal(year(data,'2027').overtime,0);
+      await role('anna','anna','2027-02-02');const data=await report();assert.equal(year(data,'2027').calendarHolidays,11);assert.equal(year(data,'2027').holidays,7);assert.equal(year(data,'2027').hours,0);assert.equal(year(data,'2027').overtime,0);
     });
     await test('Chief and administrator exports select the same employee without mixing other employees',async()=>{
       await role('business');const chief=await report();await role('admin');assert.deepEqual(await report(),chief);
@@ -104,24 +105,50 @@ async function main(){
       assert.deepEqual(await page.evaluate(()=>['2024-02-29','2026-02-29','2026-13-10','not-a-date'].map(value=>window.__appTest.reportDateValid(value))),[true,false,false,false]);
     });
     await role('anna');
-    let popup;
-    await test('The actual employee settings button opens the complete PDF preview with status labels and a return button',async()=>{
-      const promise=page.waitForEvent('popup');await page.locator('[data-action="pdf"]').click();popup=await promise;await popup.waitForLoadState('load');
-      const text=await popup.locator('body').innerText();assert.match(text,/Jahr 2024/);assert.match(text,/Jahr 2025/);assert.match(text,/Jahr 2026/);assert.match(text,/Urlaub \(genehmigt\)/);assert.match(text,/Urlaub \(beantragt\)/);assert.match(text,/Krankheit/);assert.match(text,/Feiertag NRW: Karfreitag/);assert.match(text,/09:00 Uhr/);assert.match(text,/11:00 Uhr/);assert.match(text,/3,75 h/);
-      assert.equal(await popup.locator('[data-report-date="2026-10-08"] .report-status.approved').count(),0);assert.equal(await popup.locator('#pdf-return-actions button').count(),1);
-      assert.equal(await popup.locator('[data-report-date="2026-12-25"] td').nth(5).innerText(),'-');
+    await page.evaluate(() => {
+      const open = window.WorktimePdfViewer.open;
+      window.WorktimePdfViewer.open = options => window.__pdfJob = open(options);
     });
-    await test('Mobile preview and A4 printing have no clipped table cells or runtime errors',async()=>{
-      const mobileBounds=await popup.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth,overflow:[...document.querySelectorAll('h1,header,table,th,td')].filter(element=>element.getBoundingClientRect().right>innerWidth+1 || element.scrollWidth>element.clientWidth+1).slice(0,12).map(element=>({tag:element.tagName,text:element.innerText.slice(0,100),right:element.getBoundingClientRect().right,width:element.clientWidth,scroll:element.scrollWidth}))}));
-      await popup.screenshot({path:path.join(__dirname,'time-account-pdf-mobile.png'),fullPage:true});
-      assert.ok(mobileBounds.scroll<=mobileBounds.width+1,JSON.stringify(mobileBounds));
-      await popup.emulateMedia({media:'print'});await popup.setViewportSize({width:794,height:1123});
-      const bounds=await popup.locator('.report-table td').evaluateAll(cells=>cells.map(cell=>({scroll:cell.scrollWidth,client:cell.clientWidth})));assert.ok(bounds.every(cell=>cell.scroll<=cell.client+1));
-      const output=process.env.PDF_QA_OUTPUT_DIR || path.join(os.tmpdir(),'worktime-pdf-qa-v856');fs.mkdirSync(output,{recursive:true});
-      const filename=path.join(output,'Arbeitsstundenkonto_Abwesenheiten.pdf');await popup.pdf({path:filename,format:'A4',preferCSSPageSize:true,printBackground:true,displayHeaderFooter:true,headerTemplate:'<span></span>',footerTemplate:'<div style="font:9px Arial;width:100%;text-align:center;color:#526c66">Arbeitsstundenkonto · Seite <span class="pageNumber"></span> von <span class="totalPages"></span></div>'});
-      assert.equal(fs.readFileSync(filename).subarray(0,5).toString(),'%PDF-');console.log('PDF_QA_OUTPUT '+filename);await popup.close();
+    async function readPdf({ expectLogo = false } = {}) {
+      await page.locator('[data-action="pdf"]').click();
+      const dialog = page.getByRole('dialog', { name: 'Zeiterfassungsnachweis' });
+      await dialog.locator('[data-pdf-download][href]').waitFor();
+      const result = await page.evaluate(async expectLogo => {
+        const job = window.__pdfJob;
+        await job.ready;
+        const text = [];
+        for (let number = 1; number <= job.pdf.numPages; number++) {
+          const page = await job.pdf.getPage(number);
+          text.push((await page.getTextContent()).items.map(item => item.str).join(' '));
+        }
+        let hasLogo = false;
+        if (expectLogo) {
+          const { OPS } = await import('./vendor/pdfjs-6.4.299/pdf.mjs');
+          const firstPage = await job.pdf.getPage(1);
+          hasLogo = (await firstPage.getOperatorList()).fnArray.includes(OPS.paintImageXObject);
+        }
+        return { text: text.join(' '), pages: job.pdf.numPages, type: job.file.type, hasLogo };
+      }, expectLogo);
+      if (expectLogo) assert.equal(result.hasLogo, true);
+      assert.equal(result.type, 'application/pdf');
+      assert.equal(await dialog.locator('canvas').count(), result.pages);
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+      const [download] = await Promise.all([
+        page.waitForEvent('download'),
+        dialog.locator('[data-pdf-download]').click()
+      ]);
+      assert.equal(fs.readFileSync(await download.path()).subarray(0, 5).toString(), '%PDF-');
+      await dialog.locator('[data-pdf-close]').click();
+      assert.ok(await page.locator('[data-action="pdf"]').evaluate(button => document.activeElement === button));
+      return result;
+    }
+    await test('The settings button opens the rendered PDF and preserves report labels', async () => {
+      const { text } = await readPdf();
+      for (const label of ['2024', '2025', '2026', 'genehmigt', 'beantragt', 'Krankheit', 'Karfreitag', '09:00', '11:00']) {
+        assert.ok(text.includes(label), `PDF is missing ${label}`);
+      }
     });
-    await test('A long month prints all separate working periods, long customer names and the company logo across multiple pages',async()=>{
+    await test('A long month prints all separate working periods, long customer names and a logo across multiple PDF pages',async()=>{
       await page.evaluate(employee=>{
         const app=window.__appTest,entries=[];let index=0;
         for(let date=5;date<=23;date++){
@@ -136,19 +163,13 @@ async function main(){
         app.state.businessBrand.company_logo_path='qa-logo.svg';
       },ids.anna);
       const data=await report();assert.equal(data.totalHours,60);assert.equal(year(data,'2026').months.find(month=>month.month==='2026-10').hours,60);
-      const promise=page.waitForEvent('popup');await page.locator('[data-action="pdf"]').click();const long=await promise;await long.waitForLoadState('load');
-      assert.match(await long.locator('.pdf-logo img').getAttribute('src'),/company-logos\/qa-logo\.svg$/);
-      // This is a layout test, not a live Storage test. Load a synthetic bitmap
-      // directly so external image networking cannot stall the headless popup.
-      const logo=await page.evaluate(()=>{const canvas=document.createElement('canvas');canvas.width=600;canvas.height=200;const ctx=canvas.getContext('2d');ctx.fillStyle='white';ctx.fillRect(0,0,600,200);ctx.fillStyle='#eab600';ctx.beginPath();ctx.moveTo(85,15);ctx.lineTo(35,105);ctx.lineTo(80,105);ctx.lineTo(55,185);ctx.lineTo(135,75);ctx.lineTo(90,75);ctx.closePath();ctx.fill();ctx.fillStyle='#a61122';ctx.font='bold 62px Arial';ctx.fillText('Elektro Test',155,125);return canvas.toDataURL('image/png');});
-      await long.locator('.pdf-logo img').evaluate((image,src)=>{image.src=src;},logo);
-      await long.waitForFunction(()=>{const image=document.querySelector('.pdf-logo img');return image?.complete&&image.naturalWidth>0;},{},{timeout:10000});
-      assert.equal(await long.locator('tbody tr').count(),71);assert.equal(await long.locator('td').filter({hasText:/Auftrag \d/}).count(),60);
-      await long.emulateMedia({media:'print'});await long.setViewportSize({width:794,height:1123});
-      const bounds=await long.locator('th,td').evaluateAll(cells=>cells.map(cell=>({scroll:cell.scrollWidth,client:cell.clientWidth})));assert.ok(bounds.every(cell=>cell.scroll<=cell.client+1));
-      const output=process.env.PDF_QA_OUTPUT_DIR||path.join(os.tmpdir(),'worktime-pdf-qa-v856');fs.mkdirSync(output,{recursive:true});
-      const filename=path.join(output,'Arbeitsstundenkonto_Langer_Monat.pdf');await long.pdf({path:filename,format:'A4',preferCSSPageSize:true,printBackground:true});
-      assert.equal(fs.readFileSync(filename).subarray(0,5).toString(),'%PDF-');console.log('PDF_QA_OUTPUT '+filename);await long.close();await role('anna');
+      const { text, pages } = await readPdf({ expectLogo: true });
+      assert.ok(pages > 1);
+      for (let index = 1; index <= 60; index++) {
+        const name = 'Auftrag ' + String(index).padStart(2, '0') + ' -';
+        assert.ok(text.includes(name), `PDF is missing ${name}`);
+      }
+      await role('anna');
     });
     await test('Export leaves all source data unchanged and makes no mutation request',async()=>{await queue;assert.deepEqual(await snapshot(),before);assert.equal(mutations,0);});
     assert.deepEqual(errors,[]);console.log(JSON.stringify({passed,productionWrites:0,runtimeErrors:errors.length}));

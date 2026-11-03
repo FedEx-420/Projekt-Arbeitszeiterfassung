@@ -39,7 +39,7 @@ Private Kataloge, Einkaufspreise, Kundendaten, Chatprotokolle und Zugangsdaten w
 
 ## Aktueller Schwerpunkt
 
-Stand der Arbeit an v962:
+Stand der Arbeit an v963:
 
 - Herstellerbilder werden über eindeutige GTIN oder bestätigte Herstellerartikelnummer zugeordnet. Großhändlernummern und ähnlich klingende Namen reichen dafür nicht aus.
 - Zusätzlich zu Hager/Berker/Elcom wurde der öffentliche JUNG-Katalog als weitere Bildquelle angebunden. Die erste Ergänzung umfasst 40 geprüfte Produktreferenzen; der geplante Aktualisierungslauf ergänzt weitere.
@@ -52,6 +52,10 @@ Stand der Arbeit an v962:
 - v961 ergänzt unter „Kataloge → Fachhändler Kataloge → Katalog prüfen / PDF-Auszug“ eine schreibgeschützte Auswertung aller gespeicherten Datensätze mit Preisübersicht, Filtern und einem ausdrücklich auf 200 Treffer begrenzten PDF-Auszug. Originaldateien und Materialpreise werden dadurch nicht geändert.
 - v962 entfernt wiederholte Vollsuchen und Neuberechnungen bei Händlerantworten, verarbeitet Einkaufssuchen in kurzen Paketen und reduziert die Vollsuchen für Stundenpositionen. Der vollständige Test mit 30.000 synthetischen Artikeln ergibt lokal im Einkauf ca. 1,4 s statt 3,1 s und bei 20 simulierten Händlerantworten ca. 0,8 s statt 17,2 s. Die Materialliste benötigt nach der Stundenpositionskorrektur ca. 0,7 s statt 1,3 s. Details, Messgrenzen und der noch offene direkte Firefox-Test stehen im Prüfbericht v962. Keine Änderung an Produktionsdaten oder Datenbankschemata.
 - Die Checkliste trennt umgesetzte, geprüfte Punkte von teilweise erledigten und offenen Wünschen. Eine vollständig schnelle App oder Bilder für jeden Artikel sind noch nicht nachgewiesen.
+
+v963 verwendet die Texttreffer der Materialliste für die technischen Filter gemeinsam. Der GitHub-Test mit 30.000 Artikeln bestand in Firefox 153 unter Linux. Die längste gemessene Verarbeitungspause der Materialliste betrug in diesem Lauf 0,60 Sekunden. Der lokale Firefox-Start unter Windows meldet eine fehlende mozglue-Assemblierung.
+
+Die historische Planungssuite prüft wieder die aktuelle Oberfläche und den PDF-Dialog. 36 Szenarien sowie sieben Prüfungen der gemeinsamen Stammdatenfunktionen liefen lokal und auf GitHub erfolgreich. Weitere historische Browserprüfungen bleiben offen.
 
 ## Für die nächste Codex-Sitzung
 

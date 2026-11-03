@@ -22,7 +22,7 @@ jobs:
           node-version: '22'
           cache: pnpm
       - run: pnpm install --frozen-lockfile --ignore-scripts
-      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm exec playwright install --with-deps chromium firefox
       - name: Invoice and work-order rules in disposable databases
         run: |
           node tests/team/work-order-overlaps-v918.test.cjs
@@ -59,6 +59,14 @@ jobs:
           node tests/team/supplier-stock-priority-v952.test.cjs
           node tests/team/purchase-catalog-pages-v952.test.cjs
           node tests/team/supplier-cart-browser-v949.test.cjs
+      - name: Planning and shared catalog helpers
+        run: |
+          node tests/team/planning.test.cjs
+          node tests/team/catalog-helpers.test.cjs
+      - name: Large search and navigation in Firefox
+        env:
+          SEARCH_BROWSER: firefox
+        run: node tests/team/search-latency-browser-v962.test.cjs
       - name: Invoice price and bulk work-order interfaces
         run: |
           node tests/team/invoice-auto-browser-v934.test.cjs

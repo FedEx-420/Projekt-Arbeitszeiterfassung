@@ -4,7 +4,7 @@ const source=fs.readFileSync(path.resolve(__dirname,'../../app-v800.js'),'utf8')
 const helpers=source.slice(source.indexOf('  function rememberCatalogRow('),source.indexOf('  async function saveMaterials('));
 const state={rows:{customers:[],materials:[],people:[]}},writes=[],prompts=[];let choice=null,emptyResponse=false,serial=0,passed=0;
 const lower=value=>String(value||'').trim().toLocaleLowerCase('de-DE');
-const context=vm.createContext({state,lower,same:(a,b)=>String(a)===String(b),businessId:()=> 'company-a',normalizeUnit:value=>value||'Stk',planningCustomers:employee=>state.rows.customers.filter(c=>c.employee_id===employee||c.company==='company-a'),chooseSimilar:(name,records)=>{prompts.push({name,records});return choice;},write:async(table,data)=>{writes.push({table,data});return emptyResponse?[]:[{...data,id:'created-'+(++serial)}];}});
+const context=vm.createContext({window:{},state,lower,same:(a,b)=>String(a)===String(b),businessId:()=> 'company-a',normalizeUnit:value=>value||'Stk',planningCustomers:employee=>state.rows.customers.filter(c=>c.employee_id===employee||c.company==='company-a'),chooseSimilar:(name,records)=>{prompts.push({name,records});return choice;},write:async(table,data)=>{writes.push({table,data});return emptyResponse?[]:[{...data,id:'created-'+(++serial)}];}});
 vm.runInContext(helpers,context);
 async function main(){
  const test=async(name,fn)=>{await fn();passed++;console.log('PASS '+name);};

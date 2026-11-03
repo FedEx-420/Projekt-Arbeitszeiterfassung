@@ -20,7 +20,12 @@ const people = [
 const metadata = details => 'ZE-PLAN-1:' + JSON.stringify({ start: '08:00', end: '10:00', priority: 'normal', status: 'planned', details, workOrderId: '' });
 const database = {
   profiles: people,
-  customer_hourly_rates: [],
+  customer_hourly_rates: [], employee_workweeks_v905: [],
+  platform_policy_v900: [], company_entitlements_v900: [],
+  company_legal_info_v900: [], company_legal_documents_v900: [],
+  company_datev_settings_v907: [], datev_bookings_v907: [], datev_exports_v907: [], datev_export_artifacts_v907: [],
+  worker_time_rules_v908: [], worker_school_rules_v908: [], mailbox_user_state_v908: [],
+  invoice_batches_v908: [], invoice_cancellations_v908: [], invoice_order_links_v908: [],
   customers: [
     { id: 'customer-one', employee_id: 'max', name: 'Klostermanns Hof', custom_fields: { first_name: 'Testkunde', street: 'Teststraße', house_no: '12', postal_code: '48143', city: 'Münster', phone_private: '0251 12345', phone_mobile: '0176 12345', email: 'kunde@example.invalid', extra_contact: 'Schlüssel im Büro' } },
     { id: 'customer-two', employee_id: 'felix', name: 'Klostermanns Hof', custom_fields: { street: 'Andere Firmenstraße', city: 'Andere Firma' } }
@@ -124,16 +129,16 @@ async function main() {
     await test('Login page loads without runtime errors', async () => assert.equal(await page.locator('form[data-form="login"]').count(), 1));
     await setRole('company-one');
     await test('Weekly manager view is scoped to the selected company', async () => {
-      assert.equal(await page.locator('.plan-person').count(), 2);
+      assert.deepEqual(await page.evaluate(() => window.__appTest.planningPeople().map(person => person.id)), ['company-one', 'anna', 'max']);
       assert.equal(await page.locator('[data-id="other-company"]').count(), 0);
       assert.match(await page.locator('.content').innerText(), /Krank gemeldet/);
       assert.match(await page.locator('.content').innerText(), /Urlaub beantragt/);
-      assert.equal(await page.locator('.plan-day').count(), 14);
+      assert.equal(await page.locator('.plan-day').count(), 21);
     });
     await test('Mobile menu and planning stay within the viewport', async () => {
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
-      await page.locator('[data-action="menu"]').click();
-      const rect = await page.locator('.app-menu-sheet').boundingBox();
+      await page.locator('#app-menu-toggle').click();
+      const rect = await page.locator('#app-menu-panel').boundingBox();
       assert.ok(rect.x >= 0 && rect.x + rect.width <= 391);
       await page.locator('[data-action="nav"][data-view="planning"]').click();
       await page.waitForFunction(() => !window.__appTest.state.busy);
@@ -170,10 +175,10 @@ async function main() {
       assert.match(await page.locator('.notice').innerText(), /gespeichert/);
     });
     const created = database.appointments.find(row => row.title === 'Neue Steckdosen');
-    await test('Saving planning does not create work hours and notifies the assigned employee', async () => {
+    await test('Saving planning does not create work hours or send a duplicate browser notification', async () => {
       assert.ok(created); assert.equal(created.customer_id, 'customer-one');
       assert.equal(database.time_entries.length, 0); assert.equal(database.work_orders.length, 0);
-      assert.equal(notifications.at(-1).recipientId, 'anna');
+      assert.equal(notifications.length, 0); // The appointment trigger now sends the notification.
       assert.equal(JSON.parse(created.notes.slice(10)).customerDetails.custom_fields.street, 'Teststraße');
       assert.equal(writes.some(request => request.table === 'customers'), false);
       assert.equal(await page.locator('[data-id="' + created.id + '"]').count(), 1);
@@ -324,7 +329,7 @@ async function main() {
     await setRole('admin');
     await test('Administrator switching companies isolates plans and customers', async () => {
       await page.locator('[data-select="business"]').selectOption('company-two');
-      assert.equal(await page.locator('.plan-person').innerText(), 'Felix');
+      assert.deepEqual(await page.evaluate(() => window.__appTest.planningPeople().map(person => person.id)), ['company-two', 'felix']);
       assert.equal(await page.locator('[data-id="' + created.id + '"]').count(), 0);
       assert.equal(await page.locator('[data-id="other-company"]').count(), 1);
       await page.locator('[data-action="plan-new"]').click();
@@ -377,14 +382,26 @@ async function main() {
       });
       assert.deepEqual(totals, { daily: 2.5, overtime: -5.5 });
     });
-    await test('PDF export contains year and month headings and time ranges', async () => {
-      const popupPromise = page.waitForEvent('popup');
-      await page.evaluate(() => window.__appTest.printPdf());
-      const popup = await popupPromise;
-      await popup.waitForLoadState('domcontentloaded');
-      const text = await popup.locator('body').innerText();
-      assert.match(text, /Jahr 2026/); assert.match(text, /Oktober 2026/); assert.match(text, /09:00 Uhr/); assert.match(text, /11:30 Uhr/);
-      await popup.close();
+    await test('PDF export includes the saved period in the correct year and month', async () => {
+      await setRole('company-one', 'settings');
+      await page.evaluate(() => {
+        const createBundle = window.DevicePdf.createTimeAccountBundle;
+        window.DevicePdf.createTimeAccountBundle = async data => {
+          const bytes = await createBundle(data);
+          window.__timeAccountPdf = { data, header: String.fromCharCode(...bytes.slice(0, 5)) };
+          return bytes;
+        };
+      });
+      await page.locator('[data-action="pdf"]').click();
+      const result = await page.waitForFunction(() => window.__timeAccountPdf).then(handle => handle.jsonValue());
+      assert.equal(result.header, '%PDF-');
+      const year = result.data.years.find(item => item.year === '2026');
+      const october = year.months.find(item => item.month === '2026-10');
+      const period = october.days.flatMap(item => item.entries).find(item => item.work_date === '2026-10-06');
+      assert.match(period.start_time, /^09:00/);
+      assert.match(period.end_time, /^11:30/);
+      await page.waitForSelector('[data-pdf-download][href]');
+      await page.locator('[data-pdf-close]').click();
     });
     await test('Desktop weekly layout remains seven columns without overflowing the page', async () => {
       await page.setViewportSize({ width: 1440, height: 1000 });

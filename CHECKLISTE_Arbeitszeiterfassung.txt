@@ -11,6 +11,9 @@ ZEICHEN
 Ein erfolgreicher Test mit Beispieldaten ist kein Live-Test jedes Geschäftskontos.
 
 ALS NÄCHSTES
+[x] Bild-Zwischenstand am 04.11.2026 veröffentlicht und in der Live-App geprüft.
+    Berker 1.974, Hager 1.508, DEHN 2.229 eindeutige Herstellerreferenzen.
+[ ] Ergebnisse des laufenden vollständigen Herstellerabgleichs ergänzen.
 [x] Wiederholte Vollsuchen beim Tippen und bei Bestands-/Online-Antworten entfernen;
     Einkauf und Materialsuche mit 30.000 synthetischen Artikeln gemessen (v962).
     Einkauf lokal ca. 3,1 auf 1,4 s; 20 simulierte Händlerantworten 17,2 auf 0,8 s.

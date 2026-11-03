@@ -85,7 +85,7 @@ def due(url,state,known,now):
  return now-stamp>30*86400
 
 def main():
- parser=argparse.ArgumentParser();parser.add_argument('--limit',type=int,default=160);args=parser.parse_args()
+ parser=argparse.ArgumentParser();parser.add_argument('--limit',type=int,default=160);parser.add_argument('--first-pass',action='store_true');args=parser.parse_args()
  if not 1<=args.limit<=300:raise ValueError('Limit must be 1..300')
  target=ROOT/'catalog-image-index.json';statefile=ROOT/'catalog-image-index-state.json'
  index=json.loads(target.read_text(encoding='utf-8')) if target.exists() else {'version':1,'entries':{}}
@@ -97,19 +97,19 @@ def main():
  # Finish the first pass before revisiting previously checked product pages.
  unseen=[u for u in eligible if hashlib.sha256(u.encode()).hexdigest()[:20] not in state]
  chosen=choose(sorted(unseen),args.limit)
- if len(chosen)<args.limit:
+ if not args.first_pass and len(chosen)<args.limit:
   chosen+=choose(sorted(set(eligible)-set(chosen)),args.limit-len(chosen))
- success=0
+ success=completed=0
  def load(url):
   try:return url,extract(fetch(url),url),True
   except Exception as e:return url,None,False
  with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
   for url,entry,checked in pool.map(load,chosen):
-   if checked:state[hashlib.sha256(url.encode()).hexdigest()[:20]]={'checked_at':now,'extractor':960}
+   if checked:completed+=1;state[hashlib.sha256(url.encode()).hexdigest()[:20]]={'checked_at':now,'extractor':960}
    if entry:
     entry['checked_at']=datetime.datetime.now(datetime.timezone.utc).isoformat();index['entries'][entry['brand']+':'+entry['sku']]=entry;success+=1
  index['updated_at']=datetime.datetime.now(datetime.timezone.utc).isoformat();index['source']='Public Hager/Berker/Elcom, JUNG, WAGO, Gira and DEHN manufacturer catalogs'
  target.write_text(json.dumps(index,ensure_ascii=False,separators=(',',':'))+'\n',encoding='utf-8')
  statefile.write_text(json.dumps(state,separators=(',',':'))+'\n',encoding='utf-8')
- print(json.dumps({'checked':len(chosen),'verified_images':success,'total_images':len(index['entries'])}))
+ print(json.dumps({'checked':len(chosen),'completed':completed,'unseen_remaining':len(unseen)-completed if args.first_pass else None,'verified_images':success,'total_images':len(index['entries'])}))
 if __name__=='__main__':main()

@@ -73,6 +73,7 @@ def main():
     statefile = ROOT / 'catalog-dehn-image-state.json'
     state = json.loads(statefile.read_bytes()) if statefile.exists() else {}
     visited = set(state.get('visited', []))
+    previous_visited = len(visited)
     pending = list(dict.fromkeys(state.get('pending', SEEDS)))
     robots = urllib.robotparser.RobotFileParser()
     robots.parse(fetch(ORIGIN + '/robots.txt').splitlines())
@@ -128,7 +129,7 @@ def main():
         target.write_bytes((json.dumps(index, ensure_ascii=False, separators=(',', ':')) + '\n').encode())
     statefile.write_bytes((json.dumps({'visited': sorted(visited), 'pending': pending + retry},
                                       separators=(',', ':')) + '\n').encode())
-    print(json.dumps({'checked': checked, 'pending': len(pending) + len(retry), 'matched': len(found), 'added': new}))
+    print(json.dumps({'checked': checked, 'completed': len(visited) - previous_visited, 'pending': len(pending) + len(retry), 'matched': len(found), 'added': new}))
 
 
 if __name__ == '__main__':

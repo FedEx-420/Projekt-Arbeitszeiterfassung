@@ -11,9 +11,9 @@
   const state = {
     session: null, profile: null, people: [], view: 'home', date: today(), month: today().slice(0, 7),
     businessId: '', businessBrand: null, employeeId: '', customerId: '', customerSearch: '', materialId: '', orderId: '', timeEntryId: '', orderCustomer: '', orderOrigin: 'orders', billingKey: '', billingMode: 'open', menu: false, vacationForm: false, appointmentForm: false, composeMessage: false, mailboxFolder: 'received', notice: null, busy: false,
-    rows: { entries: [], orders: [], items: [], customers: [], customerRates: [], days: [], vacations: [], messages: [], attachments: [], recipients: [], materials: [], appointments: [], planningRequests: [], payslips: [], documents: [] }
+    rows: { people: [], workweeks: [], entries: [], orders: [], items: [], customers: [], customerRates: [], days: [], vacations: [], messages: [], attachments: [], recipients: [], materials: [], appointments: [], planningRequests: [], payslips: [], documents: [] }
   };
-  let startupStage = '', startupGeneration = 0;
+  let startupStage = '', startupGeneration = 0, startupHomeReady = false;
   let supplierCart=null, shoppingCatalogWizard=null, shoppingLoading=false, shoppingLoadFailed=false;
   const navigationFeature = window.WorktimeNavigation?.create({root,getOpen:()=>state.menu,setOpen:value=>{state.menu=value;}});
   /* BEGIN SESSION AUTH V859
@@ -220,6 +220,7 @@
     const current = () => generation === startupGeneration && state.session?.user?.id === user;
     state.view = 'home'; state.menu = false; state.customerId = ''; state.customerSearch = ''; state.orderId = ''; state.timeEntryId = ''; state.billingKey = ''; state.vacationForm = false; state.composeMessage = false;
     startupStage = 'verify';
+    startupHomeReady = false;
     state.busy = true;
     render();
     try {
@@ -234,7 +235,11 @@
       state.profile = profile;
       startupStage = 'data';
       render();
-      await reload(current);
+      await reload(current, () => {
+        startupHomeReady = true;
+        state.busy = false;
+        render();
+      });
       if (current()) startupStage = '';
     } catch (error) {
       if (!current()) return;
@@ -248,7 +253,7 @@
         startupStage = 'retry';
       }
     } finally {
-      if (generation === startupGeneration) {
+      if (generation === startupGeneration && !(state.profile && startupHomeReady && state.view === 'time')) {
         state.busy = false;
         render();
         window.scrollTo({top:0,left:0,behavior:'instant'});
@@ -379,7 +384,7 @@
     const current = state.view === 'invoice-draft'?'invoices':state.view === 'order-detail' ? (['invoices','invoices-paid','customers','planning'].includes(state.orderOrigin) ? state.orderOrigin : 'orders') : state.view === 'billing-detail' ? (state.billingMode === 'paid' ? 'invoices-paid' : 'invoices') : state.view;
     const items = menuItems(), navigation = window.WorktimeNavigation?.markup({items,current,open:state.menu}) || `<button type="button" class="menu-toggle" data-action="menu" aria-expanded="${state.menu}">Menü ⌄</button>${state.menu ? `<section class="app-menu-sheet"><header><b>Menü auswählen</b><button type="button" class="secondary small" data-action="menu">Schließen</button></header><nav>${items.map(([id,text])=>`<button type="button" data-action="nav" data-view="${id}" class="${current===id?'active':''}">${text}</button>`).join('')}<hr><button type="button" data-action="logout">Abmelden</button></nav></section>` : ''}`;
     const context = `<section class="workspace-context" aria-label="Aktueller Bereich und Arbeitskonto"><div class="workspace-location"><span aria-hidden="true"></span><strong>${escape(window.WorktimeNavigation?.currentLabel(items,current) || 'Übersicht')}</strong></div>${selector()}</section>`;
-    return `<div class="app-shell"><header class="topbar"><div class="brand-identity">${headerLogo ? `<img src="${escape(headerLogo)}" alt="Firmenlogo von ${escape(title)}">` : '<div class="brand-mark" aria-hidden="true">ZE</div>'}<div class="brand-caption"><h1>${escape(title)}</h1><p>${escape(state.profile?.username || '')} · ${roleName}</p></div></div><div class="top-actions">${navigation}</div></header><main class="content">${context}${viewHtml()}${noticeHtml()}</main></div>`;
+    return `<div class="app-shell"><header class="topbar"><div class="brand-identity">${headerLogo ? `<img src="${escape(headerLogo)}" alt="Firmenlogo von ${escape(title)}">` : '<div class="brand-mark" aria-hidden="true">ZE</div>'}<div class="brand-caption"><h1>${escape(title)}</h1><p>${escape(state.profile?.username || '')} · ${roleName}</p></div></div><div class="top-actions">${navigation}</div></header><main class="content">${context}${startupStage === 'data' && !(startupHomeReady && ['home','time'].includes(state.view)) ? '<section class="panel"><h2>Startseite</h2><p role="status">Arbeitsdaten werden geladen …</p></section>' : viewHtml()}${noticeHtml()}</main></div>`;
   }
   function viewHtml() { return ({ home: homeView, time: timeView, orders: ordersView, 'order-detail': orderDetailView, calendar: calendarView, customers: customersView, mailbox: mailboxView, materials: materialsView, shopping: shoppingView, invoices: invoicesView, 'invoices-paid': paidInvoicesView, 'billing-detail': billingDetailView, settings: settingsView }[state.view] || homeView)(); }
 
@@ -1233,42 +1238,54 @@
     windowRef.document.write(`<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Zeiterfassungsnachweis</title><style>${pdfStyles()}</style></head><body><main class="pdf-page">${pdfBrandHeader('Zeiterfassungsnachweis', state.date.slice(0, 4))}<section class="pdf-grid"><article class="pdf-card"><span class="pdf-card-label">Mitarbeiter</span><b>${escape(person?.display_name || person?.username || '')}</b></article><article class="pdf-card"><span class="pdf-card-label">Jahresübersicht</span>${h(totalHours)} Arbeitsstunden<br>${h(overtime(id))} Überstunden<br>${vacationLeft(id)} Urlaubstage übrig · ${annualSick(id)} Krankheitstage</article></section><section class="pdf-section"><h2>Erfasste Zeiten</h2><table class="pdf-table"><thead><tr><th>Datum</th><th>Kunde</th><th>Von</th><th>Bis</th><th class="number">Pause</th><th class="number">Stunden</th></tr></thead><tbody>${lines || '<tr><td colspan="6" class="pdf-empty">Keine Zeiterfassungen vorhanden.</td></tr>'}</tbody></table></section><p class="pdf-note">Automatisch aus der Arbeitszeiterfassung erstellt.</p></main><script>window.onload=()=>window.print()<\/script></body></html>`); windowRef.document.close(); addPdfReturnBar(windowRef);
   }
   const deviceFeatures=window.WorktimeDeviceFeatures?.create({root,state,api,write,allRows,upload,remove,download,render,businessId,workerId,isManager,isAdmin,orderForEmployee,orderHours,dateText,timeText,h,planningMeta,planEmployeeIds,logout,canUse,locked,openPlanningOrder,teamPeriodFields,teamPersonFields,refreshPlanningData,loadTeamContext});
-  function render() { if (!root) return; if (!base || !key) { root.innerHTML = '<main class="login-page"><section class="login-card"><h1>Zeiterfassung</h1><p>Die App-Konfiguration fehlt.</p></section></main>'; return; } if (startupStage) { root.innerHTML = startupView(); return; } root.innerHTML = state.session && state.profile ? appView() : loginView(); setupCustomerSearch(); setupSignaturePads(); setupPlanningCustomerLookup(); updatePlanningWarnings(root.querySelector('form[data-form="planning"]')); updateAssignmentHint(root.querySelector('form[data-form="time"], form[data-form="order"]')); deviceFeatures?.afterRender(); supplierCart?.afterRender(); }
+  function render() { if (!root) return; if (!base || !key) { root.innerHTML = '<main class="login-page"><section class="login-card"><h1>Zeiterfassung</h1><p>Die App-Konfiguration fehlt.</p></section></main>'; return; } if (startupStage && startupStage !== 'data') { root.innerHTML = startupView(); return; } root.innerHTML = state.session && state.profile ? appView() : loginView(); setupCustomerSearch(); setupSignaturePads(); setupPlanningCustomerLookup(); updatePlanningWarnings(root.querySelector('form[data-form="planning"]')); updateAssignmentHint(root.querySelector('form[data-form="time"], form[data-form="order"]')); deviceFeatures?.afterRender(); supplierCart?.afterRender(); }
   window.addEventListener('unhandledrejection', event => { event.preventDefault(); notice('Die Aktion konnte nicht ausgeführt werden. Bitte erneut versuchen.', true); render(); });
   state.session = parse(sessionStorage.getItem(storage) || localStorage.getItem(storage) || localStorage.getItem('zeiterfassung-session-v700'));
   if (state.session?.access_token) loadApp(); else render();
 
   // Safety net: always load every available result page and never clear a verified history after a temporary connection error.
-  async function allRows(table, query = 'select=*') {
+  async function allRows(table, query = 'select=*', timed = false) {
     const pageSize = 500; let lastError = null;
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
         const result = [];
         for (let offset = 0; ; offset += pageSize) {
-          const page = await rows(table, `${query}&limit=${pageSize}&offset=${offset}`) || [];
+          const path = `/rest/v1/${table}?${query}&limit=${pageSize}&offset=${offset}`;
+          const page = await api(path, timed ? { signal: AbortSignal.timeout(10000) } : {}) || [];
           result.push(...page); if (page.length < pageSize) return result;
         }
       } catch (error) { lastError = error; }
     }
     throw lastError || new Error('Die Daten konnten nicht geladen werden.');
   }
-  async function reload(isCurrent = () => true) {
+  async function reload(isCurrent = () => true, onHomeReady) {
     planningSync.reset();
     const issues = [];
-    const load = async (name, table, query = 'select=*') => { try { const data = await allRows(table, query); if (isCurrent()) state.rows[name] = data; } catch { issues.push(name); } };
-    const loadRecipients = async () => { try { const data = await api('/functions/v1/mailbox-send', { method: 'POST', body: { action: 'recipients' } }); if (isCurrent()) state.rows.recipients = data?.recipients || []; } catch { issues.push('recipients'); } };
-    await Promise.all([
-      load('people', 'profiles'), load('entries', 'time_entries', 'select=*&order=work_date.desc,created_at.desc'), load('orders', 'work_orders', 'select=*&order=work_date.desc,created_at.desc'),
-      load('items', 'work_order_items'), load('customers', 'customers', 'select=*&order=name.asc'), load('days', 'work_days'), load('vacations', 'vacation_requests', 'select=*&order=created_at.desc'),
-      load('messages', 'mailbox_messages', 'select=*&order=created_at.desc'), load('attachments', 'mailbox_attachments', 'select=*&order=created_at.asc'), load('materials', 'materials', 'select=*&order=name.asc'), load('appointments', 'appointments'),
-      load('payslips', 'employee_payslips', 'select=*&order=created_at.desc'), load('documents', 'work_order_documents'), load('workweeks','employee_workweeks_v905','select=*&order=employee_id.asc,effective_from.asc'), loadRecipients(), loadPlanningRequests(isCurrent)
+    const load = async (name, table, query = 'select=*') => { try { const data = await allRows(table, query, Boolean(onHomeReady)); if (isCurrent()) state.rows[name] = data; } catch { issues.push(name); } };
+    const loadRecipients = async () => { try { const data = await api('/functions/v1/mailbox-send', { method: 'POST', body: { action: 'recipients' }, signal: onHomeReady ? AbortSignal.timeout(10000) : undefined }); if (isCurrent()) state.rows.recipients = data?.recipients || []; } catch { issues.push('recipients'); } };
+    const essential = Promise.all([
+      load('people', 'profiles'), load('entries', 'time_entries', 'select=*&order=work_date.desc,created_at.desc'),
+      load('orders', 'work_orders', 'select=*&order=work_date.desc,created_at.desc'), load('days', 'work_days'),
+      load('vacations', 'vacation_requests', 'select=*&order=created_at.desc'),
+      load('workweeks','employee_workweeks_v905','select=*&order=employee_id.asc,effective_from.asc'),
+      load('customers', 'customers', 'select=*&order=name.asc'), load('appointments', 'appointments')
     ]);
+    const background = Promise.all([
+      load('items', 'work_order_items'), load('messages', 'mailbox_messages', 'select=*&order=created_at.desc'),
+      load('attachments', 'mailbox_attachments', 'select=*&order=created_at.asc'),
+      load('materials', 'materials', 'select=*&order=name.asc'), load('payslips', 'employee_payslips', 'select=*&order=created_at.desc'),
+      load('documents', 'work_order_documents'), loadRecipients(), loadPlanningRequests(isCurrent, Boolean(onHomeReady))
+    ]);
+    await essential;
     if (!isCurrent()) return;
     state.people = state.rows.people;
-    try { const rates = await allRows('customer_hourly_rates','select=*&order=customer_id.asc'); if (!isCurrent()) return; state.rows.customerRates = rates; state.customerRatesReady=true; } catch { if (!isCurrent()) return; state.customerRatesReady=false; issues.push('customerRates'); }
-    if (!isManager()) { try { const data = await api('/rest/v1/rpc/current_business_branding', { method: 'POST', body: {} }); if (!isCurrent()) return; state.businessBrand = data?.[0] || null; } catch { if (!isCurrent()) return; state.businessBrand = null; } } else state.businessBrand = null;
     if (isAdmin() && !businesses().some(person => same(person.id, state.businessId))) state.businessId = businesses()[0]?.id || '';
     if (!workers().some(person => same(person.id, state.employeeId))) state.employeeId = workers()[0]?.id || state.profile.id;
+    if (!issues.some(name => ['people','entries','orders','days','vacations','workweeks','customers','appointments'].includes(name))) onHomeReady?.();
+    await background;
+    if (!isCurrent()) return;
+    try { const rates = await allRows('customer_hourly_rates','select=*&order=customer_id.asc', Boolean(onHomeReady)); if (!isCurrent()) return; state.rows.customerRates = rates; state.customerRatesReady=true; } catch { if (!isCurrent()) return; state.customerRatesReady=false; issues.push('customerRates'); }
+    if (!isManager()) { try { const data = await api('/rest/v1/rpc/current_business_branding', { method: 'POST', body: {}, signal: onHomeReady ? AbortSignal.timeout(10000) : undefined }); if (!isCurrent()) return; state.businessBrand = data?.[0] || null; } catch { if (!isCurrent()) return; state.businessBrand = null; } } else state.businessBrand = null;
     await loadTeamContext();
     if (!isCurrent()) return;
     await deviceFeatures?.load();
@@ -1422,8 +1439,8 @@
     const allowed = new Set(planningPeople().map(person => String(person.id)));
     return state.rows.appointments.filter(row => planEmployeeIds(row).some(id => allowed.has(id)));
   }
-  async function loadPlanningRequests(isCurrent = () => true) {
-    try { const data = await allRows('planning_requests', 'select=*&order=created_at.desc,id.asc'); if (!isCurrent()) return; state.rows.planningRequests = data; state.planningRequestsReady = true; }
+  async function loadPlanningRequests(isCurrent = () => true, timed = false) {
+    try { const data = await allRows('planning_requests', 'select=*&order=created_at.desc,id.asc', timed); if (!isCurrent()) return; state.rows.planningRequests = data; state.planningRequestsReady = true; }
     catch { if (!isCurrent()) return; state.planningRequestsReady = false; /* Preserve loaded proposals during temporary outages. */ }
   }
   function planningRequests() {
@@ -1674,7 +1691,7 @@
     const [appointments, days, vacations, orders, entries, customers, requests, customerRates, workweeks] = await Promise.all([
       allRows('appointments', 'select=*&order=event_date.asc,id.asc'), allRows('work_days', 'select=*&order=employee_id.asc,work_date.asc'),
       allRows('vacation_requests', 'select=*&order=id.asc'), allRows('work_orders', 'select=*&order=id.asc'), allRows('time_entries', 'select=*&order=id.asc'), allRows('customers', 'select=*&order=name.asc,id.asc'),
-      allRows('planning_requests', 'select=*&order=created_at.desc,id.asc').catch(()=>null),
+      allRows('planning_requests', 'select=*&order=created_at.desc,id.asc', timed).catch(()=>null),
       allRows('customer_hourly_rates','select=*&order=customer_id.asc'),allRows('employee_workweeks_v905','select=*&order=employee_id.asc,effective_from.asc')
     ]);
     if (!same(actor, state.profile?.id)) throw new Error('Das Benutzerkonto hat sich geändert. Bitte die Planung erneut öffnen.');
@@ -2171,7 +2188,7 @@
     const menusBeforeV857=menuItems,viewBeforeV857=viewHtml,reloadBeforeV857=reload,renderBeforeV857=render;
     menuItems=()=>{const items=menusBeforeV857();if(isManager())items.splice(items.findIndex(row=>row[0]==='materials'),0,['offers','Angebote',true]);return items;};
     viewHtml=()=>state.view==='offers'?offersFeature.view():viewBeforeV857();
-    reload=async()=>{await reloadBeforeV857();await offersFeature.load();};
+    reload=async(isCurrent, onHomeReady)=>{await reloadBeforeV857(isCurrent,onHomeReady);if(!isCurrent||isCurrent())await offersFeature.load();};
     render=()=>{renderBeforeV857();offersFeature.setup();};
     offersFeature.bind();
   }
@@ -2181,7 +2198,7 @@
     const menuBeforeV900=menuItems,viewBeforeV900=viewHtml,reloadBeforeV900=reload,settingsBeforeV900=settingsView;
     menuItems=()=>{const items=menuBeforeV900();if(platformFeature.creator())items.splice(items.findIndex(row=>row[0]==='settings'),0,['platform','Preise & Konten',true]);return items;};
     viewHtml=()=>state.view==='platform'?platformFeature.view():viewBeforeV900();
-    reload=async()=>{await reloadBeforeV900();await platformFeature.load();};
+    reload=async(isCurrent, onHomeReady)=>{await reloadBeforeV900(isCurrent,onHomeReady);if(!isCurrent||isCurrent())await platformFeature.load();};
     settingsView=()=>settingsBeforeV900()+platformFeature.settingsPanel();
   }
   const legalFeature=window.WorktimeLegal?.create({root,state,api,allRows,render:()=>render(),escape,isManager,businessId,managerBusiness});
@@ -2189,7 +2206,7 @@
     const menuBeforeLegalV900=menuItems,viewBeforeLegalV900=viewHtml,reloadBeforeLegalV900=reload,homeBeforeLegalV900=homeView;
     menuItems=()=>{const items=menuBeforeLegalV900();items.splice(items.findIndex(row=>row[0]==='settings'),0,['legal','Unterlagen & Freigaben',true]);return items;};
     viewHtml=()=>state.view==='legal'?legalFeature.view():viewBeforeLegalV900();
-    reload=async()=>{await reloadBeforeLegalV900();await legalFeature.load();};
+    reload=async(isCurrent, onHomeReady)=>{await reloadBeforeLegalV900(isCurrent,onHomeReady);if(!isCurrent||isCurrent())await legalFeature.load();};
     homeView=()=>homeBeforeLegalV900()+legalFeature.setupPanel();
   }
   const datevFeature=window.WorktimeDatev?.create({root,state,api,allRows,render:()=>render(),escape,isManager,businessId,managerBusiness,today});
@@ -2197,7 +2214,7 @@
     const menuBeforeDatev=menuItems,viewBeforeDatev=viewHtml,reloadBeforeDatev=reload,renderBeforeDatev=render;
     menuItems=()=>{const items=menuBeforeDatev();if(isManager())items.splice(items.findIndex(row=>row[0]==='settings'),0,['datev','Steuer & DATEV',true]);return items;};
     viewHtml=()=>state.view==='datev'?datevFeature.view():viewBeforeDatev();
-    reload=async()=>{await reloadBeforeDatev();await datevFeature.load();};
+    reload=async(isCurrent, onHomeReady)=>{await reloadBeforeDatev(isCurrent,onHomeReady);if(!isCurrent||isCurrent())await datevFeature.load();};
     render=()=>{datevFeature.afterRender();renderBeforeDatev();};
   }
   const renderBeforeNavigationV901=render;
@@ -2266,7 +2283,7 @@
     const menusBeforeBusiness=menuItems,renderBeforeBusiness=render,reloadBeforeBusiness=reload,planningBeforeBusiness=refreshPlanningData;
     menuItems=()=>menusBeforeBusiness().filter(item=>!['time','receipts'].includes(item[0])).map(item=>item[0]==='invoices'?[item[0],'Noch offene Arbeitsscheine',item[2]]:item[0]==='invoices-paid'?[item[0],'Erstellte Rechnungen',item[2]]:item);
     settingsView=()=>businessFeature.settings(settingsBeforeWorkweekV905());
-    reload=async()=>{await reloadBeforeBusiness();await businessFeature.load();};
+    reload=async(isCurrent, onHomeReady)=>{await reloadBeforeBusiness(isCurrent,onHomeReady);if(!isCurrent||isCurrent())await businessFeature.load();};
     refreshPlanningData=async(...args)=>{const result=await planningBeforeBusiness(...args);if(result!==false)await businessFeature.load();return result;};
     render=()=>{businessFeature.beforeRender();renderBeforeBusiness();businessFeature.mount();};
     businessFeature.mount();
@@ -2275,7 +2292,7 @@
   if(mailboxFeature){
     const reloadBeforeMail=reload,renderBeforeMail=render,refreshBeforeMail=refreshPlanningData;
     mailboxView=()=>mailboxFeature.view();
-    reload=async()=>{await reloadBeforeMail();await mailboxFeature.load();};
+    reload=async(isCurrent, onHomeReady)=>{await reloadBeforeMail(isCurrent,onHomeReady);if(!isCurrent||isCurrent())await mailboxFeature.load();};
     refreshPlanningData=async(...args)=>{const result=await refreshBeforeMail(...args);if(result!==false)await mailboxFeature.load();return result;};
     render=()=>{renderBeforeMail();mailboxFeature.mount();};
   }
@@ -2300,7 +2317,7 @@
   const invoiceLedger=window.WorktimeInvoiceLedger?.create({root,state,api,allRows,render:()=>render(),reload:()=>reload(),isManager,businessId,today,escape,getCompanyDetails:()=>legalFeature?.getCompanyDetails?.()||null,askTax:(data,accept,options)=>window.WorktimeInvoiceTax.ask(data,accept,options),openPdf:openDocumentPdf,scopeOrder:orderInCurrentBusiness});
   if(invoiceLedger){
     const reloadBeforeLedger=reload,viewBeforeLedger=viewHtml,renderBeforeLedger=render;
-    reload=async()=>{await reloadBeforeLedger();await invoiceLedger.load();};
+    reload=async(isCurrent, onHomeReady)=>{await reloadBeforeLedger(isCurrent,onHomeReady);if(!isCurrent||isCurrent())await invoiceLedger.load();};
     paidInvoicesView=()=>invoiceLedger.view();
     viewHtml=()=>state.view==='invoice-draft'?invoiceLedger.draftView():viewBeforeLedger();
     printInvoicePdf=group=>invoiceLedger.start(group?.orders||[]);

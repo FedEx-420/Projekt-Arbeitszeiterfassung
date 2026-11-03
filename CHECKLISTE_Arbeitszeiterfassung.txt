@@ -11,6 +11,9 @@ ZEICHEN
 Ein erfolgreicher Test mit Beispieldaten ist kein Live-Test jedes Geschäftskontos.
 
 ALS NÄCHSTES
+[x] Startseite nach der Profilprüfung öffnen und die Tagesauswahl bei
+    blockiertem Materialabruf im Browser prüfen (v970).
+[ ] Startzeit mit dem produktiven Administratorkonto messen.
 [x] Bild-Zwischenstand am 04.11.2026 veröffentlicht und in der Live-App geprüft.
     Berker 1.974, Hager 1.508, DEHN 2.229 eindeutige Herstellerreferenzen.
 [ ] Ergebnisse des laufenden vollständigen Herstellerabgleichs ergänzen.

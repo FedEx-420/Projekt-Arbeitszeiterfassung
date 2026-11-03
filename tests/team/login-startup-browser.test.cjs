@@ -43,6 +43,7 @@ async function main() {
         profileReads++;
         return profileUnavailable ? send({message:'Synthetic outage'},503) : send([profile]);
       }
+      if (url.pathname === '/rest/v1/profiles') return send([profile,{id:'test-business',role:'business',username:'Testbetrieb'}]);
       if (url.pathname === '/rest/v1/materials') {
         materialReads++;
         if (holdMaterials) await new Promise(resolve => { releaseMaterials = resolve; });
@@ -60,13 +61,19 @@ async function main() {
     };
     await page.goto(url);
     await enter();
-    await page.getByRole('heading', {name:'Startseite',exact:true}).waitFor();
+    await page.locator('#app-menu-toggle').waitFor({timeout: 5000});
     assert.equal(await form.count(), 0);
     assert.equal(profileReads, 1);
     assert.equal(tokenRequests, 1);
+    await page.locator('[data-date]').waitFor({timeout: 5000});
     assert.ok(releaseMaterials);
+    await page.locator('[data-action="shift-day"][data-days="-1"]').click();
+    const selectedDate = await page.locator('[data-date]').inputValue();
+    const backgroundFinished = page.waitForResponse(r => new URL(r.url()).pathname === '/rest/v1/customer_hourly_rates');
     holdMaterials = false;
     releaseMaterials();
+    await backgroundFinished;
+    assert.equal(await page.locator('[data-date]').inputValue(), selectedDate);
     await page.locator('#app-menu-toggle').waitFor();
     assert.equal(materialReads, 1, 'login must not trigger a second catalog download');
     assert.ok(await page.evaluate(key => localStorage.getItem(key), storage));

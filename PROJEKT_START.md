@@ -92,3 +92,5 @@ Ein neuer Cloud-Chat startet mit dem veröffentlichten Stand der Umgebung. Ände
 Offizielle Hinweise: [Codex-Cloud-Arbeitsumgebungen](https://learn.chatgpt.com/docs/environments/cloud-environments), [Projekte, Chats und Dateizugriff](https://learn.chatgpt.com/docs/projects).
 
 Am 04.11.2026 wurde der Bild-Zwischenstand in v968 veröffentlicht und live geprüft: 1.974 Berker-, 1.508 Hager- und 2.229 DEHN-Zuordnungen. Der vollständige Abgleich bleibt offen.
+
+v970 zeigt die App nach bestätigtem Profil und gibt Übersicht und Zeiterfassung nach den erforderlichen Arbeitsdaten frei. Der Materialabruf hält die Übersicht nicht auf. Der isolierte Browserlauf mit blockierter Materialantwort und gespeicherter Anmeldung ist bestanden.

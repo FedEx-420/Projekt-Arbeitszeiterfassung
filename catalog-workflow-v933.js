@@ -12,7 +12,27 @@ function normalize(raw,headers,settings){
  const info=C.articleGroups(raw,headers),detail=C.articleDetails(raw,headers),extra={...info,gtin:String(raw[aliases.gtin]||''),features:detail.features,image_url:detail.image_url,manufacturer_number:raw[aliases.manufacturer_number]||''};
  const entry=validate({canonical,decimal:settings.decimal||'comma',extra});const unresolved=(raw._review||[]).filter(t=>/Rohstoff.?.?Kupferzuschlag|Kupferwert\/Zuschlag vorhanden|Rohstoffzuschlag/i.test(t));if(unresolved.length)entry.error=unresolved.join(' ')+' Bitte endgültige Nettopreise prüfen und gegebenenfalls korrigieren.';return entry;
 }
-function validate(entry){try{const c={...entry.canonical};for(const k of F.prices)c[k]=C.priceText(c[k],entry.decimal);const data=F.prepare({headers:F.fields,rows:[c]},{supplier:'Katalog-Prüfung',decimal:entry.decimal,price_unit:1,net_eur:true,allowSupplierVariants:true,mapping:Object.fromEntries(F.fields.map(k=>[k,k]))},[])[0].data;if(data.recommended_price_1==null)throw Error('VK * fehlt. Bitte einen Nettoverkaufspreis ergänzen.');return {...entry,data,error:''};}catch(e){return {...entry,data:null,error:e.message};}}
+function validate(entry) {
+  try {
+    const row = { ...entry.canonical };
+    if (!String(row.unit ?? '').trim()) {
+      throw Error('Die Mengeneinheit fehlt. Bitte angeben, ob der Artikel zum Beispiel pro Stück (Stk), Meter (M) oder Kilogramm (Kg) verkauft wird.');
+    }
+    for (const field of F.prices) row[field] = C.priceText(row[field], entry.decimal);
+    if (!row.recommended_price_1) {
+      throw Error('Der Nettoverkaufspreis VK * fehlt oder konnte nicht eindeutig übernommen werden. Bitte den bestätigten Preis ohne Umsatzsteuer eintragen.');
+    }
+    const mapping = Object.fromEntries(F.fields.map(field => [field, field]));
+    const [prepared] = F.prepare({ headers: F.fields, rows: [row] }, {
+      supplier: 'Katalog-Prüfung', decimal: entry.decimal, price_unit: 1,
+      net_eur: true, allowSupplierVariants: true, mapping
+    }, []);
+    return { ...entry, data: prepared.data, error: '' };
+  } catch (error) {
+    // The shared validator receives one row, so its generated line number is not the file position.
+    return { ...entry, data: null, error: error.message.replace(/^Zeile 2:\s*/, '') };
+  }
+}
 function create({root,state,api,reload,render,businessId,isManager,escape:esc}){
  let scope='',catalog=null,stage='files',library=[],master=null,price=null,encoding='auto',filters={manufacturer:[],category:[]},query='',busy=false,progress={text:'',value:null,eta:''},notice='',failed=false,controller=null,serial=0,fromMaterials=false,materialQuery='',chooser=false,selected=0,invalid=0,issues=[],issueIndexes=[],supplier='',shoppingReturn=null,job='',saved=0,skipCount=0,skipped=new Set();
  const inspection=window.WorktimeCatalogReview?.create({root,state,businessId,isManager,render,escape:esc});

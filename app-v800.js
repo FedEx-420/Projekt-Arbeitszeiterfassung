@@ -2028,6 +2028,15 @@
       planId ? rows('appointments', `select=*&id=eq.${encodeURIComponent(planId)}`) : []
     ]);
     if (!isCurrent()) return;
+    const known = new Set(state.rows.materials.map(material => String(material.id)));
+    const missing = [...new Set(items.map(item => item.material_id).filter(id => id && !known.has(String(id))))];
+    const materials = missing.length ? await rows('materials', `select=*&id=in.(${missing.map(encodeURIComponent).join(',')})`) : [];
+    if (!isCurrent()) return;
+    const missingIds = new Set(missing.map(String));
+    const confirmedMaterials = (materials || []).filter(material => missingIds.has(String(material.id)) && same(material.business_id, businessId()));
+    if (new Set(confirmedMaterials.map(material => String(material.id))).size !== missing.length) {
+      throw Error('Materialien des gespeicherten Arbeitsscheins konnten nicht vollständig gelesen werden.');
+    }
     const belongsToOrder = row => same(row.work_order_id, order.id) || same(row.team_work_order_id, order.id);
     const replace = (name, fresh, matches) => {
       state.rows[name] = [...state.rows[name].filter(row => !matches(row)), ...fresh.filter(matches)];
@@ -2037,6 +2046,7 @@
     replace('items', items, belongsToOrder);
     replace('documents', documents, belongsToOrder);
     if (planId) replace('appointments', plans || [], row => same(row.id, planId));
+    if (missing.length) replace('materials', confirmedMaterials, row => missingIds.has(String(row.id)));
     planningSync.reset();
   }
 
@@ -2066,9 +2076,11 @@
     state.date = order.work_date; state.month = state.date.slice(0, 7);
     // Core data is already committed atomically. A failed file upload never
     // causes the next attempt to create another work order.
+    const hasNewReceipts = JSON.parse(form.dataset.receiptScans || '[]').length > 0;
     try { await saveDocuments(form,order,actor); }
     catch { throw new Error('Der Arbeitsschein und alle Mitarbeiterzeiten sind gespeichert. Ein Dokument konnte nicht hochgeladen werden; bitte hier erneut hinzufügen.'); }
     if (!isCurrent()) return savedOrderSynchronized;
+    if (hasNewReceipts) return; // Device receipt state is refreshed by the existing reload.
     try { await syncSavedTeamOrder(order, planId, isCurrent); }
     catch { return; } // A readback failure falls back to the existing complete refresh.
     return savedOrderSynchronized;

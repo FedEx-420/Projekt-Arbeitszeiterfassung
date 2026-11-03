@@ -109,7 +109,17 @@ async function main(){
       assert.equal(await page.evaluate(()=>window.__appTest.overtime()),-5);
     });
     await test('Participant edits propagate without double counting to every account',async()=>{
-      await group(ids.max).locator('[data-team-time="end"]').fill('12:30');await submit('order-edit');
+      const missingMaterial = await page.evaluate(() => {
+        const { state } = window.__appTest;
+        const item = state.rows.items.find(row => row.work_order_id === state.orderId && /stunde/i.test(row.position_name));
+        state.rows.materials = state.rows.materials.filter(material => material.id !== item.material_id);
+        return item.material_id;
+      });
+      await group(ids.max).locator('[data-team-time="end"]').fill('12:30');
+      reads.length = 0;
+      await submit('order-edit');
+      assert.ok(reads.some(([table, query]) => table === 'materials' && decodeURIComponent(query).includes('id=in.(' + missingMaterial + ')')));
+      assert.ok(await page.evaluate(id => window.__appTest.state.rows.materials.some(material => material.id === id), missingMaterial));
       assert.equal(await page.evaluate(()=>window.__appTest.dayHours()),3.5);
       await setRole('anna','home');assert.equal(await page.evaluate(()=>window.__appTest.dayHours()),3.25);
       assert.equal(await page.evaluate(()=>window.__appTest.orderHours(window.__appTest.state.rows.orders[0])),6.75);

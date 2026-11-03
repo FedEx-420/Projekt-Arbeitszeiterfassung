@@ -77,6 +77,8 @@ Der Bildindex enthält 40 weitere Gira-Produktbilder und insgesamt 2.622 Referen
 
 v967 entfernt den zweiten vollständigen Datenabruf nach dem Login. Die App zeigt nach der Profilprüfung die Startansicht mit Ladehinweis. Vorübergehende Verbindungsfehler lassen eine gespeicherte Anmeldung bestehen. Der Team-Arbeitsschein wird nach Bestätigung über gezielte Lesezugriffe aktualisiert. Der echte Admin-Bestand wurde nicht gemessen.
 
+Der öffentliche Bildindex enthält 2.756 Referenzen. Die Ergänzung umfasst 134 eindeutige Zuordnungen aus den Herstellerkatalogen von Gira, JUNG und WAGO.
+
 ## Für die nächste Codex-Sitzung
 
 `AGENTS.md` enthält die verbindlichen Projektregeln. Firmen-/Mitarbeitergrenzen, abgeschlossene Dokumente, exakte Preise und Artikelidentität erhalten. Keine echten Bestellungen oder Produktionsrechnungen für Tests auslösen. Die relevante Prüfung steht in `.github/workflows/app-review-checks.yml`; sie nutzt isolierte Datenbank- und Händlerfixtures.

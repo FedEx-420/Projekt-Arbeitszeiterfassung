@@ -43,6 +43,8 @@ ALS NÄCHSTES
     Treffergruppen, strenge Filter und geänderte Artikelnamen gesondert geprüft.
 [x] 40 weitere eindeutig zugeordnete Gira-Produktbilder ergänzen.
     Alle neuen Zuordnungen über GTIN und Herstellerartikelnummer geprüft.
+[x] 134 weitere Herstellerfotos gesammelt zuordnen (60 Gira, 57 JUNG, 17 WAGO).
+    Exakte GTIN und Herstellerartikelnummer für alle neuen Referenzen geprüft.
 [ ] Produktfotos für den gesamten Artikelbestand in einem Durchlauf zuordnen.
     Dafür eine vollständige Bildquelle mit exakter GTIN oder eindeutiger
     Hersteller- und Artikelnummer prüfen. Abdeckung vor Übernahme messen.

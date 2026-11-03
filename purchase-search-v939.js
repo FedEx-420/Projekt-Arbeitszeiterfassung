@@ -109,7 +109,7 @@
    const items=[...materialCandidates(),...catalogPool.map(r=>r.m)],available=items.filter(m=>availability()?.inspect(m).status==='in_stock').length,checked=items.some(m=>availability()?.inspect(m).checked_at);
    if(e.detail.complete&&checked&&available<(page+1)*20&&cursor?.catalog<sources.length&&!stockPaused)loadPage(true);
   });
-  return {view,mount:()=>{if(ensure()&&state.view==='shopping'&&root.querySelector('[data-purchase-search]')){if(!loaded&&!sourceLoading)refresh();else if(!typing&&!preparing&&!adding&&materialPool===null&&hasSearch())start();else syncOnline();}},refresh:()=>refresh(true)};
+  return {view,mount:()=>{if(ensure()&&state.view==='shopping'&&root.querySelector('[data-purchase-search]')){if(!loaded&&!sourceLoading)refresh();else if(!typing&&!preparing&&!adding&&materialPool===null&&(hasSearch()||optionCache===null))start();else syncOnline();}},refresh:()=>refresh(true)};
  }
  window.WorktimePurchaseSearch={create};
 })();

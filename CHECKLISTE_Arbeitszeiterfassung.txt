@@ -178,8 +178,10 @@ BEDIENUNG, QUALITÄT UND ABSICHERUNG
     Anmeldewechseln beheben; aktuelle Korrektur erfolgreich geprüft.
 [x] Standortfreigabe in den Einstellungen nach einer Aktion aufgeklappt lassen.
     Sichtbare Rückmeldung und 18 isolierte Geräteprüfungen bestanden (v964).
-[ ] Alle übrigen Menüs systematisch auf Handy und Laptop durchgehen, einschließlich
-    Angebote/PLZ, Dialoge, Tastaturbedienung und verständlicher Fehlermeldungen.
+[x] Angebotsmaske einschließlich PLZ in fünf Browsergrößen prüfen. PLZ ist per
+    Tab erreichbar und behält führende Nullen. 12 isolierte Prüffälle bestanden.
+[ ] Übrige Menüs auf Handy und Laptop durchgehen, einschließlich Dialogen,
+    Tastaturbedienung und verständlichen Fehlermeldungen.
 [x] Historische Tests für Planung und gemeinsame Stammdatenfunktionen aktualisieren.
     36 Planungsszenarien und sieben Stammdatenprüfungen bestanden lokal.
 [ ] Historische Tests auf die aktuellen Abläufe bringen; eine vollständig grüne

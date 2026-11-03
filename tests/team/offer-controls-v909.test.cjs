@@ -30,7 +30,14 @@ async function main(){
     const form=()=>page.locator('form[data-form="offer"]');
     await form().locator('[name="customer_name"]').fill('Synthetischer Testkunde');
     await form().locator('.offer-address summary').click();
-    await form().locator('[name="customer_postal_code"]').fill('53343');
+    await test('Postal code is keyboard reachable and retains a leading zero', async () => {
+      const postalCode = form().getByRole('textbox', { name: 'Postleitzahl' });
+      await form().locator('[name="customer_house_no"]').focus();
+      await page.keyboard.press('Tab');
+      assert.equal(await postalCode.evaluate(input => document.activeElement === input), true);
+      await page.keyboard.type('01067');
+      assert.equal(await postalCode.inputValue(), '01067');
+    });
     await form().locator('[name="title"]').fill('Synthetischer Test ohne Speichern');
     await form().locator('[data-offer-name]').fill('Testartikel mit längerer Bezeichnung');
     await test('Selected material anchors its slider and shows explicit net/gross labels',async()=>{

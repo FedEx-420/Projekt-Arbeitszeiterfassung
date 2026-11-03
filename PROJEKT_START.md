@@ -53,6 +53,8 @@ Stand der Arbeit an v962:
 - v962 entfernt wiederholte Vollsuchen und Neuberechnungen bei Händlerantworten, verarbeitet Einkaufssuchen in kurzen Paketen und reduziert die Vollsuchen für Stundenpositionen. Der vollständige Test mit 30.000 synthetischen Artikeln ergibt lokal im Einkauf ca. 1,4 s statt 3,1 s und bei 20 simulierten Händlerantworten ca. 0,8 s statt 17,2 s. Die Materialliste benötigt nach der Stundenpositionskorrektur ca. 0,7 s statt 1,3 s. Details, Messgrenzen und der noch offene direkte Firefox-Test stehen im Prüfbericht v962. Keine Änderung an Produktionsdaten oder Datenbankschemata.
 - Die Checkliste trennt umgesetzte, geprüfte Punkte von teilweise erledigten und offenen Wünschen. Eine vollständig schnelle App oder Bilder für jeden Artikel sind noch nicht nachgewiesen.
 
+Die historische Planungssuite prüft wieder die aktuelle Oberfläche und den PDF-Dialog. 36 Szenarien sowie sieben Prüfungen der gemeinsamen Stammdatenfunktionen liefen lokal erfolgreich. Beide Tests sind für die GitHub-Prüfung vorgesehen. Der Firefox-Lauf wird auf GitHub ausgeführt, da der lokale Firefox-Start an einer fehlenden Windows-Assemblierung scheitert.
+
 ## Für die nächste Codex-Sitzung
 
 `AGENTS.md` enthält die verbindlichen Projektregeln. Firmen-/Mitarbeitergrenzen, abgeschlossene Dokumente, exakte Preise und Artikelidentität erhalten. Keine echten Bestellungen oder Produktionsrechnungen für Tests auslösen. Die relevante Prüfung steht in `.github/workflows/app-review-checks.yml`; sie nutzt isolierte Datenbank- und Händlerfixtures.

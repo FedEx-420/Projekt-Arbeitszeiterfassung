@@ -11,6 +11,16 @@ ZEICHEN
 Ein erfolgreicher Test mit Beispieldaten ist kein Live-Test jedes Geschäftskontos.
 
 ALS NÄCHSTES
+[x] Einen automatischen Komplettlauf für alle drei Hersteller gestartet.
+[ ] Ergebnisse des Komplettlaufs verifizieren und veröffentlichen.
+[x] Weitere 76 Berker-, 112 Hager- und 136 DEHN-Bildreferenzen geprüft.
+[x] Den regelmäßigen Katalogabgleich auf noch ungeprüfte Produktseiten
+    ausgerichtet und eine fortsetzbare DEHN-Warteschlange ergänzt.
+[ ] Alle Artikel von Berker, Hager und DEHN gegen offizielle Bildquellen
+    abgleichen. Fehlende oder uneindeutige Produktfotos bleiben offen.
+[x] Weitere 50 Berker- und 30 Hager-Bilder eindeutig zugeordnet (v968).
+[x] DEHN als Bildquelle aufgenommen und DEHNguard 952400 geprüft (v968).
+[ ] DEHN-Abdeckung mit weiteren eindeutig identifizierten Produktfotos erweitern.
 [x] Wiederholte Vollsuchen beim Tippen und bei Bestands-/Online-Antworten entfernen;
     Einkauf und Materialsuche mit 30.000 synthetischen Artikeln gemessen (v962).
     Einkauf lokal ca. 3,1 auf 1,4 s; 20 simulierte Händlerantworten 17,2 auf 0,8 s.
@@ -21,6 +31,9 @@ ALS NÄCHSTES
     meldet Windows eine fehlende mozglue-Assemblierung.
 [x] Wiederholte Filterarbeit der großen Materialliste reduzieren (v963).
 [ ] Verbleibende synchrone Darstellung der großen Materialliste weiter verkürzen.
+    v969 reduziert die Arbeit an nicht sichtbaren Treffern und lädt geschlossene
+    Produktfragen erst beim Öffnen. Lokale 30.000er-Läufe schwankten um die
+    1-s-Grenze. Die stabile Messung und Veröffentlichung bleiben offen.
 [x] Gira als weitere eindeutige Bildquelle integrieren: erste 40 Referenzen.
     Weitere 53 Berker/Hager-Referenzen ergänzt, darunter Berker 3036.
     Kennungs-/Quellenprüfungen und echte Beispielbilder im Browser geprüft (v960).

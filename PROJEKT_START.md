@@ -59,6 +59,8 @@ Die historische Planungssuite prüft wieder die aktuelle Oberfläche und den PDF
 
 v964 hält den Abschnitt zur Standortfreigabe bei Aktualisierungen offen. Der Browser-Test prüft die sichtbare Rückmeldung, Widerruf und Trennung zwischen Konten mit simulierten Berechtigungen.
 
+Die Angebotsmaske wurde bei 320, 390, 844, 1366 und 1920 Pixeln Browserbreite geprüft. Die PLZ ist per Tab erreichbar und behält führende Nullen. Die 12 isolierten Prüffälle sind in die GitHub-Prüfung aufgenommen.
+
 ## Für die nächste Codex-Sitzung
 
 `AGENTS.md` enthält die verbindlichen Projektregeln. Firmen-/Mitarbeitergrenzen, abgeschlossene Dokumente, exakte Preise und Artikelidentität erhalten. Keine echten Bestellungen oder Produktionsrechnungen für Tests auslösen. Die relevante Prüfung steht in `.github/workflows/app-review-checks.yml`; sie nutzt isolierte Datenbank- und Händlerfixtures.

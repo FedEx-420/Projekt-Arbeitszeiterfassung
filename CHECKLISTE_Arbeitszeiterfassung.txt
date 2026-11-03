@@ -11,6 +11,9 @@ ZEICHEN
 Ein erfolgreicher Test mit Beispieldaten ist kein Live-Test jedes Geschäftskontos.
 
 ALS NÄCHSTES
+[x] Weitere 50 Berker- und 30 Hager-Bilder eindeutig zugeordnet (v968).
+[x] DEHN als Bildquelle aufgenommen und DEHNguard 952400 geprüft (v968).
+[ ] DEHN-Abdeckung mit weiteren eindeutig identifizierten Produktfotos erweitern.
 [x] Wiederholte Vollsuchen beim Tippen und bei Bestands-/Online-Antworten entfernen;
     Einkauf und Materialsuche mit 30.000 synthetischen Artikeln gemessen (v962).
     Einkauf lokal ca. 3,1 auf 1,4 s; 20 simulierte Händlerantworten 17,2 auf 0,8 s.

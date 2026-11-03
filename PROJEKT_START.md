@@ -90,3 +90,5 @@ Die private Codex-Cloud-Umgebung „Projekt-Arbeitszeiterfassung“ ist veröffe
 Ein neuer Cloud-Chat startet mit dem veröffentlichten Stand der Umgebung. Änderungen am Programm nach Prüfung committen und auf GitHub sichern; mehrere bestehende Chats teilen nicht automatisch denselben laufenden Arbeitsordner. Für den aktuellen Entwicklungsstand immer den tatsächlichen Repository-Commit prüfen. Das ChatGPT-Projekt enthält dauerhafte Anweisungen, die auf die jeweils aktuellen Projektdateien verweisen.
 
 Offizielle Hinweise: [Codex-Cloud-Arbeitsumgebungen](https://learn.chatgpt.com/docs/environments/cloud-environments), [Projekte, Chats und Dateizugriff](https://learn.chatgpt.com/docs/projects).
+
+v968 ergänzt 50 Berker-, 30 Hager- und ein DEHN-Produktbild. DEHNguard 952400 ist über GTIN oder Hersteller und Herstellerartikelnummer zugeordnet. Weitere DEHN-Varianten sind offen.

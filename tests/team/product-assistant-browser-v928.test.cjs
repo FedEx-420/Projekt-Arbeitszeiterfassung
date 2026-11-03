@@ -1,4 +1,4 @@
-/* Real browser downloads and manager quotation UI with disposable PostgreSQL. */
+/* Product guidance in the full app with isolated fixtures. */
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),http=require('node:http'),os=require('node:os');
 const {chromium}=require('playwright'),{PDFDocument}=require('pdf-lib'),{fixture}=require('./team-db-fixture.cjs');
 const directory=path.resolve(__dirname,'../..');
@@ -61,7 +61,7 @@ async function main(){
 
     await context.route('https://assets.example.test/**',route=>route.fulfill({contentType:'image/png',body:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/5V0AAAAASUVORK5CYII=','base64')}));
     await page.evaluate(async()=>{await WorktimeGermanProducts.loaded;const app=window.__appTest,company=app.state.businessId;app.state.view='materials';const source=[['integro','Berker Integro SCHUKO Steckdose reinweiß glänzend mit erhöhtem Berührungsschutz'],['h0','Berker S.1 HDMI High Definition Steckdose polarweiß matt'],['h1','Berker S.1 USB-Ladesteckdose polarweiß matt'],['bp','Berker LS-Schalter C20 1P 6kA'],['a','Hager Leitungsschutzschalter B16 1P 6kA'],['b','Hager Leitungsschutzschalter C16 1P 6kA'],['c','Hager Leitungsschutzschalter B10 1P 6kA'],['d','Hager FI-Schalter 40A 30mA Typ A 4P'],['e','Hager FI/LS B16 30mA Typ A 1P+N 6kA'],['s1','Berker S.1 SCHUKO Steckdose reinweiß glänzend mit erhöhtem Berührungsschutz'],['s2','Berker S.1 SCHUKO Steckdose reinweiß glänzend ohne erhöhten Berührungsschutz'],['s3','Berker S.1 SCHUKO Steckdose schwarz matt mit erhöhtem Berührungsschutz'],['s4','Berker S.1/B.3/B.7 SCHUKO Steckdose reinweiß glänzend mit erhöhtem Berührungsschutz']];app.state.rows.materials.push(...source.map(([id,name])=>({id,business_id:company,name,catalog_product_name:name,unit:'Stk',active:true,unit_price:4,purchase_price:2,catalog_supplier:'Testgroßhandel',catalog_article_number:id==='integro'?'XXS1-123':id,catalog_product_id:id==='integro'?'s1':null,catalog_manufacturer:name.startsWith('Hager')?'Hager':'Berker',catalog_category:(name.startsWith('Hager')||id==='bp')?'Verteilung und Schutzgeräte':'Schaltermaterial',catalog_gtin:null,catalog_features:{},catalog_image_url:id==='a'?'https://assets.example.test/a.png':null,catalog_revision:1})));const entries={};for(const [i,m]of app.state.rows.materials.entries()){const base=String(100000000000+i).padStart(12,'0');let sum=0;for(let j=0;j<12;j++)sum+=Number(base[j])*(j%2?3:1);m.catalog_gtin=base+String((10-sum%10)%10);const sku=String(90000000+i);entries[sku]={market:'DE',document_scope:'electrical-safety',brand:m.catalog_manufacturer||'Berker',sku,gtin:m.catalog_gtin.padStart(14,'0'),full_name:m.name,source_url:'https://hager.com/de/katalog/produkt/'+sku+'-test-fixture',document_url:'https://assets.hager.com/step-content/test-fixture.pdf',document_sha256:'a'.repeat(64),evidence_type:'manufacturer-eu-declaration',type_reference:sku,checked_at:new Date().toISOString()};}WorktimeGermanProducts.setIndex({entries});app.render();window.__guideSubmits=0;document.querySelector('#app').addEventListener('submit',()=>window.__guideSubmits++);});
-    for(const query of ['Berker S1','Berker S.1','Berker S 1'])await test('series query '+query+' excludes Integro even with S1 in its SKU and a linked product card',async()=>{await page.locator('[data-material-query]').fill(query);const ids=await page.locator('[data-action="edit-material"]').evaluateAll(nodes=>nodes.map(n=>n.dataset.id));assert.ok(ids.includes('s1'));assert.ok(!ids.includes('integro'));assert.ok(!/Integro/.test(await page.locator('[data-product-card] h3').allTextContents().then(x=>x.join(' '))));});
+    for(const query of ['Berker S1','Berker S.1','Berker S 1'])await test('series query '+query+' excludes Integro even with S1 in its SKU and a linked product card',async()=>{await page.locator('[data-material-query]').fill(query);await page.waitForFunction(()=>!document.querySelector('[data-material-result-count]')?.textContent.includes('werden gesucht'));const ids=await page.locator('[data-action="edit-material"]').evaluateAll(nodes=>nodes.map(n=>n.dataset.id));assert.ok(ids.includes('s1'));assert.ok(!ids.includes('integro'));assert.ok(!/Integro/.test(await page.locator('[data-product-card] h3').allTextContents().then(x=>x.join(' '))));});
     await page.locator('[data-material-reset]').click();
     await page.locator('[data-material-start="manufacturer"]').click();await page.locator('[data-material-filter="manufacturer"]').selectOption('Berker');
     await test('starting at a manufacturer with mixed products asks for the article category first',async()=>{assert.equal(await page.locator('[data-assistant-category="Schaltermaterial"]').count(),1);});
@@ -77,11 +77,44 @@ async function main(){
     await page.locator('[data-material-filter="category"]').selectOption('Verteilung und Schutzgeräte');await page.locator('[data-spec-key="protection"][data-spec-value="RCD"]').click();
     await test('FI questions ask for rated current and residual milliamperes without an LS curve',async()=>{assert.match(await page.locator('[data-product-assistant]').innerText(),/Bemessungsstrom/);assert.equal(await page.locator('[data-spec-key="curve"]').count(),0);await page.locator('[data-spec-key="rated_a"][data-spec-value="40"]').click();assert.match(await page.locator('[data-product-assistant]').innerText(),/Bemessungsfehlerstrom/);assert.equal(await page.locator('[data-spec-key="residual_ma"][data-spec-value="30"]').innerText(),'30 mA');});
     await page.locator('[data-material-filter="category"]').selectOption('Schaltermaterial');await page.locator('[data-spec-key="switch_kind"][data-spec-value="Steckdose"]').click();await page.locator('[data-spec-key="socket_use"][data-spec-value="Strom / SCHUKO"]').click();await page.locator('[data-spec-key="series"][data-spec-value="S.1"]').click();await test('an explicit S.1 filter excludes Integro also when missing properties are included',async()=>{await page.locator('[data-spec-unknown]').check();assert.equal(await page.locator('[data-action="edit-material"][data-id="integro"]').count(),0);await page.locator('[data-spec-unknown]').uncheck();});await page.locator('[data-spec-key="color"][data-spec-value="Reinweiß"]').click();await page.locator('[data-spec-key="finish"][data-spec-value="glänzend"]').click();await page.locator('[data-spec-key="touch"][data-spec-value="Ja"]').click();
-    await test('switch series, color, finish and touch protection exclude the wrong variants',async()=>{const ids=await page.locator('[data-action="edit-material"]').evaluateAll(nodes=>nodes.map(n=>n.dataset.id));assert.deepEqual(ids.sort(),['s1','s4']);assert.match(await page.locator('.product-photo-missing').first().innerText(),/Kein Artikelfoto hinterlegt/);assert.equal(await page.evaluate(()=>window.__guideSubmits),0);});
+    await test('switch series, color, finish and touch protection exclude the wrong variants',async()=>{const ids=await page.locator('[data-action="edit-material"]').evaluateAll(nodes=>nodes.map(n=>n.dataset.id));assert.deepEqual(ids.sort(),['s1','s4']);assert.match(await page.locator('[data-article-photo].article-photo-empty').first().innerText(),/Kein Bild hinterlegt/);assert.equal(await page.evaluate(()=>window.__guideSubmits),0);});
+    await page.locator('[data-app-flow] summary').click();
     await page.locator('[data-flow-next]').click();await test('common guidance moves to an input without submitting anything',async()=>{assert.equal(await page.evaluate(()=>document.activeElement?.hasAttribute('data-material-filter')),true);assert.equal(await page.evaluate(()=>window.__guideSubmits),0);});
     for(const width of [320,390,1366])await test('product questions and common guidance fit '+width+' pixels',async()=>{await page.setViewportSize({width,height:844});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));});
     await test('all main app sections have three understandable workflow steps',async()=>{const result=await page.evaluate(()=>{const root=document.createElement('div');document.body.append(root);const state={profile:{id:'test'},businessId:'test',view:'home'},guide=window.WorktimeAppFlow.create({root,state});let count=0;for(const view of Object.keys(window.WorktimeAppFlow.flows)){state.view=view;root.innerHTML='<section class="page-head"><h2>Test</h2></section><form><label>Eingabe<input name="test" required></label></form>';guide.afterRender();if(root.querySelectorAll('[data-app-flow] li').length!==3)throw Error(view);count++;}root.remove();return count;});assert.ok(result>=17);});
-    await page.setViewportSize({width:390,height:844});await page.locator('[data-material-browser]').screenshot({path:path.join(directory,'../../product-assistant-v928-mobile.png')});await page.setViewportSize({width:1366,height:1000});await page.locator('[data-material-browser]').screenshot({path:path.join(directory,'../../product-assistant-v928-desktop.png')});
+    await page.evaluate(() => {
+      const app = window.__appTest;
+      const examples = [
+        ['cable-15', 'NYM-J 3x1,5 mm² 50 m', 'Kabel und Leitungen'],
+        ['cable-25', 'NYM-J 3x2,5 mm² 50 m', 'Kabel und Leitungen'],
+        ['cable-five', 'NYM-J 5x1,5 mm² 50 m', 'Kabel und Leitungen'],
+        ['net-six', 'Patchkabel Cat 6 3 m', 'Netzwerktechnik'],
+        ['net-six-a', 'Patchkabel Cat 6A 3 m', 'Netzwerktechnik'],
+        ['net-short', 'Patchkabel Cat 6A 1 m', 'Netzwerktechnik']
+      ];
+      app.state.rows.materials.push(...examples.map(([id, name, category]) => ({
+        id, name, business_id: app.state.businessId, unit: 'Stk', active: true,
+        catalog_category: category, catalog_supplier: 'Testgroßhandel', catalog_article_number: id
+      })));
+      app.render();
+    });
+    const choose = (key, value) => page.locator(`[data-spec-key="${key}"][data-spec-value="${value}"]`).click();
+    const visibleIds = () => page.locator('[data-action="edit-material"]').evaluateAll(nodes => nodes.map(node => node.dataset.id));
+    await test('Cable questions separate conductor count from cross-section', async () => {
+      await page.locator('[data-material-reset]').click();
+      await page.locator('[data-material-filter="category"]').selectOption('Kabel und Leitungen');
+      await choose('cable_type', 'NYM-J');
+      await choose('cores', '3');
+      await choose('cross_mm2', '2.5');
+      assert.deepEqual(await visibleIds(), ['cable-25']);
+    });
+    await test('Network questions distinguish Cat 6 from Cat 6A and select length', async () => {
+      await page.locator('[data-material-reset]').click();
+      await page.locator('[data-material-filter="category"]').selectOption('Netzwerktechnik');
+      await choose('network_cat', 'Cat 6A');
+      await choose('length_m', '3');
+      assert.deepEqual(await visibleIds(), ['net-six-a']);
+    });
     assert.deepEqual(errors,[]);console.log(JSON.stringify({passed,productionWrites:0}));await context.close();
   }finally{await browser.close();await new Promise(r=>server.close(r));await db.close();}
 }

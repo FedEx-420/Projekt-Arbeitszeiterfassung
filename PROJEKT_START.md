@@ -65,6 +65,8 @@ Die Angebotsprüfung deckt auch Wiederherstellung und Speicherung nach Sitzungsa
 
 Der modernisierte Zeitkonto-Test prüft die aktuelle PDF-Vorschau und den Download. Die 13 isolierten Fälle umfassen Kontotrennung, Abwesenheiten und einen mehrseitigen Bericht mit 60 Arbeitsperioden und Firmenlogo.
 
+Die aktualisierte Browserprüfung für den Produkt-Assistenten umfasst 19 Fälle. Sie prüft die aktuelle Artikelsuche, die sichtbare Bildanzeige und das geführte Eingrenzen von Schaltern, Schutzgeräten, Leitungen und Patchkabeln mit isolierten Beispieldaten.
+
 ## Für die nächste Codex-Sitzung
 
 `AGENTS.md` enthält die verbindlichen Projektregeln. Firmen-/Mitarbeitergrenzen, abgeschlossene Dokumente, exakte Preise und Artikelidentität erhalten. Keine echten Bestellungen oder Produktionsrechnungen für Tests auslösen. Die relevante Prüfung steht in `.github/workflows/app-review-checks.yml`; sie nutzt isolierte Datenbank- und Händlerfixtures.

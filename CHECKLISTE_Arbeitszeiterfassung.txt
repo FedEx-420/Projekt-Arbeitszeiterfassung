@@ -43,6 +43,9 @@ ALS NÄCHSTES
     Treffergruppen, strenge Filter und geänderte Artikelnamen gesondert geprüft.
 [x] 40 weitere eindeutig zugeordnete Gira-Produktbilder ergänzen.
     Alle neuen Zuordnungen über GTIN und Herstellerartikelnummer geprüft.
+[ ] Produktfotos für den gesamten Artikelbestand in einem Durchlauf zuordnen.
+    Dafür eine vollständige Bildquelle mit exakter GTIN oder eindeutiger
+    Hersteller- und Artikelnummer prüfen. Abdeckung vor Übernahme messen.
 [ ] Weitere Hersteller und Produktgruppen mit eindeutigen Bildern ergänzen.
 [x] Artikel-/Katalogsuche an konkreten Engpässen beschleunigen und messen.
     Bestehende Browserabläufe weiter erfolgreich; keine pauschale Tempo-Garantie.
@@ -50,6 +53,11 @@ ALS NÄCHSTES
     Vergleich mit 20.000 Testartikeln: ca. 539 ms vorher / 231 ms danach.
 [x] Sortierung pro Katalogdatensatz entfernen und Suchmerkmale zwischenspeichern.
     Vollständige Suche ohne Treffer mit begrenzten Sortieraufrufen geprüft.
+[x] Beim Login den doppelten Datenabruf entfernen. Gespeicherte Anmeldung
+    bei vorübergehendem Verbindungsfehler behalten und Wiederholung anbieten.
+[x] Gespeicherten Team-Arbeitsschein mit gezieltem Nachladen anzeigen.
+    Anmeldung, Wiederanmeldung, Abmelden und gezielte Lesezugriffe isoliert geprüft (v967).
+[ ] Anmelde- und Speicherzeiten im produktiven Konto mit echten Daten messen.
 [ ] Weitere langsame Abläufe der App anhand messbarer Engpässe verbessern.
     Eine vollständige Beschleunigung aller Menüs ist noch nicht nachgewiesen.
 [x] Neue Wünsche laufend in dieser Datei ergänzen und nach Umsetzung/Prüfung

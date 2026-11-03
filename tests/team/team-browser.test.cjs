@@ -13,7 +13,7 @@ const server=http.createServer((request,response)=>{
   response.setHeader('Content-Type',name.endsWith('.css')?'text/css':name.endsWith('.html')?'text/html':'application/octet-stream');response.end(fs.readFileSync(target));
 });
 async function main(){
-  const data=await fixture({offers:true,units:true}),{db,ids,actor,admin}=data;let current='business',queue=Promise.resolve(),passed=0,acceptExtraEntry=true,failPlanRead=false;const errors=[],notifications=[],dialogs=[];
+  const data=await fixture({offers:true,units:true}),{db,ids,actor,admin}=data;let current='business',queue=Promise.resolve(),passed=0,acceptExtraEntry=true,failPlanRead=false;const errors=[],notifications=[],dialogs=[],reads=[];
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   const browser=await chromium.launch({channel:process.platform==='win32'?'msedge':undefined,headless:true});
   try{
@@ -42,6 +42,7 @@ async function main(){
           for(const [field,value] of url.searchParams){if(value.startsWith('eq.')&&/^[a-z_]+$/.test(field)){params.push(value.slice(3));conditions.push(field+'=$'+params.length);}}
           const where=conditions.length?' where '+conditions.join(' and '):'';
           if(method==='GET'){
+            reads.push([table, url.search]);
             if(failPlanRead&&table==='appointments')return send({message:'Temporary planning outage'},503);
             const order=url.searchParams.get('order');let orderSql='';if(order)orderSql=' order by '+order.split(',').map(s=>{const [name,direction]=s.split('.');if(!/^[a-z_]+$/.test(name))throw Error('column');return name+(direction==='desc'?' desc':' asc');}).join(',');
             const offset=Number(url.searchParams.get('offset')||0),limit=Number(url.searchParams.get('limit')||1000);
@@ -89,9 +90,12 @@ async function main(){
       await group(ids.max).locator('[data-team-time="start"]').fill('08:30');await group(ids.max).locator('[data-team-time="pause"]').fill('0.5');await group(ids.max).locator('[data-team-time="end"]').fill('12:00');
       assert.equal(await group(ids.max).locator('[data-team-time="hours"]').inputValue(),'3.00');
       assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
-      await page.screenshot({path:path.join(__dirname,'team-order-mobile.png'),fullPage:true});
-      await sign();await submit('order');assert.equal(await page.locator('form[data-form="order-edit"]').count(),1);
+      if (!process.argv.includes('--save-only')) await page.screenshot({path:path.join(__dirname,'team-order-mobile.png'),fullPage:true});
+      await sign();reads.length=0;await submit('order');assert.equal(await page.locator('form[data-form="order-edit"]').count(),1);
       assert.match(await page.locator('.notice').innerText(),/gespeichert/);
+      const savedId = await page.evaluate(() => window.__appTest.state.orderId);
+      assert.deepEqual(reads.map(([table]) => table).sort(), ['time_entries', 'work_order_documents', 'work_order_items']);
+      assert.ok(reads.every(([, query]) => query.includes('eq.' + savedId)));
       assert.equal(await page.evaluate(()=>window.__appTest.dayHours()),3.25);
     });
     let orderId=await page.evaluate(()=>window.__appTest.state.orderId);
@@ -105,11 +109,26 @@ async function main(){
       assert.equal(await page.evaluate(()=>window.__appTest.overtime()),-5);
     });
     await test('Participant edits propagate without double counting to every account',async()=>{
-      await group(ids.max).locator('[data-team-time="end"]').fill('12:30');await submit('order-edit');
+      const missingMaterial = await page.evaluate(() => {
+        const { state } = window.__appTest;
+        const item = state.rows.items.find(row => row.work_order_id === state.orderId && /stunde/i.test(row.position_name));
+        state.rows.materials = state.rows.materials.filter(material => material.id !== item.material_id);
+        return item.material_id;
+      });
+      await group(ids.max).locator('[data-team-time="end"]').fill('12:30');
+      reads.length = 0;
+      await submit('order-edit');
+      assert.ok(reads.some(([table, query]) => table === 'materials' && decodeURIComponent(query).includes('id=in.(' + missingMaterial + ')')));
+      assert.ok(await page.evaluate(id => window.__appTest.state.rows.materials.some(material => material.id === id), missingMaterial));
       assert.equal(await page.evaluate(()=>window.__appTest.dayHours()),3.5);
       await setRole('anna','home');assert.equal(await page.evaluate(()=>window.__appTest.dayHours()),3.25);
       assert.equal(await page.evaluate(()=>window.__appTest.orderHours(window.__appTest.state.rows.orders[0])),6.75);
     });
+    if (process.argv.includes('--save-only')) {
+      assert.deepEqual(errors, []);
+      console.log(`PASS ${passed} team save and readback cases`);
+      return;
+    }
     await setRole('business','planning','2026-10-06');
     await test('Planning keeps the same weekly layout and shares one assignment with all selected employees',async()=>{
       assert.equal(await page.locator('.plan-day').count(),14);await page.locator('[data-action="plan-new"]').click();

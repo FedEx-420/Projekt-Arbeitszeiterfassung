@@ -47,13 +47,20 @@ if(/schalt|steck|wippe|rahmen|taster|dimmer/i.test(t)||/Schaltermaterial/i.test(
  function sameFeature(key,a,b){return key==='series'?values(key,a).map(canonicalSeries).sort().join('|')===values(key,b).map(canonicalSeries).sort().join('|'):a===b;}
  const canonicalSeries=value=>String(value).toLocaleLowerCase('de').replace(/[.\s-]/g,'');
  const values=(key,value)=>key==='series'?String(value).split(/\s*(?:\||\/|;)\s*/):[value];
- function queryMatches(m,query,fields=[]){
-  let rest=String(query||'').trim();const requested=[];
+ const compiledQueries=new Map();
+ function compileQuery(query){
+  const input=String(query||'');if(compiledQueries.has(input))return compiledQueries.get(input);
+  let rest=input.trim();const requested=[];
   for(const [rx,label]of seriesPatterns){const hit=rx.exec(rest);if(hit){requested.push(label||'Q.'+hit[1]);rest=rest.replace(new RegExp(rx.source,'ig'),' ');}}
-  const features=requested.length?describe(m):null;if(requested.length&&(!features.series||features.series.conflict||!requested.every(v=>values('series',features.series.value).some(x=>canonicalSeries(x)===canonicalSeries(v)))))return false;
-  const text=[globalThis.WorktimeProductDisplay?.displayName(m)||m.catalog_product_name||m.name,m.catalog_article_number,...fields].map(v=>String(v||'').toLocaleLowerCase('de'));
-  return rest.toLocaleLowerCase('de').split(/\s+/).filter(Boolean).every(token=>text.some(v=>v.includes(token)));
+  const tokens=rest.toLowerCase().split(/\s+/).filter(Boolean),matcher=(m,fields=[],preparedText)=>{
+   const text=preparedText??[globalThis.WorktimeProductDisplay?.displayName(m)||m.catalog_product_name||m.name,m.catalog_article_number,...fields].map(v=>String(v||'').toLowerCase()).join('\u001f');
+   if(!tokens.every(token=>text.includes(token)))return false;
+   const features=requested.length?describe(m):null;return !requested.length||!!features.series&&!features.series.conflict&&requested.every(v=>values('series',features.series.value).some(x=>canonicalSeries(x)===canonicalSeries(v)));
+  };
+  if(compiledQueries.size>=32)compiledQueries.delete(compiledQueries.keys().next().value);compiledQueries.set(input,matcher);return matcher;
  }
+ function queryMatches(m,query,fields=[]){return compileQuery(query)(m,fields);}
+
  function matches(features,answers,includeUnknown=false){return Object.entries(answers).every(([key,v])=>!v||(key==='series'&&features[key]?.conflict?false:features[key]&&!features[key].conflict?values(key,features[key].value).some(x=>key==='series'?canonicalSeries(x)===canonicalSeries(v):x===v):includeUnknown));}
  function fromRow(row,headers=Object.keys(row)){
   const key=s=>String(s).toLowerCase().replace(/[\s_.()/-]/g,'');const map=new Map(headers.map(h=>[key(h),h]));const get=names=>{for(const n of names){const h=map.get(key(n));if(h&&row[h]!=null&&String(row[h]).trim())return String(row[h]).trim();}return '';};const name=get(['name','Bezeichnung','Artikelbezeichnung','Artikelname','Beschreibung','Description','DESCRIPTION_SHORT']);const category=get(['category','Kategorie']);const f=infer(name,category);
@@ -68,5 +75,5 @@ if(/schalt|steck|wippe|rahmen|taster|dimmer/i.test(t)||/Schaltermaterial/i.test(
  function installSelections({root,state,businessId}){let queued=false;const update=()=>selections(root,(state.rows.materials||[]).filter(m=>String(m.business_id)===String(businessId())));const schedule=()=>{if(queued)return;queued=true;queueMicrotask(()=>{queued=false;update();});};globalThis.addEventListener?.('worktime-product-index',()=>{root.querySelectorAll('[data-selected-product-visual]').forEach(x=>x.remove());root.querySelectorAll('[data-product-visual]').forEach(x=>x.remove());const ms=(state.rows.materials||[]).filter(m=>String(m.business_id)===String(businessId()));decorate(root,ms);for(const card of root.querySelectorAll('[data-product-card]')){const id=card.querySelector('[data-action="edit-material"]')?.dataset.id,m=ms.find(x=>x.id===id);if(m&&card.querySelector('h3'))card.querySelector('h3').textContent=globalThis.WorktimeProductDisplay.displayName(m);}update();});root.addEventListener('input',schedule);root.addEventListener('change',schedule);return {afterRender:update};}
  const storageKeys=new Set(['fuse_size','fuse_class','protection','curve','rated_a','residual_ma','rcd_type','poles','breaking_ka','spd_type','voltage_v','switch_kind','series','color','finish','touch','mounting','frames','cable_type','cores','cross_mm2','tool_kind','drive','socket','power_w','kelvin','ip','dimmable','network_cat','length_m']);
  const forStorage=features=>Object.fromEntries(Object.entries(features||{}).filter(([key])=>storageKeys.has(key)));
- return Object.freeze({forStorage,definitions,describe,infer,format,questions,values,matches,queryMatches,fromRow,safeImageURL,decorate,installSelections});
+ return Object.freeze({forStorage,definitions,describe,infer,format,questions,values,matches,queryMatches,compileQuery,fromRow,safeImageURL,decorate,installSelections});
 });

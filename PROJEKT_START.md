@@ -35,9 +35,11 @@ Private Kataloge, Einkaufspreise, Kundendaten, Chatprotokolle und Zugangsdaten w
 - [Neue Bildquelle Gira und weitere Berker/Hager-Grundgeräte](docs/Pruefstand_v960.md)
 - [Lesbare Katalogprüfung und PDF-Auszüge](docs/Pruefstand_v961.md)
 
+- [Reaktionsfähige Suche mit 30.000 Testartikeln](docs/Pruefstand_v962.md)
+
 ## Aktueller Schwerpunkt
 
-Stand der Arbeit an v961:
+Stand der Arbeit an v962:
 
 - Herstellerbilder werden über eindeutige GTIN oder bestätigte Herstellerartikelnummer zugeordnet. Großhändlernummern und ähnlich klingende Namen reichen dafür nicht aus.
 - Zusätzlich zu Hager/Berker/Elcom wurde der öffentliche JUNG-Katalog als weitere Bildquelle angebunden. Die erste Ergänzung umfasst 40 geprüfte Produktreferenzen; der geplante Aktualisierungslauf ergänzt weitere.
@@ -48,6 +50,7 @@ Stand der Arbeit an v961:
 - v959 verwendet gemeinsame Artikelbild-/Sternanzeigen und persönliche Cloud-Favoritenlisten je Benutzer/Firma. Favoriten übernehmen keine Preise oder Bestandsversprechen. Normale Schalterfunktionen stehen vor nicht angefragten Sondervarianten; lokale Funktionssuchen prüfen den ganzen Katalog. Bei aktiver Online-Suche bleibt das frühzeitige Beenden unabhängiger lokaler Scans erhalten.
 - v960 ergänzt Gira mit zunächst 40 eindeutigen Bildreferenzen und weitere 53 Berker/Hager-Referenzen, darunter den alten Wechselschalter 3036. Der öffentliche Bildindex umfasst damit 2.204 Einträge. Die automatische Sammlung berücksichtigt jetzt mehrere Grundgeräte-/Produktgruppen; interner SKU-Zusatz und ausdrücklich angegebene Herstellerreferenz werden getrennt geprüft.
 - v961 ergänzt unter „Kataloge → Fachhändler Kataloge → Katalog prüfen / PDF-Auszug“ eine schreibgeschützte Auswertung aller gespeicherten Datensätze mit Preisübersicht, Filtern und einem ausdrücklich auf 200 Treffer begrenzten PDF-Auszug. Originaldateien und Materialpreise werden dadurch nicht geändert.
+- v962 entfernt wiederholte Vollsuchen und Neuberechnungen bei Händlerantworten, verarbeitet Einkaufssuchen in kurzen Paketen und reduziert die Vollsuchen für Stundenpositionen. Der vollständige Test mit 30.000 synthetischen Artikeln ergibt lokal im Einkauf ca. 1,4 s statt 3,1 s und bei 20 simulierten Händlerantworten ca. 0,8 s statt 17,2 s. Die Materialliste benötigt nach der Stundenpositionskorrektur ca. 0,7 s statt 1,3 s. Details, Messgrenzen und der noch offene direkte Firefox-Test stehen im Prüfbericht v962. Keine Änderung an Produktionsdaten oder Datenbankschemata.
 - Die Checkliste trennt umgesetzte, geprüfte Punkte von teilweise erledigten und offenen Wünschen. Eine vollständig schnelle App oder Bilder für jeden Artikel sind noch nicht nachgewiesen.
 
 ## Für die nächste Codex-Sitzung

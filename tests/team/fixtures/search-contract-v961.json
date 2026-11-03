@@ -1,0 +1,664 @@
+{
+  "source_revision": "882d5f679278c1e9443ba0106255dc5156ab3355",
+  "rows": [
+    {
+      "id": "same-id",
+      "name": "Berker S.1 SCHUKO Steckdose polarweiß matt 0",
+      "catalog_article_number": "SKU0",
+      "catalog_manufacturer_number": "MPN0",
+      "catalog_manufacturer": "Berker",
+      "catalog_category": "Schaltermaterial"
+    },
+    {
+      "id": "same-id",
+      "name": "Berker Integro HDMI Steckdose schwarz 1",
+      "catalog_article_number": "SKU1",
+      "catalog_manufacturer_number": "MPN1",
+      "catalog_manufacturer": "Berker",
+      "catalog_category": "Schaltermaterial"
+    },
+    {
+      "id": "same-id",
+      "name": "Berker Wechselschalter Einsatz 2",
+      "catalog_article_number": "SKU2",
+      "catalog_manufacturer_number": "MPN2",
+      "catalog_manufacturer": "Berker",
+      "catalog_category": "Schaltermaterial"
+    },
+    {
+      "id": "same-id",
+      "name": "Berker Kontrollwechselschalter Einsatz 3",
+      "catalog_article_number": "SKU3",
+      "catalog_manufacturer_number": "MPN3",
+      "catalog_manufacturer": "Berker",
+      "catalog_category": "Schaltermaterial"
+    },
+    {
+      "id": "same-id",
+      "name": "Berker Wippe für Wechselschalter 4",
+      "catalog_article_number": "SKU4",
+      "catalog_manufacturer_number": "MPN4",
+      "catalog_manufacturer": "Berker",
+      "catalog_category": "Schaltermaterial"
+    },
+    {
+      "id": "same-id",
+      "name": "Wago Verbindungsklemme 221-412 5",
+      "catalog_article_number": "SKU5",
+      "catalog_manufacturer_number": "MPN5",
+      "catalog_manufacturer": "Fixture",
+      "catalog_category": "Fixture"
+    },
+    {
+      "id": "same-id",
+      "name": "NYM-J Leitung 3x1,5 mm² 6",
+      "catalog_article_number": "SKU6",
+      "catalog_manufacturer_number": "MPN6",
+      "catalog_manufacturer": "Fixture",
+      "catalog_category": "Fixture"
+    },
+    {
+      "id": "same-id",
+      "name": "Werkzeug Schraubendreher PZ2 7",
+      "catalog_article_number": "SKU7",
+      "catalog_manufacturer_number": "MPN7",
+      "catalog_manufacturer": "Fixture",
+      "catalog_category": "Fixture"
+    },
+    {
+      "id": "same-id",
+      "name": "Schuko Steckdose mit USB 230 V 8",
+      "catalog_article_number": "SKU8",
+      "catalog_manufacturer_number": "MPN8",
+      "catalog_manufacturer": "Fixture",
+      "catalog_category": "Fixture"
+    },
+    {
+      "id": "same-id",
+      "name": "Schuko Steckdose mit Kontroll-LED 9",
+      "catalog_article_number": "SKU9",
+      "catalog_manufacturer_number": "MPN9",
+      "catalog_manufacturer": "Fixture",
+      "catalog_category": "Fixture"
+    },
+    {
+      "id": "same-id",
+      "name": "Schalter für Schweiz Typ J 10",
+      "catalog_article_number": "SKU10",
+      "catalog_manufacturer_number": "MPN10",
+      "catalog_manufacturer": "Fixture",
+      "catalog_category": "Fixture"
+    },
+    {
+      "id": "same-id",
+      "name": "Gira Kreuzschalter Einsatz 11",
+      "catalog_article_number": "SKU11",
+      "catalog_manufacturer_number": "MPN11",
+      "catalog_manufacturer": "Fixture",
+      "catalog_category": "Fixture"
+    },
+    {
+      "id": "same-id",
+      "name": "Berker S.1 SCHUKO Steckdose polarweiß matt 12",
+      "catalog_article_number": "SKU12",
+      "catalog_manufacturer_number": "MPN12",
+      "catalog_manufacturer": "Berker",
+      "catalog_category": "Schaltermaterial"
+    },
+    {
+      "id": "same-id",
+      "name": "Berker Integro HDMI Steckdose schwarz 13",
+      "catalog_article_number": "SKU13",
+      "catalog_manufacturer_number": "MPN13",
+      "catalog_manufacturer": "Berker",
+      "catalog_category": "Schaltermaterial"
+    },
+    {
+      "id": "same-id",
+      "name": "Berker Wechselschalter Einsatz 14",
+      "catalog_article_number": "SKU14",
+      "catalog_manufacturer_number": "MPN14",
+      "catalog_manufacturer": "Berker",
+      "catalog_category": "Schaltermaterial"
+    },
+    {
+      "id": "same-id",
+      "name": "Berker Kontrollwechselschalter Einsatz 15",
+      "catalog_article_number": "SKU15",
+      "catalog_manufacturer_number": "MPN15",
+      "catalog_manufacturer": "Berker",
+      "catalog_category": "Schaltermaterial"
+    },
+    {
+      "id": "same-id",
+      "name": "Berker Wippe für Wechselschalter 16",
+      "catalog_article_number": "SKU16",
+      "catalog_manufacturer_number": "MPN16",
+      "catalog_manufacturer": "Berker",
+      "catalog_category": "Schaltermaterial"
+    },
+    {
+      "id": "same-id",
+      "name": "Wago Verbindungsklemme 221-412 17",
+      "catalog_article_number": "SKU17",
+      "catalog_manufacturer_number": "MPN17",
+      "catalog_manufacturer": "Fixture",
+      "catalog_category": "Fixture"
+    },
+    {
+      "id": "same-id",
+      "name": "NYM-J Leitung 3x1,5 mm² 18",
+      "catalog_article_number": "SKU18",
+      "catalog_manufacturer_number": "MPN18",
+      "catalog_manufacturer": "Fixture",
+      "catalog_category": "Fixture"
+    },
+    {
+      "id": "same-id",
+      "name": "Werkzeug Schraubendreher PZ2 19",
+      "catalog_article_number": "SKU19",
+      "catalog_manufacturer_number": "MPN19",
+      "catalog_manufacturer": "Fixture",
+      "catalog_category": "Fixture"
+    },
+    {
+      "id": "same-id",
+      "name": "Schuko Steckdose mit USB 230 V 20",
+      "catalog_article_number": "SKU20",
+      "catalog_manufacturer_number": "MPN20",
+      "catalog_manufacturer": "Fixture",
+      "catalog_category": "Fixture"
+    },
+    {
+      "id": "same-id",
+      "name": "Schuko Steckdose mit Kontroll-LED 21",
+      "catalog_article_number": "SKU21",
+      "catalog_manufacturer_number": "MPN21",
+      "catalog_manufacturer": "Fixture",
+      "catalog_category": "Fixture"
+    },
+    {
+      "id": "same-id",
+      "name": "Schalter für Schweiz Typ J 22",
+      "catalog_article_number": "SKU22",
+      "catalog_manufacturer_number": "MPN22",
+      "catalog_manufacturer": "Fixture",
+      "catalog_category": "Fixture"
+    },
+    {
+      "id": "same-id",
+      "name": "Gira Kreuzschalter Einsatz 23",
+      "catalog_article_number": "SKU23",
+      "catalog_manufacturer_number": "MPN23",
+      "catalog_manufacturer": "Fixture",
+      "catalog_category": "Fixture"
+    },
+    {
+      "id": "same-id",
+      "name": "Berker S.1 SCHUKO Steckdose polarweiß matt 24",
+      "catalog_article_number": "SKU24",
+      "catalog_manufacturer_number": "MPN24",
+      "catalog_manufacturer": "Berker",
+      "catalog_category": "Schaltermaterial"
+    },
+    {
+      "id": "same-id",
+      "name": "Berker Integro HDMI Steckdose schwarz 25",
+      "catalog_article_number": "SKU25",
+      "catalog_manufacturer_number": "MPN25",
+      "catalog_manufacturer": "Berker",
+      "catalog_category": "Schaltermaterial"
+    },
+    {
+      "id": "same-id",
+      "name": "Berker Wechselschalter Einsatz 26",
+      "catalog_article_number": "SKU26",
+      "catalog_manufacturer_number": "MPN26",
+      "catalog_manufacturer": "Berker",
+      "catalog_category": "Schaltermaterial"
+    },
+    {
+      "id": "same-id",
+      "name": "Berker Kontrollwechselschalter Einsatz 27",
+      "catalog_article_number": "SKU27",
+      "catalog_manufacturer_number": "MPN27",
+      "catalog_manufacturer": "Berker",
+      "catalog_category": "Schaltermaterial"
+    },
+    {
+      "id": "same-id",
+      "name": "Berker Wippe für Wechselschalter 28",
+      "catalog_article_number": "SKU28",
+      "catalog_manufacturer_number": "MPN28",
+      "catalog_manufacturer": "Berker",
+      "catalog_category": "Schaltermaterial"
+    },
+    {
+      "id": "same-id",
+      "name": "Wago Verbindungsklemme 221-412 29",
+      "catalog_article_number": "SKU29",
+      "catalog_manufacturer_number": "MPN29",
+      "catalog_manufacturer": "Fixture",
+      "catalog_category": "Fixture"
+    },
+    {
+      "id": "same-id",
+      "name": "NYM-J Leitung 3x1,5 mm² 30",
+      "catalog_article_number": "SKU30",
+      "catalog_manufacturer_number": "MPN30",
+      "catalog_manufacturer": "Fixture",
+      "catalog_category": "Fixture"
+    },
+    {
+      "id": "same-id",
+      "name": "Werkzeug Schraubendreher PZ2 31",
+      "catalog_article_number": "SKU31",
+      "catalog_manufacturer_number": "MPN31",
+      "catalog_manufacturer": "Fixture",
+      "catalog_category": "Fixture"
+    },
+    {
+      "id": "same-id",
+      "name": "Schuko Steckdose mit USB 230 V 32",
+      "catalog_article_number": "SKU32",
+      "catalog_manufacturer_number": "MPN32",
+      "catalog_manufacturer": "Fixture",
+      "catalog_category": "Fixture"
+    },
+    {
+      "id": "same-id",
+      "name": "Schuko Steckdose mit Kontroll-LED 33",
+      "catalog_article_number": "SKU33",
+      "catalog_manufacturer_number": "MPN33",
+      "catalog_manufacturer": "Fixture",
+      "catalog_category": "Fixture"
+    },
+    {
+      "id": "same-id",
+      "name": "Schalter für Schweiz Typ J 34",
+      "catalog_article_number": "SKU34",
+      "catalog_manufacturer_number": "MPN34",
+      "catalog_manufacturer": "Fixture",
+      "catalog_category": "Fixture"
+    },
+    {
+      "id": "same-id",
+      "name": "Gira Kreuzschalter Einsatz 35",
+      "catalog_article_number": "SKU35",
+      "catalog_manufacturer_number": "MPN35",
+      "catalog_manufacturer": "Fixture",
+      "catalog_category": "Fixture"
+    },
+    {
+      "id": "same-id",
+      "name": "Berker S.1 SCHUKO Steckdose polarweiß matt 36",
+      "catalog_article_number": "SKU36",
+      "catalog_manufacturer_number": "MPN36",
+      "catalog_manufacturer": "Berker",
+      "catalog_category": "Schaltermaterial"
+    },
+    {
+      "id": "same-id",
+      "name": "Berker Integro HDMI Steckdose schwarz 37",
+      "catalog_article_number": "SKU37",
+      "catalog_manufacturer_number": "MPN37",
+      "catalog_manufacturer": "Berker",
+      "catalog_category": "Schaltermaterial"
+    },
+    {
+      "id": "same-id",
+      "name": "Berker Wechselschalter Einsatz 38",
+      "catalog_article_number": "SKU38",
+      "catalog_manufacturer_number": "MPN38",
+      "catalog_manufacturer": "Berker",
+      "catalog_category": "Schaltermaterial"
+    },
+    {
+      "id": "same-id",
+      "name": "Berker Kontrollwechselschalter Einsatz 39",
+      "catalog_article_number": "SKU39",
+      "catalog_manufacturer_number": "MPN39",
+      "catalog_manufacturer": "Berker",
+      "catalog_category": "Schaltermaterial"
+    },
+    {
+      "id": "same-id",
+      "name": "Berker Wippe für Wechselschalter 40",
+      "catalog_article_number": "SKU40",
+      "catalog_manufacturer_number": "MPN40",
+      "catalog_manufacturer": "Berker",
+      "catalog_category": "Schaltermaterial"
+    },
+    {
+      "id": "same-id",
+      "name": "Wago Verbindungsklemme 221-412 41",
+      "catalog_article_number": "SKU41",
+      "catalog_manufacturer_number": "MPN41",
+      "catalog_manufacturer": "Fixture",
+      "catalog_category": "Fixture"
+    },
+    {
+      "id": "same-id",
+      "name": "NYM-J Leitung 3x1,5 mm² 42",
+      "catalog_article_number": "SKU42",
+      "catalog_manufacturer_number": "MPN42",
+      "catalog_manufacturer": "Fixture",
+      "catalog_category": "Fixture"
+    },
+    {
+      "id": "same-id",
+      "name": "Werkzeug Schraubendreher PZ2 43",
+      "catalog_article_number": "SKU43",
+      "catalog_manufacturer_number": "MPN43",
+      "catalog_manufacturer": "Fixture",
+      "catalog_category": "Fixture"
+    },
+    {
+      "id": "same-id",
+      "name": "Schuko Steckdose mit USB 230 V 44",
+      "catalog_article_number": "SKU44",
+      "catalog_manufacturer_number": "MPN44",
+      "catalog_manufacturer": "Fixture",
+      "catalog_category": "Fixture"
+    },
+    {
+      "id": "same-id",
+      "name": "Schuko Steckdose mit Kontroll-LED 45",
+      "catalog_article_number": "SKU45",
+      "catalog_manufacturer_number": "MPN45",
+      "catalog_manufacturer": "Fixture",
+      "catalog_category": "Fixture"
+    },
+    {
+      "id": "same-id",
+      "name": "Schalter für Schweiz Typ J 46",
+      "catalog_article_number": "SKU46",
+      "catalog_manufacturer_number": "MPN46",
+      "catalog_manufacturer": "Fixture",
+      "catalog_category": "Fixture"
+    },
+    {
+      "id": "same-id",
+      "name": "Gira Kreuzschalter Einsatz 47",
+      "catalog_article_number": "SKU47",
+      "catalog_manufacturer_number": "MPN47",
+      "catalog_manufacturer": "Fixture",
+      "catalog_category": "Fixture"
+    }
+  ],
+  "contracts": [
+    {
+      "query": "Berker",
+      "matches": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        12,
+        13,
+        14,
+        15,
+        16,
+        24,
+        25,
+        26,
+        27,
+        28,
+        36,
+        37,
+        38,
+        39,
+        40
+      ],
+      "ranked": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        12,
+        13,
+        14,
+        15,
+        16,
+        24,
+        25,
+        26,
+        27,
+        28,
+        36,
+        37,
+        38,
+        39,
+        40
+      ]
+    },
+    {
+      "query": "Berker S1",
+      "matches": [
+        0,
+        12,
+        24,
+        36
+      ],
+      "ranked": [
+        0,
+        12,
+        24,
+        36
+      ]
+    },
+    {
+      "query": "Berker S.1 Steckdose",
+      "matches": [
+        0,
+        12,
+        24,
+        36
+      ],
+      "ranked": [
+        0,
+        12,
+        24,
+        36
+      ]
+    },
+    {
+      "query": "polarweiß",
+      "matches": [
+        0,
+        12,
+        24,
+        36
+      ],
+      "ranked": [
+        0,
+        12,
+        24,
+        36
+      ]
+    },
+    {
+      "query": "polarweiss",
+      "matches": [
+        0,
+        12,
+        24,
+        36
+      ],
+      "ranked": [
+        0,
+        12,
+        24,
+        36
+      ]
+    },
+    {
+      "query": "Schwarz",
+      "matches": [
+        1,
+        13,
+        25,
+        37
+      ],
+      "ranked": [
+        1,
+        13,
+        25,
+        37
+      ]
+    },
+    {
+      "query": "HDMI",
+      "matches": [
+        1,
+        13,
+        25,
+        37
+      ],
+      "ranked": [
+        1,
+        13,
+        25,
+        37
+      ]
+    },
+    {
+      "query": "high-definition",
+      "matches": [
+        1,
+        13,
+        25,
+        37
+      ],
+      "ranked": [
+        1,
+        13,
+        25,
+        37
+      ]
+    },
+    {
+      "query": "Wechselschalter",
+      "matches": [
+        2,
+        3,
+        14,
+        15,
+        26,
+        27,
+        38,
+        39
+      ],
+      "ranked": [
+        2,
+        14,
+        26,
+        38,
+        3,
+        15,
+        27,
+        39
+      ]
+    },
+    {
+      "query": "Kontrollwechselschalter",
+      "matches": [
+        3,
+        15,
+        27,
+        39
+      ],
+      "ranked": [
+        3,
+        15,
+        27,
+        39
+      ]
+    },
+    {
+      "query": "NYM-J",
+      "matches": [
+        6,
+        18,
+        30,
+        42
+      ],
+      "ranked": [
+        6,
+        18,
+        30,
+        42
+      ]
+    },
+    {
+      "query": "NYM J",
+      "matches": [
+        6,
+        18,
+        30,
+        42
+      ],
+      "ranked": [
+        6,
+        18,
+        30,
+        42
+      ]
+    },
+    {
+      "query": "221-412",
+      "matches": [
+        5,
+        17,
+        29,
+        41
+      ],
+      "ranked": [
+        5,
+        17,
+        29,
+        41
+      ]
+    },
+    {
+      "query": "PZ2",
+      "matches": [
+        7,
+        19,
+        31,
+        43
+      ],
+      "ranked": [
+        7,
+        19,
+        31,
+        43
+      ]
+    },
+    {
+      "query": "SKU17",
+      "matches": [
+        17
+      ],
+      "ranked": [
+        17
+      ]
+    },
+    {
+      "query": "MPN6",
+      "matches": [
+        6
+      ],
+      "ranked": [
+        6
+      ]
+    },
+    {
+      "query": "nicht vorhanden",
+      "matches": [],
+      "ranked": []
+    }
+  ]
+}

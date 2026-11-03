@@ -11,6 +11,11 @@ ZEICHEN
 Ein erfolgreicher Test mit Beispieldaten ist kein Live-Test jedes Geschäftskontos.
 
 ALS NÄCHSTES
+[x] Weitere 76 Berker-, 112 Hager- und 136 DEHN-Bildreferenzen geprüft.
+[x] Den regelmäßigen Katalogabgleich auf noch ungeprüfte Produktseiten
+    ausgerichtet und eine fortsetzbare DEHN-Warteschlange ergänzt.
+[ ] Alle Artikel von Berker, Hager und DEHN gegen offizielle Bildquellen
+    abgleichen. Fehlende oder uneindeutige Produktfotos bleiben offen.
 [x] Weitere 50 Berker- und 30 Hager-Bilder eindeutig zugeordnet (v968).
 [x] DEHN als Bildquelle aufgenommen und DEHNguard 952400 geprüft (v968).
 [ ] DEHN-Abdeckung mit weiteren eindeutig identifizierten Produktfotos erweitern.

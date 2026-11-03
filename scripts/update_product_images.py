@@ -94,7 +94,12 @@ def main():
  sitemap=ET.fromstring(fetch(SITEMAP));urls=[e.text for e in sitemap.iter() if e.tag.endswith('}loc') and e.text and e.text.startswith(ORIGIN+'/de/katalog/produkt/')]
  urls=list(dict.fromkeys(urls+SEED_URLS))
  now=time.time();known={e.get('source_url') for e in index['entries'].values()};eligible=[u for u in urls if due(u,state,known,now) and robots.can_fetch(UA,u)]
- chosen=choose(sorted(eligible),args.limit);success=0
+ # Finish the first pass before revisiting previously checked product pages.
+ unseen=[u for u in eligible if hashlib.sha256(u.encode()).hexdigest()[:20] not in state]
+ chosen=choose(sorted(unseen),args.limit)
+ if len(chosen)<args.limit:
+  chosen+=choose(sorted(set(eligible)-set(chosen)),args.limit-len(chosen))
+ success=0
  def load(url):
   try:return url,extract(fetch(url),url),True
   except Exception as e:return url,None,False
@@ -103,7 +108,7 @@ def main():
    if checked:state[hashlib.sha256(url.encode()).hexdigest()[:20]]={'checked_at':now,'extractor':960}
    if entry:
     entry['checked_at']=datetime.datetime.now(datetime.timezone.utc).isoformat();index['entries'][entry['brand']+':'+entry['sku']]=entry;success+=1
- index['updated_at']=datetime.datetime.now(datetime.timezone.utc).isoformat();index['source']='Public Hager/Berker/Elcom, JUNG, WAGO and GIRA manufacturer catalogs'
+ index['updated_at']=datetime.datetime.now(datetime.timezone.utc).isoformat();index['source']='Public Hager/Berker/Elcom, JUNG, WAGO, Gira and DEHN manufacturer catalogs'
  target.write_text(json.dumps(index,ensure_ascii=False,separators=(',',':'))+'\n',encoding='utf-8')
  statefile.write_text(json.dumps(state,separators=(',',':'))+'\n',encoding='utf-8')
  print(json.dumps({'checked':len(chosen),'verified_images':success,'total_images':len(index['entries'])}))

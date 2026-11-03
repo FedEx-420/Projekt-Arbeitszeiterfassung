@@ -13,8 +13,10 @@
   const out=new Map();for(const m of rows){const id=find(m.id);if(!out.has(id))out.set(id,{id,name:name(byId.get(id)),unit:m.unit||'Stk',members:[]});out.get(id).members.push(m);}return [...out.values()];
  }
  function decorate({root,materials,api,businessId,reload,render,isManager}){
-  if(!materials.some(m=>Object.hasOwn(m,'catalog_gtin')))return;
-  const productGroups=globalThis.WorktimeSupplierAvailability?.prioritizeGroups(groups(materials))||groups(materials),cardsById=new Map([...root.querySelectorAll('[data-action="edit-material"]')].map(b=>[b.dataset.id,b.closest('.row-card')]));
+  const cardsById=new Map([...root.querySelectorAll('[data-action="edit-material"]')].map(b=>[b.dataset.id,b.closest('.row-card')]));
+  if(!cardsById.size||!materials.some(m=>Object.hasOwn(m,'catalog_gtin')))return;
+  const visibleGroups=groups(materials).filter(group=>group.members.some(m=>cardsById.has(m.id)));
+  const productGroups=globalThis.WorktimeSupplierAvailability?.prioritizeGroups(visibleGroups)||visibleGroups;
   for(const group of productGroups){
    const cards=group.members.map(m=>({m,card:cardsById.get(m.id)})).filter(x=>x.card);
    if(!cards.length||cards[0].card.closest('[data-product-card]'))continue;

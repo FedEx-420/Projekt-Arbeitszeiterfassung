@@ -94,3 +94,5 @@ Offizielle Hinweise: [Codex-Cloud-Arbeitsumgebungen](https://learn.chatgpt.com/d
 v968 ergänzt 50 Berker-, 30 Hager- und ein DEHN-Produktbild. DEHNguard 952400 ist über GTIN oder Hersteller und Herstellerartikelnummer zugeordnet. Weitere DEHN-Varianten sind offen.
 
 Der Folgeabgleich ergänzt 76 Berker-, 112 Hager- und 136 DEHN-Fotos sowie 6 Elcom-Referenzen aus dem gemeinsamen Hager-Katalog. Der DEHN-Lauf startet bei vier offiziellen Kategorien und führt die offenen Produktseiten in catalog-dehn-image-state.json. Der Hager-Lauf priorisiert ungeprüfte Sitemap-Links. Die vollständige Abdeckung der öffentlichen Kataloge und des privaten Artikelbestands ist weiterhin offen.
+
+v969 bereitet weniger Arbeit pro Materiallisten-Render vor. Die lokale Edge-Messung war nicht stabil unter der 1-s-Grenze. Die Checkliste führt den Punkt offen. Lokales Playwright-Firefox startet weiterhin nicht.

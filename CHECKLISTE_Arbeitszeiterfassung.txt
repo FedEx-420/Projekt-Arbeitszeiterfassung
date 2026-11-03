@@ -31,6 +31,9 @@ ALS NÄCHSTES
     meldet Windows eine fehlende mozglue-Assemblierung.
 [x] Wiederholte Filterarbeit der großen Materialliste reduzieren (v963).
 [ ] Verbleibende synchrone Darstellung der großen Materialliste weiter verkürzen.
+    v969 reduziert die Arbeit an nicht sichtbaren Treffern und lädt geschlossene
+    Produktfragen erst beim Öffnen. Lokale 30.000er-Läufe schwankten um die
+    1-s-Grenze. Die stabile Messung und Veröffentlichung bleiben offen.
 [x] Gira als weitere eindeutige Bildquelle integrieren: erste 40 Referenzen.
     Weitere 53 Berker/Hager-Referenzen ergänzt, darunter Berker 3036.
     Kennungs-/Quellenprüfungen und echte Beispielbilder im Browser geprüft (v960).

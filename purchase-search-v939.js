@@ -74,7 +74,7 @@
 
   root.addEventListener('change',e=>{if(!ensure()||adding)return;const k=e.target.dataset.psField;if(k&&k!=='query'){filters[k]=e.target.value;answers={};question='';start();}else if(e.target.matches('[data-ps-question]')){question=e.target.value;update();}});
   root.addEventListener('click',async e=>{const b=e.target.closest('[data-ps-add],[data-ps-files],[data-ps-more],[data-ps-prev],[data-ps-reset],[data-ps-answer],[data-ps-clear],[data-ps-cancel]');if(!b||!ensure()||adding)return;e.preventDefault();
-   if(b.hasAttribute('data-ps-files')){serial++;busy=false;clearTimeout(timer);onFiles(query,()=>{loaded=false;refresh(true);});return;}
+   if(b.hasAttribute('data-ps-files')){serial++;onlineSerial++;busy=preparing=typing=false;onlineBusy=false;onlineKey='';materialPool=null;basePool=[];rows=[];poolCache=quickCache=null;clearTimeout(timer);clearTimeout(onlinePaint);onlinePaint=null;onFiles(query,()=>{loaded=false;refresh(true);});return;}
    if(b.hasAttribute('data-ps-cancel')){serial++;onlineSerial++;clearTimeout(timer);clearTimeout(onlinePaint);onlinePaint=null;typing=preparing=false;if(materialPool===null)materialPool=[];onlineBusy=false;onlineCursor=null;busy=false;stockPaused=true;progress='';notice='Suche angehalten. Die bereits angezeigten Artikel bleiben erhalten.';update();return;}
    if(b.hasAttribute('data-ps-reset')){query='';filters={manufacturer:'',category:'',supplier:''};answers={};question='';start();return;}
    if(b.dataset.psAnswer){answers[b.dataset.psAnswer]=b.dataset.value;const keep=P.questions(filters.category||info(rows[0]?.m||{}).category,answers);for(const k of Object.keys(answers))if(!keep.includes(k))delete answers[k];question='';start();return;}

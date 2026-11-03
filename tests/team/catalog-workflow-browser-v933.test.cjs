@@ -64,7 +64,35 @@ async function main(){await new Promise(r=>server.listen(0,'127.0.0.1',r));const
  await page.locator('[data-view="supplier-catalogs"]').click();const removeRow=page.locator('.row-card').filter({hasText:'correction.csv'});const id=await removeRow.locator('[data-cw="delete"]').getAttribute('data-id');const materialCount=await page.evaluate(()=>__wizard.state.rows.materials.length);await removeRow.locator('[data-cw="delete"]').click();await page.waitForFunction(id=>!document.querySelector('[data-cw="delete"][data-id="'+id+'"]'),id);
  await test('deleting a saved catalog clears its index and pending selection but preserves imported materials',async()=>{assert.equal(await page.evaluate(async id=>(await WorktimeCatalogStore.batch('articles',id)).length,id),0);assert.equal(await page.evaluate(()=>__wizard.state.rows.materials.length),materialCount);});
 
- await page.locator('[data-cw="files"]').click();const scopeFile='Artikelnummer;Name;Einheit;VK*\n'+Array.from({length:40},(_,i)=>`S${i};Wago Kontowechsel ${i};Stk;2,00`).join('\n');await page.locator('[name="cw_master"]').setInputFiles({name:'scope.csv',mimeType:'text/csv',buffer:Buffer.from(scopeFile)});await page.locator('[data-cw-form="files"] button').click();await page.locator('[data-cw-form="filters"] button[type="submit"]').waitFor();await page.locator('[data-cw-form="filters"] button[type="submit"]').click();await page.locator('[name="cw_supplier"]').waitFor();await page.locator('[name="cw_supplier"]').fill('Nur Firma A');await page.evaluate(()=>{__wizard.calls.length=0;__wizard.hold=true;});await page.locator('[data-cw-form="confirm"] button.primary').click();await page.waitForFunction(()=>typeof __wizard.release==='function');await page.evaluate(()=>{__wizard.state.company='B';__wizard.state.view='supplier-catalogs';__wizard.render();__wizard.hold=false;__wizard.release();});await page.waitForTimeout(200);
+ await test('JSON requires correction before import and preserves zero and price per 100', async () => {
+   const rows = [
+     {article_number:'JSON-UNIT',name:'Wago JSON ohne Einheit',recommended_price_1:125.5,price_unit:100},
+     {article_number:'JSON-PRICE',name:'Wago JSON ohne Verkaufspreis',unit:'Stk',price_unit:1}
+   ];
+   await page.locator('[data-cw="files"]').click();
+   await page.evaluate(() => { __wizard.calls.length = 0; });
+   await page.locator('[name="cw_master"]').setInputFiles({name:'correction.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(rows))});
+   await page.locator('[data-cw-form="files"] button.primary').click();
+   await page.locator('[data-cw-form="filters"] button[type="submit"]').click();
+   const unit = correctionForm('JSON-UNIT'), price = correctionForm('JSON-PRICE');
+   assert.match(await unit.innerText(), /Mengeneinheit fehlt/);
+   assert.match(await price.innerText(), /Nettoverkaufspreis/);
+   assert.equal(await page.evaluate(() => __wizard.calls.length), 0);
+   await unit.locator('[name="unit"]').fill('Stk');
+   await unit.locator('button.primary').click();
+   await unit.waitFor({state:'detached'});
+   await price.locator('[name="recommended_price_1"]').fill('0');
+   await price.locator('button.primary').click();
+   await page.locator('[name="cw_supplier"]').fill('JSON Testlieferant');
+   await page.locator('[data-cw-form="confirm"] button.primary').click();
+   await page.locator('[name="cw_master"]').waitFor();
+   const saved = (await page.evaluate(() => __wizard.calls)).flatMap(call => call.p_rows);
+   assert.deepEqual(Object.fromEntries(saved.map(row => [row.article_number, row.recommended_price_1])), {
+     'JSON-UNIT': 1.255, 'JSON-PRICE': 0
+   });
+ });
+
+ const scopeFile='Artikelnummer;Name;Einheit;VK*\n'+Array.from({length:40},(_,i)=>`S${i};Wago Kontowechsel ${i};Stk;2,00`).join('\n');await page.locator('[name="cw_master"]').setInputFiles({name:'scope.csv',mimeType:'text/csv',buffer:Buffer.from(scopeFile)});await page.locator('[data-cw-form="files"] button').click();await page.locator('[data-cw-form="filters"] button[type="submit"]').waitFor();await page.locator('[data-cw-form="filters"] button[type="submit"]').click();await page.locator('[name="cw_supplier"]').waitFor();await page.locator('[name="cw_supplier"]').fill('Nur Firma A');await page.evaluate(()=>{__wizard.calls.length=0;__wizard.hold=true;});await page.locator('[data-cw-form="confirm"] button.primary').click();await page.waitForFunction(()=>typeof __wizard.release==='function');await page.evaluate(()=>{__wizard.state.company='B';__wizard.state.view='supplier-catalogs';__wizard.render();__wizard.hold=false;__wizard.release();});await page.waitForTimeout(200);
  await test('company switch confirms the in-flight atomic batch only for its original company and sends no further batch',async()=>{const a=await page.evaluate(()=>WorktimeCatalogStore.list('chief:A'));assert.equal(a.find(c=>c.masterName==='scope.csv').resume.saved,25);assert.equal(await page.evaluate(()=>__wizard.calls.length),1);assert.equal(await page.evaluate(()=>__wizard.calls[0].p_company),'A');assert.equal(await page.locator('[data-cw="use"]').count(),0);});
  await page.evaluate(()=>{__wizard.state.company='B';__wizard.render();});await page.waitForTimeout(100);assert.equal(await page.locator('[data-cw="use"]').count(),0);
  await test('another company cannot see the saved catalog',async()=>{assert.match(await page.locator('#root').innerText(),/Noch keine Kataloge/);});

@@ -92,6 +92,81 @@ async function main(){await new Promise(r=>server.listen(0,'127.0.0.1',r));const
    });
  });
 
+ await test('BMEcat preserves net prices and asks for missing units and net selling prices', async () => {
+   const xml = `<BMECAT><HEADER><CATALOG><CURRENCY>EUR</CURRENCY></CATALOG></HEADER>
+     <ARTICLE><SUPPLIER_AID>XML-UNIT</SUPPLIER_AID>
+       <ARTICLE_DETAILS><DESCRIPTION_SHORT>Wago BMEcat ohne Einheit</DESCRIPTION_SHORT></ARTICLE_DETAILS>
+       <ARTICLE_ORDER_DETAILS><PRICE_QUANTITY>100</PRICE_QUANTITY></ARTICLE_ORDER_DETAILS>
+       <ARTICLE_PRICE_DETAILS>
+         <ARTICLE_PRICE price_type="net_list"><PRICE_AMOUNT>125.50</PRICE_AMOUNT></ARTICLE_PRICE>
+         <ARTICLE_PRICE price_type="net_customer"><PRICE_AMOUNT>80.00</PRICE_AMOUNT></ARTICLE_PRICE>
+       </ARTICLE_PRICE_DETAILS>
+     </ARTICLE>
+     <ARTICLE><SUPPLIER_AID>XML-GROSS</SUPPLIER_AID>
+       <ARTICLE_DETAILS><DESCRIPTION_SHORT>Wago BMEcat nur Bruttoempfehlung</DESCRIPTION_SHORT></ARTICLE_DETAILS>
+       <ARTICLE_ORDER_DETAILS><ORDER_UNIT>C62</ORDER_UNIT><PRICE_QUANTITY>1</PRICE_QUANTITY></ARTICLE_ORDER_DETAILS>
+       <ARTICLE_PRICE_DETAILS><ARTICLE_PRICE price_type="nrp"><PRICE_AMOUNT>11.90</PRICE_AMOUNT></ARTICLE_PRICE></ARTICLE_PRICE_DETAILS>
+     </ARTICLE></BMECAT>`;
+   await page.evaluate(() => { __wizard.calls.length = 0; });
+   await page.locator('[name="cw_master"]').setInputFiles({name:'correction.xml',mimeType:'application/xml',buffer:Buffer.from(xml)});
+   await page.locator('[data-cw-form="files"] button.primary').click();
+   await page.locator('[data-cw-form="filters"] button[type="submit"]').click();
+   const unit = correctionForm('XML-UNIT'), price = correctionForm('XML-GROSS');
+   assert.match(await unit.innerText(), /Mengeneinheit fehlt/);
+   assert.match(await price.innerText(), /Nettoverkaufspreis/);
+   assert.equal(await price.locator('[name="recommended_price_1"]').inputValue(), '');
+   assert.equal(await page.evaluate(() => __wizard.calls.length), 0);
+   await unit.locator('[name="unit"]').fill('Stk');
+   await unit.locator('button.primary').click();
+   await unit.waitFor({state:'detached'});
+   await price.locator('[name="recommended_price_1"]').fill('10.00');
+   await price.locator('button.primary').click();
+   await page.locator('[name="cw_supplier"]').fill('BMEcat Testlieferant');
+   await page.locator('[data-cw-form="confirm"] button.primary').click();
+   await page.locator('[name="cw_master"]').waitFor();
+   const saved = (await page.evaluate(() => __wizard.calls)).flatMap(call => call.p_rows);
+   assert.deepEqual(saved.map(row => [row.article_number, row.unit, row.purchase_price ?? null, row.recommended_price_1]), [
+     ['XML-UNIT', 'Stk', 0.8, 1.255], ['XML-GROSS', 'Stk', null, 10]
+   ]);
+ });
+
+ const dn5Row = (sku, name, unit, amount) => {
+   const fields = Array(30).fill('');
+   Object.assign(fields, {0:'A',1:'N',2:sku,3:name,5:unit,6:'1',7:'100',8:amount});
+   return fields.join(';');
+ };
+ for (const [version, source] of [
+   [4, ['V'.padEnd(123, ' ') + '04EUR',
+     'A;N;0004;;Wago fehlende Einheit;;1;2;;12550;RG;WG;LG',
+     'A;N;0005;;Wago fehlender Preis;;1;2;ST;0;RG;WG;LG']],
+   [5, ['V;050;A;20261025;EUR;Test;;TEST;Testlieferant;;;;;;;',
+     dn5Row('0004','Wago fehlende Einheit','','12550'),
+     dn5Row('0005','Wago fehlender Preis','ST','0'), 'E;4;Ende;']]
+ ]) {
+   await test(`DATANORM ${version} corrects missing fields without losing the exact SKU or price basis`, async () => {
+     await page.evaluate(() => { __wizard.calls.length = 0; });
+     await page.locator('[name="cw_master"]').setInputFiles({name:'DATANORM.001',mimeType:'text/plain',buffer:Buffer.from(source.join('\r\n'))});
+     await page.locator('[data-cw-form="files"] button.primary').click();
+     await page.locator('[data-cw-form="filters"] button[type="submit"]').click();
+     const unit = correctionForm('0004'), price = correctionForm('0005');
+     assert.match(await unit.innerText(), /Mengeneinheit fehlt/);
+     assert.match(await price.innerText(), /Nettoverkaufspreis/);
+     assert.equal(await page.evaluate(() => __wizard.calls.length), 0);
+     await unit.locator('[name="unit"]').fill('Stk');
+     await unit.locator('button.primary').click();
+     await unit.waitFor({state:'detached'});
+     await price.locator('[name="recommended_price_1"]').fill('210.00');
+     await price.locator('button.primary').click();
+     await page.locator('[name="cw_supplier"]').fill(`DATANORM ${version} Testlieferant`);
+     await page.locator('[data-cw-form="confirm"] button.primary').click();
+     await page.locator('[name="cw_master"]').waitFor();
+     const saved = (await page.evaluate(() => __wizard.calls)).flatMap(call => call.p_rows);
+     assert.deepEqual(saved.map(row => [row.article_number, row.unit, row.recommended_price_1]), [
+       ['0004', 'Stk', 1.255], ['0005', 'Stk', 2.1]
+     ]);
+   });
+ }
+
  const scopeFile='Artikelnummer;Name;Einheit;VK*\n'+Array.from({length:40},(_,i)=>`S${i};Wago Kontowechsel ${i};Stk;2,00`).join('\n');await page.locator('[name="cw_master"]').setInputFiles({name:'scope.csv',mimeType:'text/csv',buffer:Buffer.from(scopeFile)});await page.locator('[data-cw-form="files"] button').click();await page.locator('[data-cw-form="filters"] button[type="submit"]').waitFor();await page.locator('[data-cw-form="filters"] button[type="submit"]').click();await page.locator('[name="cw_supplier"]').waitFor();await page.locator('[name="cw_supplier"]').fill('Nur Firma A');await page.evaluate(()=>{__wizard.calls.length=0;__wizard.hold=true;});await page.locator('[data-cw-form="confirm"] button.primary').click();await page.waitForFunction(()=>typeof __wizard.release==='function');await page.evaluate(()=>{__wizard.state.company='B';__wizard.state.view='supplier-catalogs';__wizard.render();__wizard.hold=false;__wizard.release();});await page.waitForTimeout(200);
  await test('company switch confirms the in-flight atomic batch only for its original company and sends no further batch',async()=>{const a=await page.evaluate(()=>WorktimeCatalogStore.list('chief:A'));assert.equal(a.find(c=>c.masterName==='scope.csv').resume.saved,25);assert.equal(await page.evaluate(()=>__wizard.calls.length),1);assert.equal(await page.evaluate(()=>__wizard.calls[0].p_company),'A');assert.equal(await page.locator('[data-cw="use"]').count(),0);});
  await page.evaluate(()=>{__wizard.state.company='B';__wizard.render();});await page.waitForTimeout(100);assert.equal(await page.locator('[data-cw="use"]').count(),0);

@@ -19,13 +19,13 @@ const fetch=async(url,options={})=>{const u=new URL(url),body=options.body?JSON.
  if(u.pathname==='/api/account/getsettingsremaining')return json({crsfKey:logged?'CSRF':null,user:logged?{companyNumber:'777',username:'TEST_USER',customerNumber:'000011',customer:{company:{isSap:false}}}:null,warehouses:[{mfv:'070',warehouseNumber:'070',name:'Testlager'}]});
  if(u.pathname==='/api/account/login'){assert.equal(body.password,'TEST_PASSWORD');return json({successful:true,mandatoryActions:[],crsfKey:'CSRF'},{'Set-Cookie':'sid=PRIVATE_COOKIE; Path=/; HttpOnly; Secure'});}
  assert.ok(logged);
- if(u.pathname==='/api/carts/createCart'){creates++;return json({resultId:'SYNTHETIC_CART_REFERENCE'});}
+ if(u.pathname==='/api/carts/createCart'){assert.equal(u.searchParams.get('customerOrderText'),'Baustelle Nord & West');creates++;return json({resultId:'SYNTHETIC_CART_REFERENCE'});}
  if(u.pathname==='/api/carts/cart/positions/list'){adds++;assert.equal(body[0].productKeyWithProductnumber.productnumber,'000123');assert.equal(body[0].quantity,2.5);assert.ok(!JSON.stringify(body).includes('price'));if(throwAfterAdd)throw Error('Lost response after accepted request');return json({successful:true});}
  if(u.pathname==='/api/carts/cart/positions/0')return json({cart:{cartPositions:[{product:{productNumber:'000123',quantityUnit:'Stk'},quantity:actual}]}});
  if(u.pathname==='/api/user/getauthkeylocalapp')return json({authKey:'SYNTHETIC_TRANSIENT_HANDOFF'});
  throw Error('Unexpected merchant request');
 };
-const handler=createHandler({fetch,env,md5,crypto:webcrypto}),body={company,supplier:'Neugart',request_id:job,customer:'000011',username:'TEST_USER',password:'TEST_PASSWORD',lines:[{material_id:article,quantity:'2.50'}]};
+const handler=createHandler({fetch,env,md5,crypto:webcrypto}),body={company,supplier:'Neugart',request_id:job,cart_name:'  Baustelle Nord & West  ',customer:'000011',username:'TEST_USER',password:'TEST_PASSWORD',lines:[{material_id:article,quantity:'2.50'}]};
 const request=(b=body,auth=true)=>handler(new Request('https://edge.invalid',{method:'POST',headers:{'Content-Type':'application/json',...(auth?{Authorization:'Bearer synthetic'}:{})},body:JSON.stringify(b)}));
 assert.equal((await request({},false)).status,401);role='employee';assert.equal((await request()).status,403);role='administrator';assert.equal((await request({...body,company:'20000000-0000-4000-8000-000000000099'})).status,403);assert.equal(adds,0);
 let r=await request(),data=await r.json();assert.equal(r.status,200);assert.equal(data.confirmed,true);assert.equal(data.items[0].actual_quantity,2.5);assert.match(data.cart_url,/SYNTHETIC_CART_REFERENCE\/positions$/);assert.equal(data.handoff.action,data.cart_url+'?login=true');assert.equal(adds,1);assert.equal(creates,1);

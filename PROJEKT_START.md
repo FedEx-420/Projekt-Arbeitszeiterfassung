@@ -94,3 +94,5 @@ Offizielle Hinweise: [Codex-Cloud-Arbeitsumgebungen](https://learn.chatgpt.com/d
 Am 04.11.2026 wurde der Bild-Zwischenstand in v968 veröffentlicht und live geprüft: 1.974 Berker-, 1.508 Hager- und 2.229 DEHN-Zuordnungen. Der vollständige Abgleich bleibt offen.
 
 v970 zeigt die App nach bestätigtem Profil und gibt Übersicht und Zeiterfassung nach den erforderlichen Arbeitsdaten frei. Der Materialabruf hält die Übersicht nicht auf. Der isolierte Browserlauf mit blockierter Materialantwort und gespeicherter Anmeldung ist bestanden.
+
+Für Neugart ist der frei wählbare Warenkorbname vorbereitet. Der Name geht beim Anlegen an den Händler und ist Teil der Wiederholungsprüfung. Die Freigabe gespeicherter Konten und die Veröffentlichung sind offen.

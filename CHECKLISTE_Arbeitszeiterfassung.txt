@@ -11,6 +11,12 @@ ZEICHEN
 Ein erfolgreicher Test mit Beispieldaten ist kein Live-Test jedes Geschäftskontos.
 
 ALS NÄCHSTES
+[ ] Neugart-Zugänge dauerhaft serverseitig speichern und in den Einstellungen
+    verwalten. Je Zugang Mitarbeitende freigeben und Freigaben widerrufen.
+[ ] Mitarbeiter-Warenkorb mit freigegebenem Neugart-Zugang und Bestellung
+    im Shop ohne erneute Eingabe von Kundennummer, Benutzer und Kennwort prüfen.
+[ ] Neugart-Warenkorbname veröffentlichen. Feld und Übergabe an den Händler
+    sind vorbereitet und mit einem isolierten Händler-Fixture geprüft.
 [x] Startseite nach der Profilprüfung öffnen und die Tagesauswahl bei
     blockiertem Materialabruf im Browser prüfen (v970).
 [ ] Startzeit mit dem produktiven Administratorkonto messen.

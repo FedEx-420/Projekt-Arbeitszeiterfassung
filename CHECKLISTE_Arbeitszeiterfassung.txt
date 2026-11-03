@@ -15,8 +15,11 @@ ALS NÄCHSTES
     Einkauf und Materialsuche mit 30.000 synthetischen Artikeln gemessen (v962).
     Einkauf lokal ca. 3,1 auf 1,4 s; 20 simulierte Händlerantworten 17,2 auf 0,8 s.
     Materialliste ca. 1,3 auf 0,7 s; Stundenpositionen/Preise unverändert geprüft.
-[ ] Direkten Firefox-Test abschließen. Windows meldet beim Playwright-Firefox eine
-    fehlende mozglue-Assemblierung. Ein GitHub-Prüflauf ist eingerichtet.
+[x] Suche und Navigation mit 30.000 Artikeln in Firefox prüfen. Der GitHub-Lauf
+    besteht mit maximal 0,60 s gemessener Pause in der Materialliste (v963).
+[ ] Test auf dem lokalen Windows-Gerät wiederholen. Beim Playwright-Firefox
+    meldet Windows eine fehlende mozglue-Assemblierung.
+[x] Wiederholte Filterarbeit der großen Materialliste reduzieren (v963).
 [ ] Verbleibende synchrone Darstellung der großen Materialliste weiter verkürzen.
 [x] Gira als weitere eindeutige Bildquelle integrieren: erste 40 Referenzen.
     Weitere 53 Berker/Hager-Referenzen ergänzt, darunter Berker 3036.

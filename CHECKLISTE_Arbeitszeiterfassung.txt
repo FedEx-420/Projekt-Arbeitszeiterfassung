@@ -187,6 +187,8 @@ BEDIENUNG, QUALITÄT UND ABSICHERUNG
 [x] Wiederherstellung von Angebotsentwürfen mit aktuellem Steuerdialog prüfen.
     Sieben isolierte Tests zu Sitzungsablauf, erneuter Anmeldung, Wiederholung,
     Änderung vorhandener Angebote und Kontotrennung bestanden.
+[x] Historische Zeitkonto-Prüfung an den aktuellen PDF-Dialog anpassen.
+    13 Fälle zu Abwesenheiten, Kontotrennung, Mehrseiten-PDF und Download bestanden.
 [ ] Historische Tests auf die aktuellen Abläufe bringen; eine vollständig grüne
     historische Gesamttestsuite ist bisher nicht nachgewiesen.
 [ ] Verbleibende ältere Sicherheits-/Authentifizierungshinweise gezielt prüfen

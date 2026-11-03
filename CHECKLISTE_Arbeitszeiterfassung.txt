@@ -11,6 +11,8 @@ ZEICHEN
 Ein erfolgreicher Test mit Beispieldaten ist kein Live-Test jedes Geschäftskontos.
 
 ALS NÄCHSTES
+[x] Einen automatischen Komplettlauf für alle drei Hersteller gestartet.
+[ ] Ergebnisse des Komplettlaufs verifizieren und veröffentlichen.
 [x] Weitere 76 Berker-, 112 Hager- und 136 DEHN-Bildreferenzen geprüft.
 [x] Den regelmäßigen Katalogabgleich auf noch ungeprüfte Produktseiten
     ausgerichtet und eine fortsetzbare DEHN-Warteschlange ergänzt.

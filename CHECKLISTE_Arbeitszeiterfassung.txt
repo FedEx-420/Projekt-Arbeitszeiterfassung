@@ -41,6 +41,8 @@ ALS NÄCHSTES
 [x] Suchvorschläge durch begrenzten Textcache und entfallende doppelte Filterung
     beschleunigen. Lokaler 6.000-Artikel-Vergleich: ca. 1,90 s vorher / 0,75 s danach.
     Treffergruppen, strenge Filter und geänderte Artikelnamen gesondert geprüft.
+[x] 40 weitere eindeutig zugeordnete Gira-Produktbilder ergänzen.
+    Alle neuen Zuordnungen über GTIN und Herstellerartikelnummer geprüft.
 [ ] Weitere Hersteller und Produktgruppen mit eindeutigen Bildern ergänzen.
 [x] Artikel-/Katalogsuche an konkreten Engpässen beschleunigen und messen.
     Bestehende Browserabläufe weiter erfolgreich; keine pauschale Tempo-Garantie.

@@ -114,6 +114,9 @@ KATALOGE UND PREISE
 [x] JSON-Korrektur im Katalogassistenten prüfen. Vorhandene numerische Preise
     bleiben beim Ergänzen der Einheit gültig. Preis je 100 und Nullpreis
     bis zum bestätigten Testimport geprüft (v966).
+[x] BMEcat und DATANORM 4/5 bis zur bestätigten Übernahme prüfen.
+    Fehlende Werte, führende Nullen, Preise je 100 und Trennung von
+    Netto- und Bruttoangaben mit isolierten Browserdaten geprüft.
 [ ] Fehlende/unklare Preis- und Einheitsangaben in jedem unterstützten Importweg
     einheitlich zur verständlichen Nachbearbeitung anbieten.
 

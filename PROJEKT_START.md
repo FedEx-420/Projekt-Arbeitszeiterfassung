@@ -71,6 +71,8 @@ v965 erklärt im Katalogassistenten fehlende Mengeneinheiten und Nettoverkaufspr
 
 v966 zeigt numerische Katalogpreise im Korrekturdialog im erwarteten Dezimalformat. Der JSON-Browsertest prüft fehlende Werte, einen bestätigten Nullpreis und die Umrechnung eines Preises je 100 Einheiten bis zum isolierten Import.
 
+Der Katalog-Browsertest deckt nun auch BMEcat und DATANORM 4 und 5 ab. Er prüft Korrektur und bestätigte Übernahme einschließlich exakter Artikelnummern, Preisbasis je 100 und Trennung von BMEcat-Bruttoempfehlung und Nettoverkaufspreis.
+
 ## Für die nächste Codex-Sitzung
 
 `AGENTS.md` enthält die verbindlichen Projektregeln. Firmen-/Mitarbeitergrenzen, abgeschlossene Dokumente, exakte Preise und Artikelidentität erhalten. Keine echten Bestellungen oder Produktionsrechnungen für Tests auslösen. Die relevante Prüfung steht in `.github/workflows/app-review-checks.yml`; sie nutzt isolierte Datenbank- und Händlerfixtures.

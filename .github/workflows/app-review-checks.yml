@@ -70,7 +70,9 @@ jobs:
           SEARCH_BROWSER: firefox
         run: node tests/team/search-latency-browser-v962.test.cjs
       - name: Offer controls and responsive address fields
-        run: node tests/team/offer-controls-v909.test.cjs
+        run: |
+          node tests/team/offer-controls-v909.test.cjs
+          node tests/team/offer-session-recovery.test.cjs
       - name: Invoice price and bulk work-order interfaces
         run: |
           node tests/team/invoice-auto-browser-v934.test.cjs

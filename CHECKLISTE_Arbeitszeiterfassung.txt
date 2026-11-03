@@ -184,6 +184,9 @@ BEDIENUNG, QUALITÄT UND ABSICHERUNG
     Tastaturbedienung und verständlichen Fehlermeldungen.
 [x] Historische Tests für Planung und gemeinsame Stammdatenfunktionen aktualisieren.
     36 Planungsszenarien und sieben Stammdatenprüfungen bestanden lokal.
+[x] Wiederherstellung von Angebotsentwürfen mit aktuellem Steuerdialog prüfen.
+    Sieben isolierte Tests zu Sitzungsablauf, erneuter Anmeldung, Wiederholung,
+    Änderung vorhandener Angebote und Kontotrennung bestanden.
 [ ] Historische Tests auf die aktuellen Abläufe bringen; eine vollständig grüne
     historische Gesamttestsuite ist bisher nicht nachgewiesen.
 [ ] Verbleibende ältere Sicherheits-/Authentifizierungshinweise gezielt prüfen

@@ -39,7 +39,7 @@ Private Kataloge, Einkaufspreise, Kundendaten, Chatprotokolle und Zugangsdaten w
 
 ## Aktueller Schwerpunkt
 
-Stand der Arbeit an v963:
+Stand der Arbeit an v964:
 
 - Herstellerbilder werden über eindeutige GTIN oder bestätigte Herstellerartikelnummer zugeordnet. Großhändlernummern und ähnlich klingende Namen reichen dafür nicht aus.
 - Zusätzlich zu Hager/Berker/Elcom wurde der öffentliche JUNG-Katalog als weitere Bildquelle angebunden. Die erste Ergänzung umfasst 40 geprüfte Produktreferenzen; der geplante Aktualisierungslauf ergänzt weitere.
@@ -56,6 +56,8 @@ Stand der Arbeit an v963:
 v963 verwendet die Texttreffer der Materialliste für die technischen Filter gemeinsam. Der GitHub-Test mit 30.000 Artikeln bestand in Firefox 153 unter Linux. Die längste gemessene Verarbeitungspause der Materialliste betrug in diesem Lauf 0,60 Sekunden. Der lokale Firefox-Start unter Windows meldet eine fehlende mozglue-Assemblierung.
 
 Die historische Planungssuite prüft wieder die aktuelle Oberfläche und den PDF-Dialog. 36 Szenarien sowie sieben Prüfungen der gemeinsamen Stammdatenfunktionen liefen lokal und auf GitHub erfolgreich. Weitere historische Browserprüfungen bleiben offen.
+
+v964 hält den Abschnitt zur Standortfreigabe bei Aktualisierungen offen. Der Browser-Test prüft die sichtbare Rückmeldung, Widerruf und Trennung zwischen Konten mit simulierten Berechtigungen.
 
 ## Für die nächste Codex-Sitzung
 

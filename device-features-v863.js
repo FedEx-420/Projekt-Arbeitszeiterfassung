@@ -159,7 +159,14 @@
         if(!pushKey)pushIssue='Push ist auf dem Server noch nicht eingerichtet.';
       }catch{if(same(state.profile?.id,user))pushIssue='Die Gerätefreigabe konnte nicht geprüft werden. Bitte Verbindung prüfen und erneut versuchen.';}
     }
-    function refreshDeviceSettings(){const panel=root.querySelector('[data-device-settings]');if(panel)panel.outerHTML=deviceSettings();}
+    function refreshDeviceSettings() {
+      const panel = root.querySelector('[data-device-settings]');
+      if (!panel) return;
+      const locationWasOpen = panel.querySelector('.device-location-alternative')?.open;
+      panel.outerHTML = deviceSettings();
+      const location = root.querySelector('[data-device-settings] .device-location-alternative');
+      if (location && locationWasOpen) location.open = true;
+    }
     async function openPersonalDeviceView(view){
       const user=state.profile?.id,device=workContext?.id,employee=workAccount()?.id;if(!user)return;
       if(isAdmin()&&workAccount()){state.businessId=workCompany();state.employeeId=employee;await ctx.loadTeamContext?.();if(!same(user,state.profile?.id)||!same(device,workContext?.id)||!same(employee,workAccount()?.id))return;}

@@ -32,11 +32,35 @@ async function main(){await new Promise(r=>server.listen(0,'127.0.0.1',r));const
  await test('resume imports only the remaining rows without repeating the confirmed batch',async()=>{const calls=await page.evaluate(()=>__wizard.calls);assert.equal(calls.reduce((n,c)=>n+c.p_rows.length,0),61);assert.equal(new Set(calls.flatMap(c=>c.p_rows).map(r=>r.article_number)).size,61);});
  await page.locator('[data-view="supplier-catalogs"]').click();
 
- await page.locator('[data-cw="files"]').click();const correction='Artikelnummer;Name;Einheit;VK*\nBAD;Wago unklare Verpackung;SET;2,00\nGOOD;Wago normales Material;Stk;2,00';
- await page.locator('[name="cw_master"]').setInputFiles({name:'correction.csv',mimeType:'text/csv',buffer:Buffer.from(correction)});await page.locator('[data-cw-form="files"] button').click();await page.locator('[data-cw-form="filters"] button[type="submit"]').waitFor();await page.locator('[data-cw-form="filters"] button[type="submit"]').click();await page.locator('[data-cw-form="correct"]').waitFor();
- await test('unclear units are visible before any confirmation and can explicitly be left out',async()=>{assert.equal(await page.locator('[name="cw_supplier"]').count(),0);await page.locator('[data-cw="skip-issues"]').click();await page.locator('[name="cw_supplier"]').waitFor();assert.match(await page.locator('.catalog-wizard').innerText(),/1 Artikel übernehmen/);assert.match(await page.locator('.catalog-wizard').innerText(),/ausdrücklich ausgelassen/);});
- await page.locator('[data-view="supplier-catalogs"]').click();await page.locator('.row-card').filter({hasText:'correction.csv'}).locator('[data-cw="use"]').click();await page.locator('[data-cw-form="filters"] button[type="submit"]').waitFor();await page.locator('[data-cw-form="filters"] button[type="submit"]').click();await page.locator('[data-cw-form="correct"]').waitFor();await page.locator('[data-cw-form="correct"] [name="unit"]').fill('Stk');await page.locator('[data-cw-form="correct"] button.primary').click();await page.locator('[name="cw_supplier"]').waitFor();
- await test('leaving an item out affects only that selection; a later correction makes both materials available',async()=>{assert.match(await page.locator('.catalog-wizard').innerText(),/2 Artikel übernehmen/);});
+ await page.locator('[data-cw="files"]').click();const correction='Artikelnummer;Name;Einheit;VK*\nBAD;Wago unklare Verpackung;SET;2,00\nGOOD;Wago normales Material;Stk;2,00\nUNIT-EMPTY;Wago ohne Einheit;;2,00\nPRICE-EMPTY;Wago ohne VK;Stk;';
+ await page.locator('[name="cw_master"]').setInputFiles({name:'correction.csv',mimeType:'text/csv',buffer:Buffer.from(correction)});await page.locator('[data-cw-form="files"] button').click();await page.locator('[data-cw-form="filters"] button[type="submit"]').waitFor();await page.locator('[data-cw-form="filters"] button[type="submit"]').click();await page.locator('[data-cw-form="correct"]').first().waitFor();
+ const correctionForm = sku => page.locator('[data-cw-form="correct"]').filter({ hasText: sku });
+ await test('missing price and unit name the affected article before saving', async () => {
+   assert.equal(await page.locator('[name="cw_supplier"]').count(), 0);
+   assert.match(await correctionForm('UNIT-EMPTY').innerText(), /Mengeneinheit fehlt/);
+   assert.match(await correctionForm('PRICE-EMPTY').innerText(), /Nettoverkaufspreis VK \* fehlt/);
+   assert.doesNotMatch(await correctionForm('BAD').innerText(), /Zeile 2:/);
+   await page.locator('[data-cw="skip-issues"]').click();
+   await page.locator('[name="cw_supplier"]').waitFor();
+   assert.match(await page.locator('.catalog-wizard').innerText(), /1 Artikel übernehmen/);
+   assert.match(await page.locator('.catalog-wizard').innerText(), /ausdrücklich ausgelassen/);
+ });
+ await page.locator('[data-view="supplier-catalogs"]').click();
+ await page.locator('.row-card').filter({hasText:'correction.csv'}).locator('[data-cw="use"]').click();
+ await page.locator('[data-cw-form="filters"] button[type="submit"]').click();
+ await test('skipped articles can be corrected later, including a confirmed zero price', async () => {
+   for (const sku of ['BAD', 'UNIT-EMPTY']) {
+     const row = correctionForm(sku);
+     await row.locator('[name="unit"]').fill('Stk');
+     await row.locator('button.primary').click();
+     await row.waitFor({ state: 'detached' });
+   }
+   const row = correctionForm('PRICE-EMPTY');
+   await row.locator('[name="recommended_price_1"]').fill('0');
+   await row.locator('button.primary').click();
+   await page.locator('[name="cw_supplier"]').waitFor();
+   assert.match(await page.locator('.catalog-wizard').innerText(), /4 Artikel übernehmen/);
+ });
  await page.locator('[data-view="supplier-catalogs"]').click();const removeRow=page.locator('.row-card').filter({hasText:'correction.csv'});const id=await removeRow.locator('[data-cw="delete"]').getAttribute('data-id');const materialCount=await page.evaluate(()=>__wizard.state.rows.materials.length);await removeRow.locator('[data-cw="delete"]').click();await page.waitForFunction(id=>!document.querySelector('[data-cw="delete"][data-id="'+id+'"]'),id);
  await test('deleting a saved catalog clears its index and pending selection but preserves imported materials',async()=>{assert.equal(await page.evaluate(async id=>(await WorktimeCatalogStore.batch('articles',id)).length,id),0);assert.equal(await page.evaluate(()=>__wizard.state.rows.materials.length),materialCount);});
 

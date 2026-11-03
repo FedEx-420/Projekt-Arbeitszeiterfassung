@@ -108,6 +108,9 @@ KATALOGE UND PREISE
     Originaldateien bleiben unverändert; 1.205-Artikel-/Konto-/PDF-Test bestanden.
 [ ] Beleg-/Katalogerkennung aus PDF und Bildern einschließlich OCR weiter
     verbessern. Diese Formate sind nicht als universeller Katalogimport fertig.
+[x] Fehlende Mengeneinheit und fehlenden VK * im gemeinsamen Katalogassistenten
+    am betroffenen Artikel verständlich anzeigen. Korrektur, Auslassen und
+    ausdrücklich eingegebener Nullpreis im CSV-Browsertest geprüft (v965).
 [ ] Fehlende/unklare Preis- und Einheitsangaben in jedem unterstützten Importweg
     einheitlich zur verständlichen Nachbearbeitung anbieten.
 

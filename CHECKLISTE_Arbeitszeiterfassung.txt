@@ -58,6 +58,8 @@ ALS NÄCHSTES
     Händleranmeldung getestet (v956).
 [ ] Automatische Bildzuordnung über weitere eindeutige Hersteller-/Händlerquellen
     erweitern. Eine flächendeckende Bildversorgung besteht noch nicht.
+[x] Suchfragen für Kabel und Netzwerktechnik im Browser prüfen. Synthetische
+    Beispiele unterscheiden Aderzahl, Querschnitt, Cat 6/Cat 6A und Länge.
 [ ] Suchfragen und Filter anhand weiterer echter Produktgruppen überprüfen.
     Schwerpunkt: Schutzgeräte, Schalterprogramme, Leitungen und Zubehör.
 

@@ -73,6 +73,8 @@ v966 zeigt numerische Katalogpreise im Korrekturdialog im erwarteten Dezimalform
 
 Der Katalog-Browsertest deckt nun auch BMEcat und DATANORM 4 und 5 ab. Er prüft Korrektur und bestätigte Übernahme einschließlich exakter Artikelnummern, Preisbasis je 100 und Trennung von BMEcat-Bruttoempfehlung und Nettoverkaufspreis.
 
+Der Bildindex enthält 40 weitere Gira-Produktbilder und insgesamt 2.622 Referenzen. Alle neuen Zuordnungen wurden über die exakte GTIN und Gira-Herstellerartikelnummer geprüft.
+
 ## Für die nächste Codex-Sitzung
 
 `AGENTS.md` enthält die verbindlichen Projektregeln. Firmen-/Mitarbeitergrenzen, abgeschlossene Dokumente, exakte Preise und Artikelidentität erhalten. Keine echten Bestellungen oder Produktionsrechnungen für Tests auslösen. Die relevante Prüfung steht in `.github/workflows/app-review-checks.yml`; sie nutzt isolierte Datenbank- und Händlerfixtures.

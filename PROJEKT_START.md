@@ -39,7 +39,7 @@ Private Kataloge, Einkaufspreise, Kundendaten, Chatprotokolle und Zugangsdaten w
 
 ## Aktueller Schwerpunkt
 
-Stand der Arbeit an v965:
+Stand der Arbeit an v966:
 
 - Herstellerbilder werden über eindeutige GTIN oder bestätigte Herstellerartikelnummer zugeordnet. Großhändlernummern und ähnlich klingende Namen reichen dafür nicht aus.
 - Zusätzlich zu Hager/Berker/Elcom wurde der öffentliche JUNG-Katalog als weitere Bildquelle angebunden. Die erste Ergänzung umfasst 40 geprüfte Produktreferenzen; der geplante Aktualisierungslauf ergänzt weitere.
@@ -68,6 +68,8 @@ Der modernisierte Zeitkonto-Test prüft die aktuelle PDF-Vorschau und den Downlo
 Die aktualisierte Browserprüfung für den Produkt-Assistenten umfasst 19 Fälle. Sie prüft die aktuelle Artikelsuche, die sichtbare Bildanzeige und das geführte Eingrenzen von Schaltern, Schutzgeräten, Leitungen und Patchkabeln mit isolierten Beispieldaten.
 
 v965 erklärt im Katalogassistenten fehlende Mengeneinheiten und Nettoverkaufspreise am betroffenen Artikel. Der isolierte Browserlauf prüft CSV, Korrektur, Auslassen und einen ausdrücklich eingegebenen Nullpreis. Weitere Importwege bleiben auf der Checkliste.
+
+v966 zeigt numerische Katalogpreise im Korrekturdialog im erwarteten Dezimalformat. Der JSON-Browsertest prüft fehlende Werte, einen bestätigten Nullpreis und die Umrechnung eines Preises je 100 Einheiten bis zum isolierten Import.
 
 ## Für die nächste Codex-Sitzung
 

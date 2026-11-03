@@ -111,6 +111,9 @@ KATALOGE UND PREISE
 [x] Fehlende Mengeneinheit und fehlenden VK * im gemeinsamen Katalogassistenten
     am betroffenen Artikel verständlich anzeigen. Korrektur, Auslassen und
     ausdrücklich eingegebener Nullpreis im CSV-Browsertest geprüft (v965).
+[x] JSON-Korrektur im Katalogassistenten prüfen. Vorhandene numerische Preise
+    bleiben beim Ergänzen der Einheit gültig. Preis je 100 und Nullpreis
+    bis zum bestätigten Testimport geprüft (v966).
 [ ] Fehlende/unklare Preis- und Einheitsangaben in jedem unterstützten Importweg
     einheitlich zur verständlichen Nachbearbeitung anbieten.
 

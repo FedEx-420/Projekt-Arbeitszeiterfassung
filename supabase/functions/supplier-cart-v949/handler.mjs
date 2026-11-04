@@ -54,6 +54,21 @@ export function createHandler({fetch=globalThis.fetch,env,md5,crypto=globalThis.
     if(!response.ok)throw fail('MATERIALS','Die Neugart-Artikel konnten nicht geladen werden.',502);
     return response.json();
    };
+   const onlineSession=async()=>{
+    const saved=await account('credentials',{id:body.account_id});
+    if(saved?.company!==scopedCompany)throw fail('ACCOUNT','Der Zugang gehört nicht zu diesem Betrieb.',403);
+    const credentials=validCredentials(saved.credentials);
+    try{return await merchant.connect({shop:'efg',...credentials});}
+    finally{credentials.password='';saved.credentials.password='';}
+   };
+   if(body.action==='article-add'){
+    if(!uuid.test(body.account_id||'')||!uuid.test(scopedCompany||'')||typeof body.sku!=='string'||!body.sku.trim()||body.sku.length>120||/[\u0000-\u001f]/.test(body.sku))throw fail('ARTICLE','Bitte einen gültigen Artikel auswählen.');
+    const session=await onlineSession(),warehouse=session.warehouses[0]?.id;
+    const detail=await merchant.online.article(session,body.sku.trim(),warehouse);
+    const response=await fetch(env.url+'/rest/v1/rpc/neugart_import_article_v975',{method:'POST',headers:serviceHeaders,body:JSON.stringify({actor:user.id,company:scopedCompany,account_id:body.account_id,article:detail.data}),signal:AbortSignal.timeout(10000)});
+    if(!response.ok)throw fail('ARTICLE_SAVE','Der geprüfte Händlerartikel konnte noch nicht gespeichert werden.',502);
+    return json(await response.json());
+   }
    if(body.action==='search'){
     if(!uuid.test(scopedCompany||'')||!(await account('list')).some(a=>a.id===body.account_id))throw fail('ACCOUNT','Dieser Neugart-Zugang ist nicht freigegeben.',403);
     const clean=value=>String(value||'').normalize('NFKC').trim().replace(/[^\p{L}\p{N} .-]/gu,' ').trim().slice(0,80);
@@ -75,7 +90,15 @@ export function createHandler({fetch=globalThis.fetch,env,md5,crypto=globalThis.
      if(exact.length)return json(exact);
     }
     if(tokens.length)params.set('and','('+tokens.map(token=>'or(name.ilike.*'+token+'*,catalog_product_name.ilike.*'+token+'*,catalog_manufacturer.ilike.*'+token+'*,catalog_article_number.ilike.*'+token+'*,catalog_manufacturer_number.ilike.*'+token+'*)').join(',')+')');
-    return json(await readMaterials(params));
+    const local=await readMaterials(params);
+    if(local.length)return json(local);
+    const session=await onlineSession();
+    const remote=await merchant.online.search(session,{query:[term,brand,category].filter(Boolean).join(' '),warehouse:session.warehouses[0]?.id,inStockOnly:true});
+    return json(remote.products.filter(p=>!p.locked).slice(0,40).map(p=>({
+      id:'online:'+p.sku,online_sku:p.sku,name:p.name,catalog_product_name:p.name,
+      catalog_article_number:p.sku,catalog_supplier:'Neugart',
+      catalog_manufacturer_number:p.manufacturer_number,catalog_gtin:p.gtin,catalog_image_url:p.image_url
+    })));
    }
    const delegated=uuid.test(body.account_id||'');
    if(profile.role==='employee'&&!delegated)throw fail('FORBIDDEN','Bitte einen freigegebenen Neugart-Zugang wählen.',403);

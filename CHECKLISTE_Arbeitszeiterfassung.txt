@@ -11,6 +11,12 @@ ZEICHEN
 Ein erfolgreicher Test mit Beispieldaten ist kein Live-Test jedes Geschäftskontos.
 
 ALS NÄCHSTES
+[x] Katalogsuche beim Tippen starten, Treffer und Favoriten getrennt
+    anzeigen. Browserprüfung mit unterschiedlichen Daten bestanden (v975).
+[x] Fehlende lokale Neugart-Treffer im Onlinekatalog suchen. Ausgewählte
+    Onlineartikel vor dem Hinzufügen anhand der Händlerdaten prüfen.
+[x] Weitere 12.097 offizielle Bildreferenzen ergänzt und Zuordnung geprüft.
+[ ] Eine Hager-Seite und sechs DEHN-Seiten des Komplettlaufs klären.
 [x] Gemeinsamen Neugart-Suchweg für freigegebene Mitarbeitende,
     Geschäftskonten und Verwaltung bereitgestellt (v974).
 [x] Neugart-Zugänge in der Verwaltung für den ausgewählten Betrieb

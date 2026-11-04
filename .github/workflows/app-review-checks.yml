@@ -62,6 +62,7 @@ jobs:
           node tests/team/supplier-stock-priority-v952.test.cjs
           node tests/team/purchase-catalog-pages-v952.test.cjs
           node tests/team/supplier-cart-browser-v949.test.cjs
+          node tests/team/neugart-search-v975.test.cjs
       - name: Planning and shared catalog helpers
         run: |
           node tests/team/planning.test.cjs

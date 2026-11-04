@@ -1,4 +1,5 @@
 /* ONLINE PLUS account protocol, based on the verified v948 stock adapter. */
+import {createOnlineMerchant} from '../supplier-stock-v948/online.mjs';
 const shops={efg:{origin:'https://efgonlineplus.de',layout:'EFG',domain:'efgonlineplus.de'},gc:{origin:'https://www.gconlineplus.de',layout:'GC',domain:'gconlineplus.de'}};
 const fail=(code,message,status=400)=>Object.assign(new Error(message),{code,status});
 function clean(value,max=1000){return typeof value==='string'?value.replace(/<[^>]*>/g,'').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g,'').slice(0,max).trim():'';}
@@ -33,5 +34,13 @@ export function createMerchant({fetch,md5,now=Date.now}){
   if(!s.warehouses.length)throw fail('WAREHOUSE','Der Händler hat kein Lager zur Auswahl geliefert.',502);
   return s;
  }
- return {connect,call};
+ async function refresh(session,needsToken=false){
+  const settings=await call(session,'/api/account/getsettingsremaining?domain='+encodeURIComponent(shops[session.shop].domain)),user=settings.user;
+  if(!user||md5(['companyNumber','username','customerNumber'].map(k=>String(user[k]||'').trim().toUpperCase()).join('_'))!==session.userHash)throw fail('RECONNECT','Bitte den Neugart-Zugang erneut verbinden.',401);
+  session.csrf=settings.crsfKey??session.csrf;
+  if(typeof settings.jsonWebToken==='string'&&settings.jsonWebToken.length<=20000)session.apiToken=settings.jsonWebToken;
+  if(needsToken&&!/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(session.apiToken||''))throw fail('RECONNECT','Die Neugart-Artikelsuche ist noch nicht freigeschaltet.',401);
+ }
+ const online=createOnlineMerchant({call,refresh,fetch,now});
+ return {connect,call,online};
 }

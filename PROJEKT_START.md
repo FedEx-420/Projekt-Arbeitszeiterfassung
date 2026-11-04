@@ -143,3 +143,23 @@ und lokale Einkaufskataloge starten sofort, löschen widersprüchliche
 Merkmalsfilter, klappen die Favoriten zu und zeigen den Trefferbereich.
 Datenbankrechte und alle drei Suchwege sind mit isolierten Fixtures geprüft.
 Die Supabase-Migration wurde angewendet und die aktiven Regeln kontrolliert.
+
+## v981 – Artikelpreise und Warenkorbwerte
+
+Die gemeinsame Artikelanzeige zeigt EK und VK* netto je Basiseinheit.
+VK* verwendet recommended_price_1, sonst unit_price bzw. den vorhandenen
+Nettopreis. Fehlende Werte werden nicht zu Null umgedeutet. Favoriten
+speichern weiterhin keine Preis-Snapshots; vorhandene Materialien werden
+bei geöffneter Liste seitenweise nachgeladen. Neugart liefert lokale
+Materialpreise in der Suche und liest Onlinepreise mit einer Sammelanfrage.
+Bei mehreren Preisantworten wird ausschließlich anhand eindeutiger SKU
+zugeordnet; weder Reihenfolge noch ähnliche Namen reichen aus.
+
+Beide Warenkorbübersichten berechnen EK/VK netto, 19 % MwSt. und brutto
+bei Mengenänderungen neu. Die Berechnung verwendet vier Dezimalstellen
+beim Stückpreis, zwei bei Mengen und BigInt-Centrundung pro Position.
+Bei fehlenden Preisen erscheinen ausdrücklich unvollständige Zwischenwerte.
+Dies ist eine Übersicht mit hinterlegten Preisen, kein festgeschriebener
+Händlerpreis. Angebote, Rechnungen und die übertragenen Bestellmengen
+werden dadurch nicht geändert. Warenkorbtrennung und Anmelde-POST
+sind weiterhin durch die Einkaufs-Browserprüfungen abgedeckt.

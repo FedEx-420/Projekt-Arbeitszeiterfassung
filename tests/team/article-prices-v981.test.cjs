@@ -1,0 +1,18 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const sandbox={window:{},Intl};vm.runInNewContext(fs.readFileSync('article-tools-v959.js','utf8'),sandbox);
+const p=sandbox.window.WorktimeArticlePrices;
+assert.equal(p.prices({purchase_price:0,recommended_price_1:0,unit_price:50}).vk,0,'zero is a real price');
+assert.equal(p.prices({recommended_price_1:null,unit_price:7}).vk,7);
+assert.equal(p.prices({purchase_price:null}).ek,null);
+assert.equal(p.prices({purchase_price:'0'}).ek,null,'do not coerce missing or unvalidated prices');
+let t=p.totals([{purchase_price:1.2345,recommended_price_1:2,quantity:'2,5'},{purchase_price:0.1,recommended_price_1:0,quantity:'3'}]);
+assert.equal(t.ek.net,339n);assert.equal(t.ek.tax,64n);assert.equal(t.ek.gross,403n);
+assert.equal(t.vk.net,500n);assert.equal(t.vk.gross,595n);
+t=p.totals([{purchase_price:0.0001,recommended_price_1:1,quantity:'100'}]);assert.equal(t.ek.net,1n);
+assert.equal(p.totals([{purchase_price:2,quantity:''}]).ek.missing,1);
+assert.match(p.totalsHtml([{quantity:'1'}]),/unvollständig/);
+assert.doesNotMatch(p.totalsHtml([{quantity:'1'}]),/0,00/,'unknown totals are not displayed as zero');
+assert.match(p.html({purchase_price:12.3456,unit_price:20,unit:'M'}),/12,3456/);
+const favorite=sandbox.window.WorktimeArticleTools.snapshot({id:'test',purchase_price:1,unit_price:2,recommended_price_1:3});
+assert.equal(favorite.purchase_price,undefined,'favorites keep no stale price copy');
+console.log('PASS article prices: EK/VK* fallback, real zero vs missing, fractional quantities, four-decimal unit prices, cent rounding, 19% tax, incomplete totals and no persisted favorite prices');

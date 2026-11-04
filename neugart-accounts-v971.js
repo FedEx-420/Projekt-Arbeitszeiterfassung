@@ -27,6 +27,7 @@
       if(!current())return;
       accounts=rows;
       if(!rows.some(a=>a.id===accountId)){accountId=rows[0]?.id||'';restoreBasket();}
+      if(basket.length)await refreshBasketPrices(current);
     }
     function settings() {
       sync();
@@ -55,13 +56,13 @@
       return `<section class="panel"><h2>Mein Warenkorb</h2><p>Hier stehen die Artikel, die du für diesen Betrieb und Neugart-Zugang hinzugefügt hast.</p>${feedback()}
       <button type="button" class="secondary" data-ng-action="search">Weitere Artikel suchen</button>
       ${accounts.length?`<label>Neugart-Zugang<select data-ng-account>${accounts.map(a=>`<option value="${esc(a.id)}" ${a.id===accountId?'selected':''}>${esc(a.label)}</option>`).join('')}</select></label>`:'<p>Für dich ist kein Neugart-Zugang freigegeben.</p>'}
-      ${basket.length?`<form data-ng-form="cart"><label>Warenkorbname<input name="cart_name" maxlength="60" value="${esc(cartName)}"></label>${basket.map(m=>`<label>${window.WorktimeArticleTools?.html(m,{star:false})||''}${esc(m.catalog_product_name||m.name)} · ${esc(m.unit)}<input type="number" min="0.01" max="999999.99" step="0.01" required name="qty:${esc(m.id)}" value="${esc(m.quantity)}"></label><button type="button" class="secondary" data-ng-action="remove" data-id="${esc(m.id)}">Entfernen</button>`).join('')}<button class="primary" ${pending?'disabled':''}>${attempt?.confirmed?'Warenkorb beim Großhändler öffnen':'Artikel bestellen'}</button></form>`:'<p>Dein Warenkorb ist leer.</p>'}</section>`;
+      ${basket.length?`<form data-ng-form="cart"><label>Warenkorbname<input name="cart_name" maxlength="60" value="${esc(cartName)}"></label>${basket.map(m=>`<label>${window.WorktimeArticleTools?.html(m,{star:false})||''}${esc(m.catalog_product_name||m.name)} · ${esc(m.unit)}<input type="number" min="0.01" max="999999.99" step="0.01" required name="qty:${esc(m.id)}" value="${esc(m.quantity)}"></label><button type="button" class="secondary" data-ng-action="remove" data-id="${esc(m.id)}">Entfernen</button>`).join('')}<div data-ng-totals>${window.WorktimeArticlePrices?.totalsHtml(basket)||''}</div><button class="primary" ${pending?'disabled':''}>${attempt?.confirmed?'Warenkorb beim Großhändler öffnen':'Artikel bestellen'}</button></form>`:'<p>Dein Warenkorb ist leer.</p>'}</section>`;
     }
     const basketKey=()=> 'worktime-neugart-basket:'+scope+':'+accountId;
     const attemptKey=()=> 'worktime-neugart-attempt:'+scope+':'+accountId;
     function saveBasket() {
       if(!scope||!accountId)return;
-      const fields=['id','business_id','name','catalog_product_name','unit','catalog_supplier','catalog_article_number','catalog_image_url','catalog_gtin','catalog_manufacturer','catalog_manufacturer_number','quantity'];
+      const fields=['id','business_id','name','catalog_product_name','unit','catalog_supplier','catalog_article_number','catalog_image_url','catalog_gtin','catalog_manufacturer','catalog_manufacturer_number','purchase_price','recommended_price_1','recommended_price_2','unit_price','quantity'];
       const rows=basket.map(item=>Object.fromEntries(fields.filter(field=>item[field]!=null).map(field=>[field,item[field]])));
       sessionStorage.setItem(basketKey(),JSON.stringify({basket:rows,cartName}));
     }
@@ -73,6 +74,12 @@
         if(draft){basket=Array.isArray(draft.basket)?draft.basket.filter(item=>item&&typeof item.id==='string').slice(0,1000):[];cartName=String(draft.cartName||'').slice(0,60);}
         attempt=JSON.parse(sessionStorage.getItem(attemptKey())||'null');
       } catch { status='Der gespeicherte Warenkorb konnte nicht gelesen werden.'; }
+    }
+    async function refreshBasketPrices(current){
+      const selected=accountId,ids=basket.map(m=>m.id).filter(id=>/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id));if(!ids.length)return;
+      const rows=await call('material-prices',{account_id:selected,ids});if(!current()||selected!==accountId)return;
+      for(const m of basket){const fresh=rows.find(r=>r.id===m.id&&r.business_id===businessId()&&r.catalog_article_number===m.catalog_article_number&&r.unit===m.unit);if(ids.includes(m.id))for(const field of ['purchase_price','unit_price','recommended_price_1','recommended_price_2'])m[field]=fresh?.[field];}
+      saveBasket();
     }
     function addToBasket(item) {
       if(basket.some(m=>m.id===item.id))status='Dieser Artikel liegt bereits in deinem Warenkorb.';
@@ -121,7 +128,7 @@
       root.querySelector('[data-neugart-results]')?.scrollIntoView({block:'start'});
     });
     root.addEventListener('input',event=>{
-      if(event.target.closest('[data-ng-form="cart"]')){capture();return;}
+      if(event.target.closest('[data-ng-form="cart"]')){capture();const totals=root.querySelector('[data-ng-totals]');if(totals)totals.innerHTML=window.WorktimeArticlePrices?.totalsHtml(basket)||'';return;}
       const form=event.target.closest('[data-neugart-search]');
       if(!form)return;
       readSearch(form);
@@ -150,7 +157,7 @@
     }
     root.addEventListener('change',event=>{
       if(!event.target.matches('[data-ng-account]')||pending)return;
-      capture();clearTimeout(searchTimer);searchSerial++;searching=false;searched=false;accountId=event.target.value;restoreBasket();results=[];render();
+      capture();clearTimeout(searchTimer);searchSerial++;searching=false;searched=false;accountId=event.target.value;restoreBasket();results=[];render();if(basket.length)run(refreshBasketPrices);
     });
     root.addEventListener('click',event=>{
       const button=event.target.closest('[data-ng-action]');

@@ -80,13 +80,19 @@ export function createHandler({fetch=globalThis.fetch,env,md5,crypto=globalThis.
     if(!response.ok)throw fail('ARTICLE_SAVE','Der geprüfte Händlerartikel konnte noch nicht gespeichert werden.',502);
     return json(await response.json());
    }
+   if(body.action==='material-prices'){
+    if(!uuid.test(scopedCompany||'')||!(await account('list')).some(a=>a.id===body.account_id))throw fail('ACCOUNT','Dieser Neugart-Zugang ist nicht freigegeben.',403);
+    if(!Array.isArray(body.ids)||body.ids.length>1000||body.ids.some(id=>!uuid.test(id)))throw fail('ARTICLE','Die Artikelauswahl ist ungültig.');
+    const rows=[];for(let offset=0;offset<body.ids.length;offset+=100){const params=new URLSearchParams({select:'id,business_id,catalog_article_number,unit,purchase_price,unit_price,recommended_price_1,recommended_price_2',business_id:'eq.'+scopedCompany,catalog_supplier:'ilike.*neugart*',id:'in.('+body.ids.slice(offset,offset+100).join(',')+')',active:'eq.true'});rows.push(...await readMaterials(params));}
+    return json(rows);
+   }
    if(body.action==='search'){
     if(!uuid.test(scopedCompany||'')||!(await account('list')).some(a=>a.id===body.account_id))throw fail('ACCOUNT','Dieser Neugart-Zugang ist nicht freigegeben.',403);
     const clean=value=>String(value||'').normalize('NFKC').trim().replace(/[^\p{L}\p{N} .-]/gu,' ').trim().slice(0,80);
     const term=clean(body.query),brand=clean(body.manufacturer),category=clean(body.category);
     if(term.length<2&&brand.length<2&&category.length<2)return json([]);
     const params=new URLSearchParams({
-     select:'id,name,unit,catalog_article_number,catalog_supplier,catalog_product_name,catalog_manufacturer,catalog_manufacturer_number,catalog_gtin,catalog_category,catalog_image_url',
+     select:'id,name,unit,purchase_price,unit_price,recommended_price_1,recommended_price_2,catalog_article_number,catalog_supplier,catalog_product_name,catalog_manufacturer,catalog_manufacturer_number,catalog_gtin,catalog_category,catalog_image_url',
      business_id:'eq.'+scopedCompany,active:'eq.true',catalog_supplier:'ilike.*neugart*',order:'name.asc,id.asc',limit:'40'
     });
     if(brand)params.set('catalog_manufacturer','ilike.*'+brand+'*');
@@ -105,10 +111,12 @@ export function createHandler({fetch=globalThis.fetch,env,md5,crypto=globalThis.
     if(local.length)return json(local);
     const session=await onlineSession();
     const remote=await merchant.online.search(session,{query:[term,brand,category].filter(Boolean).join(' '),warehouse:session.warehouses[0]?.id,inStockOnly:true});
-    return json(remote.products.filter(p=>!p.locked).slice(0,40).map(p=>({
+    const products=remote.products.filter(p=>!p.locked).slice(0,40);
+    let prices=new Map();try{prices=await merchant.prices(session,products.filter(p=>!p.price_hidden).map(p=>p.sku));}catch{}
+    return json(products.map(p=>({
       id:'online:'+p.sku,online_sku:p.sku,name:p.name,catalog_product_name:p.name,
       catalog_article_number:p.sku,catalog_supplier:'Neugart',
-      catalog_manufacturer_number:p.manufacturer_number,catalog_gtin:p.gtin,catalog_image_url:p.image_url
+      catalog_manufacturer_number:p.manufacturer_number,catalog_gtin:p.gtin,catalog_image_url:p.image_url,...(prices.get(p.sku)||{})
     })));
    }
    const delegated=uuid.test(body.account_id||'');

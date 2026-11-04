@@ -11,6 +11,11 @@ ZEICHEN
 Ein erfolgreicher Test mit Beispieldaten ist kein Live-Test jedes Geschäftskontos.
 
 ALS NÄCHSTES
+[x] EK und VK* netto je Artikel anzeigen, vorhandene Preise der
+    Favoriten nachladen und Neugart-Suche mit Preisen ergänzen (v981).
+[x] Persönlichen und allgemeinen Warenkorb um EK-/VK*-Nettowerte,
+    19 % MwSt. und Bruttowerte ergänzen; bei Mengenänderung direkt
+    neu berechnen. Fehlende Preise als unvollständig kennzeichnen.
 [x] Favoriten nur durch Verwaltung und Geschäftskonten entfernen;
     Mitarbeiter auch bei eigenen Einträgen serverseitig sperren (v980).
 [x] „Artikel suchen“ in Favoriten führt sofort zur Trefferanzeige;

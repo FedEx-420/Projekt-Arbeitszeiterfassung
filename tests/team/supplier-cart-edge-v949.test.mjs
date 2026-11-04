@@ -7,6 +7,13 @@ for(const response of [{successful:false,authKey:'SYNTHETIC_LOGIN_TOKEN'},{authK
 const owner='10000000-0000-4000-8000-000000000001',company='20000000-0000-4000-8000-000000000001',article='30000000-0000-4000-8000-000000000001',job='40000000-0000-4000-8000-000000000001';
 const md5=x=>createHash('md5').update(x).digest('hex'),env={url:'https://db.invalid',anonKey:'public-fixture',serviceKey:'SYNTHETIC_SERVER_KEY'};
 const json=(x,headers={})=>new Response(JSON.stringify(x),{headers:{'Content-Type':'application/json',...headers}});
+let batchRows=[{kbn:'SKU-B',unit:'ST',priceUnit:100,netPrice:125,grosPrice:250,netPriceCurrency:'EUR',grosPriceCurrency:'EUR'},{kbn:'SKU-A',unit:'M',priceUnit:1,netPrice:3,grosPrice:6,netPriceCurrency:'EUR',grosPriceCurrency:'EUR'}];
+const batchMerchant=createMerchant({md5,fetch:async(url,options)=>{assert.equal(new URL(url).pathname,'/api/products/getnetpricesandstocksbykbnlist');assert.deepEqual(JSON.parse(options.body).kbns,['SKU-A','SKU-B']);return json({successful:true,obj:{priceArray:batchRows}});}});
+const batchSession={shop:'efg',cookies:{},warehouses:[{stockId:'FIXTURE-WAREHOUSE'}]};
+let batchPrices=await batchMerchant.prices(batchSession,['SKU-A','SKU-B']);
+assert.equal(batchPrices.get('SKU-B').purchase_price,1.25);assert.equal(batchPrices.get('SKU-A').recommended_price_1,6);
+batchRows=batchRows.map(({kbn,...row})=>row);assert.equal((await batchMerchant.prices(batchSession,['SKU-A','SKU-B'])).size,0,'never map multiple prices by array position');
+batchRows=[{kbn:'SKU-A',unit:'M',priceUnit:1,netPrice:3,grosPrice:6,netPriceCurrency:'USD',grosPriceCurrency:'EUR'}];assert.equal((await batchMerchant.prices(batchSession,['SKU-A','SKU-B'])).size,0,'reject ambiguous currencies');
 // Cross-layout redirects are intentionally unsuccessful login responses in ONLINE PLUS.
 let redirectResult={successful:false,status:11,layout:'EFG',redirect:'efgonlineplus.de',authenticationToken:'SYNTHETIC_REDIRECT_TOKEN'};
 const redirectMerchant=createMerchant({md5,fetch:async(url,options)=>{
@@ -87,16 +94,18 @@ const list=await (await request({action:'accounts'})).json();
 assert.deepEqual(list,[{id:accountId,label:'Test access',employee_ids:[]}]);
 const loginCheck=await(await request({action:'check-login',account_id:accountId})).json();
 assert.equal(loginCheck.handoff_available,true);assert.equal(loginCheck.handoff.action,'https://efgonlineplus.de/?login=true');assert.equal(adds,2,'login check does not write cart positions');
+assert.equal((await request({action:'material-prices',account_id:accountId,ids:['invalid']})).status,400);
 const cart=await (await request(delegated)).json();
 assert.equal(cart.confirmed,true);assert.equal(adds,3);
 assert.ok(!JSON.stringify(cart).includes('TEST_PASSWORD'));
 onlineFallback=true;
 const search=await(await request({action:'search',account_id:accountId,query:'Hager'})).json();
-assert.equal(search[0].online_sku,'HAGER123');
+assert.equal(search[0].online_sku,'HAGER123');assert.equal(search[0].purchase_price,2);assert.equal(search[0].recommended_price_1,4);
 const imported=await(await request({action:'article-add',account_id:accountId,sku:search[0].online_sku})).json();
 assert.equal(imported.id,article);
 assert.equal(adds,3,'article search and selection never submit cart positions');
 granted=false;
+assert.equal((await request({action:'material-prices',account_id:accountId,ids:[article]})).status,403);
 assert.equal((await request(delegated)).status,403);
 assert.equal((await request({action:'search',account_id:accountId,query:'000123'})).status,403);
 assert.equal(adds,3);

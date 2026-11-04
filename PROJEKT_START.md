@@ -186,3 +186,25 @@ Ein historischer allgemeiner Einkaufstest erwartet noch den früheren XML-Export
 und scheitert dort; die aktuellen Einkaufs-/Warenkorbprüfungen verwenden die
 vereinfachte Übertragung und bestehen. Die alte XML-Erwartung gehört nicht
 zur aktuellen Oberfläche und wurde in diesem Arbeitsblock nicht wieder eingebaut.
+
+## v983 – Bilder ergänzen und Datenbankprüfungen entlasten
+
+Der Herstellerparser erkennt explizit bestätigte Handelsreferenzen auch bei
+internem numerischen Zusatz ohne Bindestrich. Sichtbare Referenz, Product-Name,
+Produktpfad und eine gültige eindeutige EAN müssen zusammenpassen. Keine
+Ableitung einer Herstellerartikelnummer aus einer Großhändlernummer.
+
+160 öffentliche Hager-/Berker-Seiten geprüft, 37 Bildreferenzen bestätigt
+(davon 27 neu), insgesamt 18.513 Einträge im öffentlichen Index. Alle
+27 neuen Hager-Bildadressen antworteten mit HTTP 200 und einem Bildtyp.
+Einträge ohne eindeutige Identität bleiben offen. Bereits ohne Bild
+abgelegte Seiten werden mit dem neuen Parser einmal erneut geprüft.
+
+Zwei RLS-Regeln verwenden jetzt die Identität der Anfrage als InitPlan statt
+sie für jede Zeile erneut auszuwerten. Zeilenabhängige Firmen-/Auftragsrechte
+bleiben bestehen. Die Migration ist live angewendet, die beiden entsprechenden
+Supabase-Performance-Warnungen sind danach verschwunden. Gegenprobe mit sechs
+Akteuren und 24 vorhandenen Teamdatenbankprüfungen in isolierten Datenbanken
+bestanden. Weitere Hinweise zu Indizes und Vollabrufen sind damit nicht erledigt.
+
+[Prüfbericht und Grenzen](docs/Pruefstand_v983.md).

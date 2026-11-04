@@ -44,7 +44,7 @@ def extract(text,url):
    # confirmed by this Product's name, the product URL and the page's unique EAN. Never strip SKU suffixes blindly.
    if len(refs)!=1:continue
    commercial=next(iter(refs))
-   if (d.get('name')!=commercial or not re.fullmatch(re.escape(commercial)+r'-\d{1,6}',internal)
+   if (d.get('name')!=commercial or not re.fullmatch(re.escape(commercial)+r'-?\d{1,6}',internal)
        or not page.path.lower().split('/produkt/')[-1].startswith(commercial.lower()+'-')):continue
    sku=commercial
   if refs and refs!={sku}:continue
@@ -80,7 +80,9 @@ def choose(urls,limit):
 def due(url,state,known,now):
  value=state.get(hashlib.sha256(url.encode()).hexdigest()[:20],0)
  # Revisit old unsuccessful parses once after the commercial-reference parser was added.
- if isinstance(value,dict):stamp=value.get('checked_at',0)
+ if isinstance(value,dict):
+  if url not in known and value.get('extractor',0)<983:return True
+  stamp=value.get('checked_at',0)
  else:stamp=value if url in known else 0
  return now-stamp>30*86400
 
@@ -100,7 +102,7 @@ def main():
   except Exception as e:return url,None,False
  with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
   for url,entry,checked in pool.map(load,chosen):
-   if checked:state[hashlib.sha256(url.encode()).hexdigest()[:20]]={'checked_at':now,'extractor':960}
+   if checked:state[hashlib.sha256(url.encode()).hexdigest()[:20]]={'checked_at':now,'extractor':983}
    if entry:
     entry['checked_at']=datetime.datetime.now(datetime.timezone.utc).isoformat();index['entries'][entry['brand']+':'+entry['sku']]=entry;success+=1
  index['updated_at']=datetime.datetime.now(datetime.timezone.utc).isoformat();index['source']='Public Hager/Berker/Elcom, JUNG, WAGO and GIRA manufacturer catalogs'

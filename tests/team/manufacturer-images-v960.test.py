@@ -54,6 +54,16 @@ class HagerCommercialReference(unittest.TestCase):
         self.assertEqual(row['gtin'],'04011334023388')
         self.assertEqual(hager.extract(self.page(self.item|{'sku':'3036'}),self.url)['sku'],'3036')
 
+    def test_explicit_numeric_internal_suffix(self):
+        url='https://hager.com/de/katalog/produkt/hmw631nr-leistungschalter'
+        item=self.item|{'sku':'HMW631NR20','name':'HMW631NR','brand':{'name':'Hager'}}
+        row=hager.extract(self.page(item,ref='HMW631NR',ean='3250613197544'),url)
+        self.assertEqual(row['sku'],'HMW631NR')
+        self.assertEqual(row['gtin'],'03250613197544')
+        self.assertIsNone(hager.extract(self.page(item|{'name':'HMW630NR'},ref='HMW631NR',ean='3250613197544'),url))
+        self.assertIsNone(hager.extract(self.page(item,ref='HMW631NR',ean='3250613197545'),url))
+        self.assertIsNone(hager.extract(self.page(item,ref='HMW630NR',ean='3250613197544'),url))
+
     def test_no_suffix_guess(self):
         for text in [self.page(ref='3037'),self.page().replace('product-commercial-ref','other'),
                      self.page(self.item|{'name':'Other'}),self.page(ean='4011334023389'),
@@ -71,7 +81,8 @@ class HagerCommercialReference(unittest.TestCase):
         now=4000000
         self.assertTrue(hager.due(self.url,{key:now-10},set(),now))
         self.assertFalse(hager.due(self.url,{key:now-10},{self.url},now))
-        self.assertFalse(hager.due(self.url,{key:{'checked_at':now-10,'extractor':960}},set(),now))
+        self.assertTrue(hager.due(self.url,{key:{'checked_at':now-10,'extractor':960}},set(),now))
+        self.assertFalse(hager.due(self.url,{key:{'checked_at':now-10,'extractor':983}},set(),now))
         self.assertTrue(hager.due(self.url,{key:{'checked_at':1,'extractor':960}},set(),now))
 
     def test_balanced_source_selection(self):

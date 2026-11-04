@@ -11,6 +11,12 @@ ZEICHEN
 Ein erfolgreicher Test mit Beispieldaten ist kein Live-Test jedes Geschäftskontos.
 
 ALS NÄCHSTES
+[x] Zwei wiederholte Anmeldeprüfungen in den Datenbankregeln für Planung
+    und Dokumente optimiert. Sechs Rollen geprüft; Supabase meldet die
+    beiden betroffenen Performance-Warnungen nicht mehr (v983).
+[x] Weitere 160 Hager-/Berker-Herstellerseiten geprüft. 27 neue Hager-
+    Bildzuordnungen ergänzt; alle 27 Bildadressen erreichbar (v983).
+    Sichtbare Herstellerreferenz, Seitenadresse und EAN bleiben zwingend.
 [x] Katalogsuche erst nach Bestätigung über Suchbutton oder Suchtaste
     starten; beim langsamen Tippen keine Händler-/Katalogabfragen (v982).
 [x] Angebotssuche für große Admin-Materialbestände entlasten: versteckte
@@ -76,18 +82,18 @@ ALS NÄCHSTES
 [ ] Gemeldete A.1-/C.1-Bilder anhand exakter Hersteller- und Händlernummern
     prüfen und verwechselte Fotos korrigieren.
 [ ] Supabase-Disk-I/O senken und messen. Vollabrufe der Materialtabelle
-    reduzieren und den redundanten Namensindex separat prüfen.
+    weiter reduzieren; den redundanten Namensindex hat v973 bereits entfernt.
 [x] Neugart-Zugänge mit Supabase Vault speichern, löschen und je Mitarbeiter
     freigeben. Client-Zugriff auf Geheimnisse serverseitig gesperrt (v971).
 [x] Benannter Neugart-Warenkorb mit freigegebenem Zugang im isolierten
     Browser- und Serverlauf geprüft. Widerruf und Fremdfirma abgewiesen.
 [ ] Freigegebenen Neugart-Zugang mit einem echten Mitarbeiterkonto prüfen.
-[ ] Neugart-Zugänge dauerhaft serverseitig speichern und in den Einstellungen
-    verwalten. Je Zugang Mitarbeitende freigeben und Freigaben widerrufen.
+[x] Neugart-Zugänge dauerhaft serverseitig speichern und in den Einstellungen
+    verwalten. Freigaben/Widerruf serverseitig und im Browser geprüft (v971–v980).
 [ ] Mitarbeiter-Warenkorb mit freigegebenem Neugart-Zugang und Bestellung
     im Shop ohne erneute Eingabe von Kundennummer, Benutzer und Kennwort prüfen.
-[ ] Neugart-Warenkorbname veröffentlichen. Feld und Übergabe an den Händler
-    sind vorbereitet und mit einem isolierten Händler-Fixture geprüft.
+[x] Neugart-Warenkorbname veröffentlicht. Feld und Übergabe an den Händler
+    sind im isolierten Händler-/Browserlauf geprüft (v976).
 [x] Startseite nach der Profilprüfung öffnen und die Tagesauswahl bei
     blockiertem Materialabruf im Browser prüfen (v970).
 [ ] Startzeit mit dem produktiven Administratorkonto messen.

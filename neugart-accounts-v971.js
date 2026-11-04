@@ -34,7 +34,7 @@
       if(!scope)return '';
       return `<section class="panel"><h3>Neugart-Zugänge</h3>${feedback()}<button type="button" class="secondary" data-ng-action="load">Zugänge anzeigen</button>
       <form data-ng-form="create" class="entry-form"><label>Name des Zugangs<input name="label" required maxlength="80"></label><label>Kundennummer<input name="customer" required maxlength="40"></label><label>Benutzername<input name="username" required maxlength="50"></label><label>Kennwort<input name="password" type="password" required maxlength="50" autocomplete="new-password"></label><button class="primary" ${pending?'disabled':''}>Neugart-Zugang speichern</button></form>
-      ${(accounts||[]).map(a=>`<form data-ng-form="grant" data-id="${esc(a.id)}"><h4>${esc(a.label)}</h4><fieldset><legend>Einkaufsberechtigte Mitarbeiter</legend>${people.map(p=>`<label><input type="checkbox" name="employee" value="${esc(p.id)}" ${a.employee_ids.includes(p.id)?'checked':''}> ${esc(p.display_name||p.username)}</label>`).join('')||'<p>Keine Mitarbeiter vorhanden.</p>'}</fieldset><button class="primary" ${pending?'disabled':''}>Freigaben speichern</button><button type="button" class="danger" data-ng-action="delete" data-id="${esc(a.id)}" ${pending?'disabled':''}>Zugang löschen</button></form>`).join('')}</section>`;
+      ${(accounts||[]).map(a=>`<form data-ng-form="grant" data-id="${esc(a.id)}"><h4>${esc(a.label)}</h4><fieldset><legend>Einkaufsberechtigte Mitarbeiter</legend>${people.map(p=>`<label><input type="checkbox" name="employee" value="${esc(p.id)}" ${a.employee_ids.includes(p.id)?'checked':''}> ${esc(p.display_name||p.username)}</label>`).join('')||'<p>Keine Mitarbeiter vorhanden.</p>'}</fieldset><button class="primary" ${pending?'disabled':''}>Freigaben speichern</button><button type="button" class="secondary" data-ng-action="check-login" data-id="${esc(a.id)}" ${pending?'disabled':''}>Zugang prüfen</button><button type="button" class="danger" data-ng-action="delete" data-id="${esc(a.id)}" ${pending?'disabled':''}>Zugang löschen</button></form>`).join('')}</section>`;
     }
     function shopping() {
       sync();
@@ -157,6 +157,10 @@
       }
       if(ngAction==='mode'){sync();shared=!shared;render();return;}
       if(ngAction==='load')return run(list);
+      if(ngAction==='check-login')return run(async current=>{
+        const result=await call('check-login',{account_id:id});
+        if(current())status='Händleranmeldung '+(result.login_confirmed?'bestätigt':'nicht bestätigt')+'. Automatische Übergabe '+(result.handoff_available?'verfügbar':'nicht verfügbar')+'. Antwortformat '+JSON.stringify(result.response_shape)+' / '+JSON.stringify(result.nested_shape)+(result.issue?' ('+result.issue+')':'');
+      });
       if(ngAction==='delete'&&confirm('Neugart-Zugang und alle Freigaben löschen?'))return run(async current=>{await call('account-delete',{account_id:id});if(current())await list(current);});
       if(ngAction==='add'){
         const item=results.find(m=>m.id===id);

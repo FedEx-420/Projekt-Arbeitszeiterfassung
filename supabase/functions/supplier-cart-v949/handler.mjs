@@ -61,6 +61,14 @@ export function createHandler({fetch=globalThis.fetch,env,md5,crypto=globalThis.
     try{return await merchant.connect({shop:'efg',...credentials});}
     finally{credentials.password='';saved.credentials.password='';}
    };
+   if(body.action==='check-login'){
+    if(!uuid.test(body.account_id||''))throw fail('ACCOUNT','Bitte einen Zugang auswählen.');
+    const session=await onlineSession();
+    let response, issue='';
+    try{response=await merchant.call(session,'/api/user/getauthkeylocalapp');}catch(error){issue=error.code||'UNAVAILABLE';}
+    const shape=value=>typeof value==='string'?'string':value&&typeof value==='object'?Object.fromEntries(Object.entries(value).slice(0,16).map(([key,child])=>[key,child&&typeof child==='object'?'object':typeof child])):typeof value;
+    return json({login_confirmed:true,handoff_available:!!(loginToken(response)||session.loginTransfer),response_shape:shape(response),nested_shape:shape(response?.obj),issue});
+   }
    if(body.action==='article-add'){
     if(!uuid.test(body.account_id||'')||!uuid.test(scopedCompany||'')||typeof body.sku!=='string'||!body.sku.trim()||body.sku.length>120||/[\u0000-\u001f]/.test(body.sku))throw fail('ARTICLE','Bitte einen gültigen Artikel auswählen.');
     const session=await onlineSession(),warehouse=session.warehouses[0]?.id;

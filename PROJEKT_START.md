@@ -110,3 +110,23 @@ v975 trennt die Favoriten von den Katalogtreffern und startet die Neugart-Suche 
 v976 trennt die Neugart-Suche vom persönlichen Warenkorb-Menü. Der Warenkorb wird je Mitarbeiter, Betrieb und Händlerzugang in sessionStorage gesichert. Bestätigte Übertragungen behalten ihre Anforderungs-ID zum erneuten Öffnen. Das Handoff-Formular bleibt nach submit bestehen und verwendet das aktuelle Händlertoken. Der isolierte Browserlauf prüft zwei Mitarbeiter, erhaltene Mengen, getrennte Suche und POST-Navigation. Die produktive Händler-/iPhone-Gegenprobe bleibt offen.
 
 v977 wertet den Anmeldeschlüssel aus direkten und umschlossenen Händlerantworten aus. Das Fehlen eines Schlüssels blockiert nicht mehr die Navigation zum bestätigten Warenkorb. Der klassische Einkauf erhält sein POST-Formular bis zur Navigation. Isolierte Server- und Browserprüfungen sind bestanden. Der Zugriff auf den tatsächlichen Firefox wurde vom Computer-Use-Werkzeug wegen fehlender URL-Policy-Unterstützung gestoppt, die produktive Händleranmeldung bleibt ungeprüft.
+
+## Fortsetzung v979 – automatische Neugart-Anmeldung
+
+Die offizielle GC-Anmeldung antwortet beim Wechsel zu EFG mit Status 11,
+`successful: false` und einem `authenticationToken`. Die allgemeine
+Ablehnungsprüfung darf diesen ausdrücklich bestätigten Weiterleitungsfall
+nicht als fehlgeschlagene Anmeldung behandeln. `merchant.browserLogin`
+prüft Status, EFG-Layout, Zielhost und Token getrennt. Der Schlüssel wird
+erst nach dem Warenkorb-Rücklesen angefordert und ausschließlich für den
+Browser-POST verwendet; Belege und Übertragungsprotokolle speichern ihn nicht.
+
+Live geprüft: gespeicherter Zugang -> „Zugang prüfen“ -> angemeldeter EFG-Shop;
+Kontomenü zeigt Benutzer und Logout. Vorhandener Warenkorb anschließend ohne
+Anmeldeformular geöffnet. Kein Warenkorb angelegt, keine Position hinzugefügt
+und keine Bestellung gesendet. Direkter Warenkorb-POST und Wiederholungen
+sind mit isolierten Browser-/Serverfixtures geprüft. Ein echter iPhone-Test
+über den vollständigen Bestellbutton steht weiterhin aus.
+
+Temporäre IDS-Versuche und öffentliche Shop-Code-Diagnosen sind entfernt.
+Weitere Angaben: [Prüfbericht v979](docs/Pruefstand_v979.md).

@@ -1,5 +1,5 @@
 ARBEITSZEITERFASSUNG – GEMEINSAME CHECKLISTE
-Stand: 03.11.2026
+Stand: 04.11.2026
 
 Diese Datei ist die zentrale Aufgabenliste des Projekts. Die Desktop-Verknüpfung
 „Arbeitszeiterfassung - Checkliste“ öffnet genau diese Datei, keine zweite Kopie.
@@ -15,8 +15,14 @@ ALS NÄCHSTES
     auswerten. Ablehnungen und ungültige Schlüssel abweisen (v977).
 [x] Bestätigten Händlerwarenkorb auch bei fehlendem Anmeldeschlüssel
     öffnen; vorhandene Shop-Anmeldung im Browser nutzen (v977).
-[ ] Automatische Händleranmeldung im produktiven Warenkorb prüfen.
-    Der direkte Windows-Browserzugriff wurde vom UI-Werkzeug gesperrt.
+[x] Automatische Händleranmeldung mit gespeichertem Neugart-Zugang
+    im integrierten Browser bestätigt (v979): angemeldetes Kontomenü
+    und bestehender Händlerwarenkorb ohne erneute Kennworteingabe.
+[x] Offizielle GC-Weiterleitung zu EFG mit Status 11 trotz
+    successful=false erkennen; Zielhost und Token streng prüfen.
+[ ] Vollständigen Bestellbutton-Ablauf auf dem echten iPhone prüfen.
+    Die automatische Anmeldung und der Warenkorbzugriff sind im
+    integrierten Browser geprüft; es wurde keine Bestellung ausgelöst.
 [x] Eigenes Warenkorb-Menü für den persönlichen Neugart-Einkauf.
     Artikelzugabe mit Bestätigung und Positionszähler versehen (v976).
 [x] Warenkorb nach Mitarbeiter, Betrieb und Händlerzugang trennen.

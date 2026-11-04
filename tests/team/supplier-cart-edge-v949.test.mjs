@@ -47,6 +47,11 @@ const fetch=async(url,options={})=>{const u=new URL(url),body=options.body?JSON.
   assert.equal(options.headers.Authorization,'Bearer synthetic.token.fixture');
   return json({products:[{productNumber:'HAGER123',description:'Hager fixture',gtiNs:[],supplierProductNumber:[]}],hits:1});
  }
+ if(u.origin==='https://www.gconlineplus.de'){
+  if(u.pathname==='/api/account/getsettingsremaining')return json({crsfKey:null});
+  assert.equal(u.pathname,'/api/account/login');assert.equal(body.password,'TEST_PASSWORD');
+  return json({successful:false,status:11,layout:'EFG',redirect:'efgonlineplus.de',authenticationToken:'SYNTHETIC_REDIRECT_TOKEN'});
+ }
  assert.equal(u.origin,'https://efgonlineplus.de');assert.equal(options.redirect,'error');assert.ok(!/checkout|delete|sendOffer/.test(u.pathname),'never order or delete');
  const logged=options.headers.Cookie?.includes('sid=PRIVATE_COOKIE');
  assert.equal(u.searchParams.get('crsfKey'),md5((logged?'CSRF':'null')+u.searchParams.get('rand')));
@@ -67,8 +72,8 @@ const fetch=async(url,options={})=>{const u=new URL(url),body=options.body?JSON.
 const handler=createHandler({fetch,env,md5,crypto:webcrypto}),body={company,supplier:'Neugart',request_id:job,cart_name:'  Baustelle Nord & West  ',customer:'000011',username:'TEST_USER',password:'TEST_PASSWORD',lines:[{material_id:article,quantity:'2.50'}]};
 const request=(b=body,auth=true)=>handler(new Request('https://edge.invalid',{method:'POST',headers:{'Content-Type':'application/json',...(auth?{Authorization:'Bearer synthetic'}:{})},body:JSON.stringify(b)}));
 assert.equal((await request({},false)).status,401);role='employee';assert.equal((await request()).status,403);role='administrator';assert.equal((await request({...body,company:'20000000-0000-4000-8000-000000000099'})).status,403);assert.equal(adds,0);
-let r=await request(),data=await r.json();assert.equal(r.status,200);assert.equal(data.confirmed,true);assert.equal(data.items[0].actual_quantity,2.5);assert.match(data.cart_url,/SYNTHETIC_CART_REFERENCE\/positions$/);assert.equal(data.handoff.action,data.cart_url+'?login=true');assert.equal(adds,1);assert.equal(creates,1);
-for(const secret of ['TEST_PASSWORD','PRIVATE_COOKIE','CSRF','SYNTHETIC_TRANSIENT_HANDOFF'])assert.ok(!JSON.stringify([...jobs]).includes(secret),'receipt cannot persist '+secret);
+let r=await request(),data=await r.json();assert.equal(r.status,200);assert.equal(data.confirmed,true);assert.equal(data.items[0].actual_quantity,2.5);assert.match(data.cart_url,/SYNTHETIC_CART_REFERENCE\/positions$/);assert.equal(data.handoff.action,data.cart_url+'?login=true');assert.equal(data.handoff.token,'SYNTHETIC_REDIRECT_TOKEN');assert.equal(adds,1);assert.equal(creates,1);
+for(const secret of ['TEST_PASSWORD','PRIVATE_COOKIE','CSRF','SYNTHETIC_TRANSIENT_HANDOFF','SYNTHETIC_REDIRECT_TOKEN'])assert.ok(!JSON.stringify([...jobs]).includes(secret),'receipt cannot persist '+secret);
 data=await(await request()).json();assert.equal(data.confirmed,true);assert.equal(adds,1,'repeated request reads existing cart and never adds again');assert.equal(creates,1);
 actual=1;data=await(await request()).json();assert.equal(data.confirmed,false);assert.equal(adds,1,'partial cart must not trigger automatic resend');
 actual=2.5;throwAfterAdd=true;data=await(await request({...body,request_id:'40000000-0000-4000-8000-000000000002'})).json();assert.equal(data.confirmed,true,'lost add reply is recovered by exact cart readback');assert.equal(adds,2);
@@ -80,6 +85,8 @@ assert.equal((await request({...delegated,company:'20000000-0000-4000-8000-00000
 assert.equal((await request({...delegated,action:'account-grant',employee_ids:[owner]})).status,403);
 const list=await (await request({action:'accounts'})).json();
 assert.deepEqual(list,[{id:accountId,label:'Test access',employee_ids:[]}]);
+const loginCheck=await(await request({action:'check-login',account_id:accountId})).json();
+assert.equal(loginCheck.handoff_available,true);assert.equal(loginCheck.handoff.action,'https://efgonlineplus.de/?login=true');assert.equal(adds,2,'login check does not write cart positions');
 const cart=await (await request(delegated)).json();
 assert.equal(cart.confirmed,true);assert.equal(adds,3);
 assert.ok(!JSON.stringify(cart).includes('TEST_PASSWORD'));

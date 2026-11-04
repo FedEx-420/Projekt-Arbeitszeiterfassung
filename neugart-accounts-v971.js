@@ -3,12 +3,12 @@
   'use strict';
   window.WorktimeNeugartAccounts = { create({root,state,api,businessId,render,escape:esc}) {
     let scope='', accounts=null, accountId='', results=[], basket=[], status='', pending=false, query='', manufacturer='', category='', cartName='', attempt=null, shared=false;
-    let searchTimer=null, searchSerial=0, searching=false, searched=false;
+    let searchSerial=0, searching=false, searched=false;
     const identity=()=>state.profile?.id&&businessId()?state.profile.id+':'+businessId():'';
     const call=(action,body={})=>api('/functions/v1/supplier-cart-v949',{method:'POST',body:{action,company:businessId(),...body}});
     function sync() {
       if(scope===identity())return;
-      clearTimeout(searchTimer);searchSerial++;searching=false;searched=false;
+      searchSerial++;searching=false;searched=false;
       scope=identity();accounts=null;accountId='';results=[];basket=[];status='';pending=false;query='';manufacturer='';category='';cartName='';attempt=null;shared=false;
     }
     const feedback=()=>status?`<p role="status">${esc(status)}</p>`:'';
@@ -44,7 +44,7 @@
       return `<section class="panel"><h2>Neugart-Einkauf</h2><button type="button" class="primary" data-ng-action="cart">Warenkorb öffnen (${basket.length})</button>${state.profile.role==='employee'?'':'<button type="button" class="secondary" data-ng-action="mode">Zur allgemeinen Einkaufssuche</button>'}${feedback()}
       ${accounts===null?'<p>Freigaben werden geladen …</p>':!accounts.length?'<button type="button" class="secondary" data-ng-action="load">Freigaben erneut prüfen</button>':`
       <label>Neugart-Zugang<select data-ng-account>${accounts.map(a=>`<option value="${esc(a.id)}" ${a.id===accountId?'selected':''}>${esc(a.label)}</option>`).join('')}</select></label>
-      <form data-ng-form="search" data-neugart-search><h3>Katalog durchsuchen</h3><label>Artikelname oder Artikelnummer<input name="query" maxlength="80" value="${esc(query)}"></label><label>Hersteller<input name="manufacturer" maxlength="80" value="${esc(manufacturer)}"></label><label>Kategorie<input name="category" maxlength="80" value="${esc(category)}"></label><button class="primary" ${pending?'disabled':''}>Katalog durchsuchen</button></form>
+      <form data-ng-form="search" data-neugart-search><h3>Katalog durchsuchen</h3><label>Artikelname oder Artikelnummer<input name="query" enterkeyhint="search" maxlength="80" value="${esc(query)}"></label><label>Hersteller<input name="manufacturer" maxlength="80" value="${esc(manufacturer)}"></label><label>Kategorie<input name="category" maxlength="80" value="${esc(category)}"></label><button class="primary" ${pending?'disabled':''}>Katalog durchsuchen</button></form>
       <section data-neugart-results aria-label="Katalogtreffer"><p role="status">${searching?'Katalog wird durchsucht …':searched?results.length+' Katalogtreffer':'Gib einen Artikelnamen, Hersteller oder eine Artikelnummer ein.'}</p>
       ${results.map(m=>`<article class="row-card">${window.WorktimeArticleTools?.html(m)||''}<span>${esc(window.WorktimeProductDisplay?.displayName(m)||m.catalog_product_name||m.name)} · ${esc(m.catalog_article_number)} ${m.catalog_manufacturer?' · '+esc(m.catalog_manufacturer):''}</span><button type="button" class="secondary" data-ng-action="add" data-id="${esc(m.id)}">Hinzufügen</button></article>`).join('')}
       </section>
@@ -93,7 +93,7 @@
     }
     async function searchCatalog() {
       sync();
-      clearTimeout(searchTimer);
+      
       if(pending||!scope||!accountId)return;
       capture();
       const actor=scope, selected=accountId, serial=++searchSerial;
@@ -133,8 +133,11 @@
       if(!form)return;
       readSearch(form);
       searchSerial++;
-      clearTimeout(searchTimer);
-      searchTimer=setTimeout(()=>{if(state.view==='shopping')searchCatalog();},300);
+      
+      searching=false;searched=false;results=[];
+      root.querySelectorAll('[data-neugart-results] .row-card').forEach(el=>el.remove());
+      const progress=root.querySelector('[data-neugart-results] [role="status"]');
+      if(progress)progress.textContent='Eingabe fertig? Tippe auf „Katalog durchsuchen“ oder auf die Suchtaste.';
     });
     function capture() {
       const form=root.querySelector('[data-ng-form="cart"]');
@@ -157,7 +160,7 @@
     }
     root.addEventListener('change',event=>{
       if(!event.target.matches('[data-ng-account]')||pending)return;
-      capture();clearTimeout(searchTimer);searchSerial++;searching=false;searched=false;accountId=event.target.value;restoreBasket();results=[];render();if(basket.length)run(refreshBasketPrices);
+      capture();searchSerial++;searching=false;searched=false;accountId=event.target.value;restoreBasket();results=[];render();if(basket.length)run(refreshBasketPrices);
     });
     root.addEventListener('click',event=>{
       const button=event.target.closest('[data-ng-action]');
@@ -165,7 +168,7 @@
       capture();
       const {ngAction,id}=button.dataset;
       if(ngAction==='cart'||ngAction==='search'){
-        clearTimeout(searchTimer);searchSerial++;searching=false;
+        searchSerial++;searching=false;
         state.view=ngAction==='cart'?'shopping-cart':'shopping';render();return;
       }
       if(ngAction==='mode'){sync();shared=!shared;render();return;}

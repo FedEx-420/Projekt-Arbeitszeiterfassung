@@ -11,6 +11,11 @@ ZEICHEN
 Ein erfolgreicher Test mit Beispieldaten ist kein Live-Test jedes Geschäftskontos.
 
 ALS NÄCHSTES
+[x] Katalogsuche erst nach Bestätigung über Suchbutton oder Suchtaste
+    starten; beim langsamen Tippen keine Händler-/Katalogabfragen (v982).
+[x] Angebotssuche für große Admin-Materialbestände entlasten: versteckte
+    Komplett-Auswahlliste entfernen, exakte Zuordnungen zwischenspeichern
+    und Suchvorschläge in abbrechbaren Arbeitspaketen berechnen (v982).
 [x] EK und VK* netto je Artikel anzeigen, vorhandene Preise der
     Favoriten nachladen und Neugart-Suche mit Preisen ergänzen (v981).
 [x] Persönlichen und allgemeinen Warenkorb um EK-/VK*-Nettowerte,

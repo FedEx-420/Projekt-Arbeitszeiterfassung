@@ -163,3 +163,26 @@ Dies ist eine Übersicht mit hinterlegten Preisen, kein festgeschriebener
 Händlerpreis. Angebote, Rechnungen und die übertragenen Bestellmengen
 werden dadurch nicht geändert. Warenkorbtrennung und Anmelde-POST
 sind weiterhin durch die Einkaufs-Browserprüfungen abgedeckt.
+
+## v982 – bestätigte Katalogsuche und schnelle Angebotseingabe
+
+Neugart- und allgemeine Einkaufskatalogsuche starten nach „Katalog durchsuchen“
+oder Enter/Suchtaste. Tippen allein sendet keine Suche; alte Antworten werden
+bei geänderter Eingabe verworfen. Favoriten und Suchvorschläge bleiben
+explizite Suchaktionen. Die Materialliste behält ihre lokale Texteingrenzung.
+
+Angebote erzeugen mit aktivierter bebilderter Artikelauswahl keine versteckte
+vollständige Material-datalist mehr. Exakte Namens-/ID-Zuordnungen und die
+Fotozuordnung verwenden Firmenindizes. Suchvorschläge werden erst nach
+kurzer Tipp-Pause und in kooperativen, abbrechbaren Paketen verarbeitet.
+Konto-/Firmenwechsel und geänderte Materialbestände verwerfen alte Ergebnisse.
+
+Lokaler Edge-Test mit 30.000 Firmenartikeln: längster synchroner
+Tastendruck 424 ms -> 3 ms; vollständige Trefferanzeige 1551 ms -> 846 ms
+einschließlich kurzer Tipp-Pause. Vergleich mit 00a9471, synthetische Daten,
+keine Aussage über jeden Livezugang oder jedes Endgerät. Lieferanten-/Preiswahl,
+Angebotsentwurf-Wiederherstellung und mobile Angebotsansicht separat geprüft.
+Ein historischer allgemeiner Einkaufstest erwartet noch den früheren XML-Export
+und scheitert dort; die aktuellen Einkaufs-/Warenkorbprüfungen verwenden die
+vereinfachte Übertragung und bestehen. Die alte XML-Erwartung gehört nicht
+zur aktuellen Oberfläche und wurde in diesem Arbeitsblock nicht wieder eingebaut.

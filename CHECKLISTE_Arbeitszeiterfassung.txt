@@ -11,6 +11,14 @@ ZEICHEN
 Ein erfolgreicher Test mit Beispieldaten ist kein Live-Test jedes Geschäftskontos.
 
 ALS NÄCHSTES
+[x] Gemeinsamen Neugart-Suchweg für freigegebene Mitarbeitende,
+    Geschäftskonten und Verwaltung bereitgestellt (v974).
+[x] Neugart-Zugänge in der Verwaltung für den ausgewählten Betrieb
+    verwalten und nutzen. Serverzugriff auf Zugangsdaten bleibt gekapselt.
+[x] A.1 und C.1 getrennt erkennen. 48 offizielle Rahmenreferenzen
+    abgeglichen und Fotoauswahl bei eindeutiger Serienzuordnung geprüft.
+[ ] Neugart-Bilder für gemeldete Varianten mit deren konkreten
+    Artikelnummern im echten Händlerkonto gegenprüfen.
 [x] Doppelten Material-Namensindex in Supabase entfernt. Der eindeutige
     Index ist weiterhin gültig. Rund 17 MiB weniger Indexspeicher.
 [x] Materialabruf aus der Anmeldung herausgenommen und auf Abruf mit

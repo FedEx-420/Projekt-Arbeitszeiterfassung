@@ -1,13 +1,13 @@
 /* Saved Neugart credentials are used only by the server. */
 (function () {
   'use strict';
-  window.WorktimeNeugartAccounts = { create({root,state,api,render,escape:esc}) {
-    let scope='', accounts=null, accountId='', results=[], basket=[], status='', pending=false, query='', cartName='', attempt=null;
-    const identity=()=>state.profile?.id||'';
-    const call=(action,body={})=>api('/functions/v1/supplier-cart-v949',{method:'POST',body:{action,...body}});
+  window.WorktimeNeugartAccounts = { create({root,state,api,businessId,render,escape:esc}) {
+    let scope='', accounts=null, accountId='', results=[], basket=[], status='', pending=false, query='', manufacturer='', category='', cartName='', attempt=null, shared=false;
+    const identity=()=>state.profile?.id&&businessId()?state.profile.id+':'+businessId():'';
+    const call=(action,body={})=>api('/functions/v1/supplier-cart-v949',{method:'POST',body:{action,company:businessId(),...body}});
     function sync() {
       if(scope===identity())return;
-      scope=identity();accounts=null;accountId='';results=[];basket=[];status='';pending=false;query='';cartName='';attempt=null;
+      scope=identity();accounts=null;accountId='';results=[];basket=[];status='';pending=false;query='';manufacturer='';category='';cartName='';attempt=null;shared=false;
     }
     const feedback=()=>status?`<p role="status">${esc(status)}</p>`:'';
     async function run(task) {
@@ -28,19 +28,21 @@
     }
     function settings() {
       sync();
-      const people=state.people.filter(p=>p.role==='employee'&&p.business_id===scope);
+      const people=state.people.filter(p=>p.role==='employee'&&p.business_id===businessId());
+      if(!scope)return '';
       return `<section class="panel"><h3>Neugart-Zugänge</h3>${feedback()}<button type="button" class="secondary" data-ng-action="load">Zugänge anzeigen</button>
       <form data-ng-form="create" class="entry-form"><label>Name des Zugangs<input name="label" required maxlength="80"></label><label>Kundennummer<input name="customer" required maxlength="40"></label><label>Benutzername<input name="username" required maxlength="50"></label><label>Kennwort<input name="password" type="password" required maxlength="50" autocomplete="new-password"></label><button class="primary" ${pending?'disabled':''}>Neugart-Zugang speichern</button></form>
       ${(accounts||[]).map(a=>`<form data-ng-form="grant" data-id="${esc(a.id)}"><h4>${esc(a.label)}</h4><fieldset><legend>Einkaufsberechtigte Mitarbeiter</legend>${people.map(p=>`<label><input type="checkbox" name="employee" value="${esc(p.id)}" ${a.employee_ids.includes(p.id)?'checked':''}> ${esc(p.display_name||p.username)}</label>`).join('')||'<p>Keine Mitarbeiter vorhanden.</p>'}</fieldset><button class="primary" ${pending?'disabled':''}>Freigaben speichern</button><button type="button" class="danger" data-ng-action="delete" data-id="${esc(a.id)}" ${pending?'disabled':''}>Zugang löschen</button></form>`).join('')}</section>`;
     }
     function shopping() {
       sync();
+      if(!scope)return '<p>Bitte zuerst einen Betrieb auswählen.</p>';
       if(accounts===null){queueMicrotask(()=>{if(accounts===null&&state.view==='shopping')run(async current=>{await list(current);if(current()&&!accounts.length)status='Dein Geschäftskonto hat noch keinen Neugart-Zugang für dich freigegeben.';});});}
-      return `<section class="panel"><h2>Neugart-Einkauf</h2>${feedback()}
+      return `<section class="panel"><h2>Neugart-Einkauf</h2>${state.profile.role==='employee'?'':'<button type="button" class="secondary" data-ng-action="mode">Zur allgemeinen Einkaufssuche</button>'}${feedback()}
       ${accounts===null?'<p>Freigaben werden geladen …</p>':!accounts.length?'<button type="button" class="secondary" data-ng-action="load">Freigaben erneut prüfen</button>':`
       <label>Neugart-Zugang<select data-ng-account>${accounts.map(a=>`<option value="${esc(a.id)}" ${a.id===accountId?'selected':''}>${esc(a.label)}</option>`).join('')}</select></label>
-      <form data-ng-form="search" data-neugart-search><label>Artikelname oder Artikelnummer<input name="query" minlength="2" maxlength="80" required value="${esc(query)}"></label><button class="primary" ${pending?'disabled':''}>Artikel suchen</button></form>
-      ${results.map(m=>`<article class="row-card">${window.WorktimeArticleTools?.html(m)||''}<span>${esc(m.name)} · ${esc(m.catalog_article_number)}</span><button type="button" class="secondary" data-ng-action="add" data-id="${esc(m.id)}">Hinzufügen</button></article>`).join('')}
+      <form data-ng-form="search" data-neugart-search><label>Artikelname oder Artikelnummer<input name="query" maxlength="80" value="${esc(query)}"></label><label>Hersteller<input name="manufacturer" maxlength="80" value="${esc(manufacturer)}"></label><label>Kategorie<input name="category" maxlength="80" value="${esc(category)}"></label><button class="primary" ${pending?'disabled':''}>Artikel suchen</button></form>
+      ${results.map(m=>`<article class="row-card">${window.WorktimeArticleTools?.html(m)||''}<span>${esc(window.WorktimeProductDisplay?.displayName(m)||m.catalog_product_name||m.name)} · ${esc(m.catalog_article_number)} ${m.catalog_manufacturer?' · '+esc(m.catalog_manufacturer):''}</span><button type="button" class="secondary" data-ng-action="add" data-id="${esc(m.id)}">Hinzufügen</button></article>`).join('')}
       ${basket.length?`<form data-ng-form="cart"><h3>Warenkorb</h3><label>Warenkorbname<input name="cart_name" maxlength="60" value="${esc(cartName)}"></label>${basket.map(m=>`<label>${esc(m.name)} · ${esc(m.unit)}<input type="number" min="0.01" max="999999.99" step="0.01" required name="qty:${esc(m.id)}" value="${esc(m.quantity)}"></label><button type="button" class="secondary" data-ng-action="remove" data-id="${esc(m.id)}">Entfernen</button>`).join('')}<button class="primary" ${pending?'disabled':''}>Artikel übertragen und Warenkorb öffnen</button></form>`:''}`}</section>`;
     }
     function capture() {
@@ -66,6 +68,7 @@
       if(!button||pending)return;
       capture();
       const {ngAction,id}=button.dataset;
+      if(ngAction==='mode'){sync();shared=!shared;render();return;}
       if(ngAction==='load')return run(list);
       if(ngAction==='delete'&&confirm('Neugart-Zugang und alle Freigaben löschen?'))return run(async current=>{await call('account-delete',{account_id:id});if(current())await list(current);});
       if(ngAction==='add'){
@@ -91,10 +94,12 @@
           if(current()){await list(current);status='Freigaben gespeichert.';}
         } else if(kind==='search'){
           query=String(fields.get('query')||'');
-          const rows=await call('search',{account_id:accountId,query});
+          manufacturer=String(fields.get('manufacturer')||'');category=String(fields.get('category')||'');
+          if([query,manufacturer,category].every(value=>value.trim().length<2))throw Error('Bitte mindestens zwei Zeichen für Artikel, Hersteller oder Kategorie eingeben.');
+          const rows=await call('search',{account_id:accountId,query,manufacturer,category});
           if(current()){results=rows;if(!rows.length)status='Keine passenden Neugart-Artikel gefunden.';}
         } else if(kind==='cart'&&basket.length){
-          const body={account_id:accountId,company:state.profile.business_id,supplier:basket[0].catalog_supplier,cart_name:cartName.trim(),lines:basket.map(m=>({material_id:m.id,quantity:m.quantity})).sort((a,b)=>a.material_id.localeCompare(b.material_id))};
+          const body={account_id:accountId,company:businessId(),supplier:basket[0].catalog_supplier,cart_name:cartName.trim(),lines:basket.map(m=>({material_id:m.id,quantity:m.quantity})).sort((a,b)=>a.material_id.localeCompare(b.material_id))};
           const fingerprint=JSON.stringify(body),key='worktime-neugart-attempt:'+scope;
           attempt=attempt||JSON.parse(sessionStorage.getItem(key)||'null');
           if(attempt&&attempt.fingerprint!==fingerprint)throw Error('Bitte zuerst die vorherige Übertragung mit derselben Auswahl prüfen.');
@@ -108,6 +113,6 @@
         }
       });
     });
-    return {shopping,settings};
+    return {shopping,settings,isShared:()=>{sync();return shared;}};
   }};
 })();

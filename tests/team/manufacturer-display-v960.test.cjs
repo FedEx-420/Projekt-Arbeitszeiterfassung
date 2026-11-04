@@ -17,3 +17,12 @@ for(const patch of [
  D.setIndex({entries:{fixture:{...dehn,...patch}}});
  assert.equal(D.image({catalog_gtin:'4013364108455'}),'');
 }
+
+const index=JSON.parse(fs.readFileSync(require.resolve('../../catalog-image-index.json'),'utf8'));
+D.setIndex(index);
+const hager=Object.values(index.entries).find(e=>e.brand==='Hager'&&/Rahmen/.test(e.full_name)&&/\bA\.1\b/.test(e.full_name));
+assert.ok(hager,'exact Hager A.1 frame from manufacturer catalog');
+const article={name:hager.full_name,catalog_manufacturer:'Hager',catalog_manufacturer_number:hager.sku,catalog_image_url:'https://fixture.invalid/incorrect-series.jpg'};
+assert.equal(D.image(article),hager.image_url);
+assert.equal(D.image({...article,name:article.name.replace(/\bA\.1\b/g,'C.1')}),'');
+assert.equal(WorktimeProductFeatures.describe(article).series.value,'A.1');

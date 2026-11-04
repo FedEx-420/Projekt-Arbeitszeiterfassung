@@ -23,8 +23,9 @@ export function createHandler({fetch=globalThis.fetch,env,md5,crypto=globalThis.
    const profiles=await read('/rest/v1/profiles?select=id,role,business_id&id=eq.'+user.id),profile=profiles.find(p=>p.id===user.id);if(!profile||!['administrator','business','employee'].includes(profile.role))throw fail('FORBIDDEN','Nur Geschäftsleitung und Verwaltung können Einkaufswarenkörbe übertragen.',403);
    const raw=await req.text();if(raw.length>180000)throw fail('SIZE','Der Einkaufswarenkorb ist zu groß.');let body;try{body=JSON.parse(raw);}catch{throw fail('JSON','Ungültige Anfrage.');}
    const serviceHeaders={apikey:env.serviceKey,Authorization:'Bearer '+env.serviceKey,'Content-Type':'application/json'};
+   const scopedCompany=profile.role==='administrator'?body.company:profile.role==='business'?user.id:profile.business_id;
    const account=async(operation,payload={})=>{
-    const response=await fetch(env.url+'/rest/v1/rpc/neugart_account_v971',{method:'POST',headers:serviceHeaders,body:JSON.stringify({actor:user.id,operation,payload}),signal:AbortSignal.timeout(10000)});
+    const response=await fetch(env.url+'/rest/v1/rpc/neugart_account_v971',{method:'POST',headers:serviceHeaders,body:JSON.stringify({actor:user.id,operation,payload:{...payload,company:scopedCompany}}),signal:AbortSignal.timeout(10000)});
     if(!response.ok)throw fail('ACCOUNT','Der Neugart-Zugang ist nicht verfügbar oder nicht freigegeben.',response.status>=500?502:403);
     return response.json();
    };
@@ -34,7 +35,8 @@ export function createHandler({fetch=globalThis.fetch,env,md5,crypto=globalThis.
    };
    if(body.action==='accounts')return json(await account('list'));
    if(['account-create','account-grant','account-delete'].includes(body.action)){
-    if(profile.role!=='business')throw fail('FORBIDDEN','Nur das Geschäftskonto kann Neugart-Zugänge verwalten.',403);
+    if(!['business','administrator'].includes(profile.role))throw fail('FORBIDDEN','Nur die Geschäftsleitung und Verwaltung können Neugart-Zugänge verwalten.',403);
+    if(!uuid.test(scopedCompany||''))throw fail('ACCOUNT','Bitte einen Betrieb auswählen.');
     if(body.action==='account-create'){
      const label=typeof body.label==='string'?body.label.trim():'';
      if(!label||label.length>80)throw fail('LABEL','Bitte einen Namen für den Zugang eingeben.');
@@ -53,16 +55,32 @@ export function createHandler({fetch=globalThis.fetch,env,md5,crypto=globalThis.
     return response.json();
    };
    if(body.action==='search'){
-    if(profile.role!=='employee'||!uuid.test(profile.business_id||'')||!(await account('list')).some(a=>a.id===body.account_id))throw fail('ACCOUNT','Dieser Neugart-Zugang ist nicht freigegeben.',403);
-    const term=String(body.query||'').trim().replace(/[^\p{L}\p{N} .-]/gu,'').slice(0,80);
-    if(term.length<2)return json([]);
-    const params=new URLSearchParams({select:'id,name,unit,catalog_article_number,catalog_supplier',business_id:'eq.'+profile.business_id,active:'eq.true',catalog_supplier:'ilike.*neugart*',or:'(name.ilike.*'+term+'*,catalog_article_number.ilike.*'+term+'*)',order:'name.asc,id.asc',limit:'40'});
+    if(!uuid.test(scopedCompany||'')||!(await account('list')).some(a=>a.id===body.account_id))throw fail('ACCOUNT','Dieser Neugart-Zugang ist nicht freigegeben.',403);
+    const clean=value=>String(value||'').normalize('NFKC').trim().replace(/[^\p{L}\p{N} .-]/gu,' ').trim().slice(0,80);
+    const term=clean(body.query),brand=clean(body.manufacturer),category=clean(body.category);
+    if(term.length<2&&brand.length<2&&category.length<2)return json([]);
+    const params=new URLSearchParams({
+     select:'id,name,unit,catalog_article_number,catalog_supplier,catalog_product_name,catalog_manufacturer,catalog_manufacturer_number,catalog_gtin,catalog_category,catalog_image_url',
+     business_id:'eq.'+scopedCompany,active:'eq.true',catalog_supplier:'ilike.*neugart*',order:'name.asc,id.asc',limit:'40'
+    });
+    if(brand)params.set('catalog_manufacturer','ilike.*'+brand+'*');
+    if(category)params.set('catalog_category','ilike.*'+category+'*');
+    const tokens=term.split(/\s+/).filter(Boolean).slice(0,6);
+    const exact=[];
+    if(tokens.length===1&&/\d/.test(term)){
+     const byNumber=new URLSearchParams(params);
+     byNumber.set('or','(catalog_article_number.ilike.'+term+',catalog_manufacturer_number.ilike.'+term+',catalog_gtin.eq.'+term+')');
+     byNumber.set('limit','10');
+     exact.push(...await readMaterials(byNumber));
+     if(exact.length)return json(exact);
+    }
+    if(tokens.length)params.set('and','('+tokens.map(token=>'or(name.ilike.*'+token+'*,catalog_product_name.ilike.*'+token+'*,catalog_manufacturer.ilike.*'+token+'*,catalog_article_number.ilike.*'+token+'*,catalog_manufacturer_number.ilike.*'+token+'*)').join(',')+')');
     return json(await readMaterials(params));
    }
    const delegated=uuid.test(body.account_id||'');
    if(profile.role==='employee'&&!delegated)throw fail('FORBIDDEN','Bitte einen freigegebenen Neugart-Zugang wählen.',403);
    const {company,request_id:id}=body,supplier=String(body.supplier||'').trim();if(!uuid.test(company||'')||!uuid.test(id||'')||supplier.length>120||!/neugart|\bgc\b|efg/i.test(supplier))throw fail('SUPPLIER','Für diesen Fachhändler ist noch keine automatische Warenkorbanbindung vorhanden.');
-   if(delegated&&(!/neugart/i.test(supplier)||!['business','employee'].includes(profile.role)))throw fail('ACCOUNT','Gespeicherte Zugänge sind nur für Neugart verfügbar.',403);
+   if(delegated&&!/neugart/i.test(supplier))throw fail('ACCOUNT','Gespeicherte Zugänge sind nur für Neugart verfügbar.',403);
    if(profile.role==='employee'&&company!==profile.business_id)throw fail('FORBIDDEN','Der Einkauf gehört nicht zu diesem Konto.',403);
    if(profile.role==='business'&&company!==user.id)throw fail('FORBIDDEN','Der Einkauf gehört nicht zu diesem Konto.',403);
    const saved=delegated?await account('credentials',{id:body.account_id}):null;

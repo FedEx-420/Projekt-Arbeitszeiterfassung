@@ -14,7 +14,7 @@
     rows: { people: [], workweeks: [], entries: [], orders: [], items: [], customers: [], customerRates: [], days: [], vacations: [], messages: [], attachments: [], recipients: [], materials: [], appointments: [], planningRequests: [], payslips: [], documents: [] }
   };
   let startupStage = '', startupGeneration = 0, startupHomeReady = false;
-  let supplierCart=null, shoppingCatalogWizard=null, shoppingLoading=false, shoppingLoadFailed=false;
+  let neugartAccounts=null, supplierCart=null, shoppingCatalogWizard=null, shoppingLoading=false, shoppingLoadFailed=false;
   const navigationFeature = window.WorktimeNavigation?.create({root,getOpen:()=>state.menu,setOpen:value=>{state.menu=value;}});
   /* BEGIN SESSION AUTH V859
    * Keep auth in the app bundle so previously cached index pages also work.
@@ -372,7 +372,7 @@
   }
 
   function loginView() { return `<main class="login-page"><section class="login-card"><div class="brand-mark">ZE</div><h1>Zeiterfassung</h1><p>Arbeitszeiten einfach und sicher erfassen.</p><form data-form="login"><label>Firma<input name="company" autocomplete="organization" placeholder="Firmenname" required></label><label>Benutzername<input name="username" autocomplete="username" required></label><label>Passwort<input name="password" type="password" autocomplete="current-password" required></label><label class="login-admin"><input name="administrator_login" type="checkbox"> Anmeldung als Administrator (nur dann ohne Firma)</label><label>Beim nächsten Mal auf diesem Gerät angemeldet bleiben?<select name="remember_device" required><option value="">Bitte auswählen</option><option value="yes">Ja, auf diesem Gerät</option><option value="no">Nein, nur für diese Sitzung</option></select></label><p class="device-help">Nur auf einem eigenen, geschützten Gerät wählen. Dein Passwort wird nicht gespeichert. Abmelden beendet die Geräteanmeldung.</p><button class="primary" ${state.busy ? 'disabled' : ''}>Anmelden</button></form><button class="link-button" type="button" data-action="forgot">Passwort vergessen?</button>${noticeHtml()}</section></main>`; }
-  function menuItems() { return [['home','Übersicht',true],['time','Zeiterfassung',canUse('time')],['orders','Arbeitsscheine',canUse('orders')],['calendar','Kalender',canUse('calendar')],['customers','Kunden',canUse('customers')],['mailbox','Postfach',true],['materials','Materialliste',isManager()],['shopping','Einkauf',isManager()],['invoices','Abrechnungen Kunden',isManager()],['invoices-paid','Abgerechnete Arbeitsscheine',isManager()],['settings','Einstellungen',true]].filter(([, , yes]) => yes); }
+  function menuItems() { return [['home','Übersicht',true],['time','Zeiterfassung',canUse('time')],['orders','Arbeitsscheine',canUse('orders')],['calendar','Kalender',canUse('calendar')],['customers','Kunden',canUse('customers')],['mailbox','Postfach',true],['materials','Materialliste',isManager()],['shopping','Einkauf',isManager()||state.profile?.role==='employee'],['invoices','Abrechnungen Kunden',isManager()],['invoices-paid','Abgerechnete Arbeitsscheine',isManager()],['settings','Einstellungen',true]].filter(([, , yes]) => yes); }
   function selector() {
     if (!isManager()) return '';
     const businessesHtml = isAdmin() ? `<label>Firma ansehen<select data-select="business"><option value="">Firma auswählen</option>${businesses().map(person => `<option value="${person.id}" ${same(person.id, businessId()) ? 'selected' : ''}>${escape(person.company_name || person.username)}</option>`).join('')}</select></label>` : '';
@@ -389,6 +389,7 @@
   function viewHtml() { return ({ home: homeView, time: timeView, orders: ordersView, 'order-detail': orderDetailView, calendar: calendarView, customers: customersView, mailbox: mailboxView, materials: materialsView, shopping: shoppingView, invoices: invoicesView, 'invoices-paid': paidInvoicesView, 'billing-detail': billingDetailView, settings: settingsView }[state.view] || homeView)(); }
 
   function shoppingView() {
+    if(state.profile?.role==='employee')return neugartAccounts?.shopping()||'';
     if(!isManager())return '<section class="panel"><h2>Einkauf</h2><p>Der Einkauf ist für die Geschäftsleitung und die Administration verfügbar.</p></section>';
     if(supplierCart)return supplierCart.view();
     return `<section class="page-head"><h2>Einkauf</h2></section><section class="panel" data-shopping-unavailable><h3>${shoppingLoading?'Einkauf wird geladen …':'Einkauf nachladen'}</h3><p role="${shoppingLoadFailed?'alert':'status'}">${shoppingLoadFailed?'Der Einkauf konnte noch nicht vollständig geladen werden. Prüfe deine Internetverbindung und versuche es erneut.':'Ein Teil des Einkaufs ist auf diesem Gerät noch nicht verfügbar. Du kannst ihn hier nachladen.'}</p>${shoppingLoading?'<progress aria-label="Einkauf wird geladen"></progress>':''}<button type="button" class="primary" data-action="shopping-load" ${shoppingLoading?'disabled':''}>${shoppingLoading?'Wird geladen …':'Einkauf laden'}</button><p>Deine gespeicherten Artikel und Einkaufsentwürfe bleiben erhalten.</p><button type="button" class="secondary" data-action="nav" data-view="materials">Materialliste öffnen</button></section>`;
@@ -1319,7 +1320,7 @@
     return `<section class="page-head"><div><span class="eyebrow">Persönliche Nachweise</span><h2>Belege</h2></div></section><section class="panel"><div class="actions">${receiptTabs(section)}</div><h3>${escape(title)}</h3>${body}</section>`;
   }
   function planningView() { return '<section class="page-head"><div><span class="eyebrow">Konzeptvorschau</span><h2>Planungsübersicht</h2></div></section><section class="panel"><h3>Planung wird erst nach Freigabe aktiviert</h3><p>Diese Ansicht ändert keine Aufträge und legt keine Termine an. Die vorgeschlagene Umsetzung steht unten als Konzept bereit.</p></section>'; }
-  function menuItems() { return [['home','Übersicht',true],['time','Zeiterfassung',canUse('time')],['orders','Arbeitsscheine',canUse('orders')],['calendar','Kalender',canUse('calendar')],['customers','Kunden',canUse('customers')],['receipts','Belege',true],['planning','Planungsübersicht',true],['mailbox','Postfach',true],['materials','Materialliste',isManager()],['shopping','Einkauf',isManager()],['invoices','Abrechnungen Kunden',isManager()],['invoices-paid','Abgerechnete Arbeitsscheine',isManager()],['settings','Einstellungen',true]].filter(([, , yes]) => yes); }
+  function menuItems() { return [['home','Übersicht',true],['time','Zeiterfassung',canUse('time')],['orders','Arbeitsscheine',canUse('orders')],['calendar','Kalender',canUse('calendar')],['customers','Kunden',canUse('customers')],['receipts','Belege',true],['planning','Planungsübersicht',true],['mailbox','Postfach',true],['materials','Materialliste',isManager()],['shopping','Einkauf',isManager()||state.profile?.role==='employee'],['invoices','Abrechnungen Kunden',isManager()],['invoices-paid','Abgerechnete Arbeitsscheine',isManager()],['settings','Einstellungen',true]].filter(([, , yes]) => yes); }
   function viewHtml() { return ({ home: homeView, time: timeView, orders: ordersView, 'order-detail': orderDetailView, calendar: calendarView, customers: customersView, receipts: receiptsView, planning: planningView, mailbox: mailboxView, materials: materialsView, shopping: shoppingView, invoices: invoicesView, 'invoices-paid': paidInvoicesView, 'billing-detail': billingDetailView, settings: settingsView }[state.view] || homeView)(); }
   function reportDateValid(value) {
     return /^\d{4}-\d{2}-\d{2}$/.test(String(value || '')) && Number.isFinite(Date.parse(value+'T12:00:00Z')) && new Date(value+'T12:00:00Z').toISOString().slice(0,10) === value;
@@ -2333,6 +2334,9 @@
   const selectionPhotos=window.WorktimeProductFeatures?.installSelections({root,state,businessId});
   const flowGuide=window.WorktimeAppFlow?.create({root,state,businessId});if(flowGuide){const renderBeforeFlow=render;render=()=>{renderBeforeFlow();flowGuide.afterRender();selectionPhotos?.afterRender();};flowGuide.afterRender();selectionPhotos?.afterRender();}
   window.WorktimeGermanProducts?.install({root,state,businessId,render:()=>render()});
+  neugartAccounts=window.WorktimeNeugartAccounts?.create({root,state,api,render:()=>render(),escape});
+  const viewBeforeNeugart=viewHtml;
+  viewHtml=()=>viewBeforeNeugart()+(state.view==='settings'&&isBusiness()&&neugartAccounts?neugartAccounts.settings():'');
   initializeShopping();
   const supplierStock=window.WorktimeSupplierStock?.create({root,state,businessId,isManager,api,escape});
   if(supplierStock){const beforeStockRender=render;render=()=>{beforeStockRender();supplierStock.afterRender();};}

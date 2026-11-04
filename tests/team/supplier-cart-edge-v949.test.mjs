@@ -4,12 +4,19 @@ import {createHandler,checkCart} from '../../supabase/functions/supplier-cart-v9
 const owner='10000000-0000-4000-8000-000000000001',company='20000000-0000-4000-8000-000000000001',article='30000000-0000-4000-8000-000000000001',job='40000000-0000-4000-8000-000000000001';
 const md5=x=>createHash('md5').update(x).digest('hex'),env={url:'https://db.invalid',anonKey:'public-fixture',serviceKey:'SYNTHETIC_SERVER_KEY'};
 const json=(x,headers={})=>new Response(JSON.stringify(x),{headers:{'Content-Type':'application/json',...headers}});
+const accountId='50000000-0000-4000-8000-000000000001'; let granted=true;
 const jobs=new Map();let adds=0,creates=0,role='administrator',actual=2.5,throwAfterAdd=false;
 const fetch=async(url,options={})=>{const u=new URL(url),body=options.body?JSON.parse(options.body):null,method=options.method||'GET';
  if(u.hostname==='db.invalid'){
   if(u.pathname==='/auth/v1/user')return json({id:owner});
-  if(u.pathname==='/rest/v1/profiles')return json(u.searchParams.get('id')==='eq.'+owner?[{id:owner,role}]:u.searchParams.get('id')==='eq.'+company?[{id:company,role:'business'}]:[]);
-  if(u.pathname==='/rest/v1/materials'){assert.equal(options.headers.Authorization,'Bearer synthetic');assert.equal(u.searchParams.get('business_id'),'eq.'+company);return json([{id:article,business_id:company,catalog_supplier:'Neugart',catalog_article_number:'000123',unit:'Stk'}]);}
+  if(u.pathname==='/rest/v1/profiles')return json(u.searchParams.get('id')==='eq.'+owner?[{id:owner,role,business_id:company}]:u.searchParams.get('id')==='eq.'+company?[{id:company,role:'business'}]:[]);
+  if(u.pathname==='/rest/v1/rpc/neugart_account_v971'){
+   assert.equal(options.headers.apikey,env.serviceKey);assert.equal(body.actor,owner);
+   if(body.operation==='list')return json(granted?[{id:accountId,label:'Test access',employee_ids:[]}]:[]);
+   if(body.operation==='credentials'&&granted&&body.payload.id===accountId)return json({company,credentials:{customer:'000011',username:'TEST_USER',password:'TEST_PASSWORD'}});
+   return new Response('{}',{status:403});
+  }
+  if(u.pathname==='/rest/v1/materials'){assert.equal(options.headers.Authorization,role==='employee'?'Bearer '+env.serviceKey:'Bearer synthetic');assert.equal(u.searchParams.get('business_id'),'eq.'+company);return json([{id:article,business_id:company,catalog_supplier:'Neugart',catalog_article_number:'000123',unit:'Stk'}]);}
   if(u.pathname==='/rest/v1/supplier_cart_transfers_v949'){assert.equal(options.headers.apikey,env.serviceKey);if(method==='POST'){if(jobs.has(body.id))return json([]);jobs.set(body.id,structuredClone(body));return json([body]);}const id=u.searchParams.get('id').slice(3),record=jobs.get(id);if(method==='PATCH')Object.assign(record,body);return json(record?[record]:[]);}
   throw Error('Unexpected database request');
  }
@@ -34,4 +41,18 @@ data=await(await request()).json();assert.equal(data.confirmed,true);assert.equa
 actual=1;data=await(await request()).json();assert.equal(data.confirmed,false);assert.equal(adds,1,'partial cart must not trigger automatic resend');
 actual=2.5;throwAfterAdd=true;data=await(await request({...body,request_id:'40000000-0000-4000-8000-000000000002'})).json();assert.equal(data.confirmed,true,'lost add reply is recovered by exact cart readback');assert.equal(adds,2);
 assert.equal(checkCart({},[]),null);assert.equal(checkCart({cart:{cartPositions:[{product:{productNumber:'wrong'},quantity:2.5}]}},[{sku:'000123',cents:250,material_ids:[article]}])[0].confirmed,false);
+role='employee';
+const delegated={...body,account_id:accountId,request_id:'40000000-0000-4000-8000-000000000003'};
+delete delegated.customer;delete delegated.username;delete delegated.password;
+assert.equal((await request({...delegated,company:'20000000-0000-4000-8000-000000000099'})).status,403);
+assert.equal((await request({...delegated,action:'account-grant',employee_ids:[owner]})).status,403);
+const list=await (await request({action:'accounts'})).json();
+assert.deepEqual(list,[{id:accountId,label:'Test access',employee_ids:[]}]);
+const cart=await (await request(delegated)).json();
+assert.equal(cart.confirmed,true);assert.equal(adds,3);
+assert.ok(!JSON.stringify(cart).includes('TEST_PASSWORD'));
+granted=false;
+assert.equal((await request(delegated)).status,403);
+assert.equal((await request({action:'search',account_id:accountId,query:'000123'})).status,403);
+assert.equal(adds,3);
 console.log('PASS verified checkout edge: caller/role/company/material authorization, normal merchant sign-in, server-only transfer ledger, exact readback, zero false success, no duplicate add on retry or lost response, no price/password/cookie persistence and no checkout/order calls; realShopWrites=0');

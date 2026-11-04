@@ -11,6 +11,11 @@ ZEICHEN
 Ein erfolgreicher Test mit Beispieldaten ist kein Live-Test jedes Geschäftskontos.
 
 ALS NÄCHSTES
+[x] Neugart-Zugänge mit Supabase Vault speichern, löschen und je Mitarbeiter
+    freigeben. Client-Zugriff auf Geheimnisse serverseitig gesperrt (v971).
+[x] Benannter Neugart-Warenkorb mit freigegebenem Zugang im isolierten
+    Browser- und Serverlauf geprüft. Widerruf und Fremdfirma abgewiesen.
+[ ] Freigegebenen Neugart-Zugang mit einem echten Mitarbeiterkonto prüfen.
 [ ] Neugart-Zugänge dauerhaft serverseitig speichern und in den Einstellungen
     verwalten. Je Zugang Mitarbeitende freigeben und Freigaben widerrufen.
 [ ] Mitarbeiter-Warenkorb mit freigegebenem Neugart-Zugang und Bestellung

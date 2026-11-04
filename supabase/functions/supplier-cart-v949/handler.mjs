@@ -20,23 +20,66 @@ export function createHandler({fetch=globalThis.fetch,env,md5,crypto=globalThis.
    const userHeaders={apikey:env.anonKey,Authorization:auth};
    const read=async path=>{const r=await fetch(env.url+path,{headers:userHeaders,signal:AbortSignal.timeout(10000)});if(!r.ok)throw fail('AUTH','Das Arbeitskonto konnte nicht bestätigt werden.',401);return r.json();};
    const user=await read('/auth/v1/user');if(!uuid.test(user.id||''))throw fail('AUTH','Anmeldung nicht bestätigt.',401);
-   const profiles=await read('/rest/v1/profiles?select=id,role&id=eq.'+user.id),profile=profiles.find(p=>p.id===user.id);if(!profile||!['administrator','business'].includes(profile.role))throw fail('FORBIDDEN','Nur Geschäftsleitung und Verwaltung können Einkaufswarenkörbe übertragen.',403);
+   const profiles=await read('/rest/v1/profiles?select=id,role,business_id&id=eq.'+user.id),profile=profiles.find(p=>p.id===user.id);if(!profile||!['administrator','business','employee'].includes(profile.role))throw fail('FORBIDDEN','Nur Geschäftsleitung und Verwaltung können Einkaufswarenkörbe übertragen.',403);
    const raw=await req.text();if(raw.length>180000)throw fail('SIZE','Der Einkaufswarenkorb ist zu groß.');let body;try{body=JSON.parse(raw);}catch{throw fail('JSON','Ungültige Anfrage.');}
+   const serviceHeaders={apikey:env.serviceKey,Authorization:'Bearer '+env.serviceKey,'Content-Type':'application/json'};
+   const account=async(operation,payload={})=>{
+    const response=await fetch(env.url+'/rest/v1/rpc/neugart_account_v971',{method:'POST',headers:serviceHeaders,body:JSON.stringify({actor:user.id,operation,payload}),signal:AbortSignal.timeout(10000)});
+    if(!response.ok)throw fail('ACCOUNT','Der Neugart-Zugang ist nicht verfügbar oder nicht freigegeben.',response.status>=500?502:403);
+    return response.json();
+   };
+   const validCredentials=values=>{
+    for(const [key,max] of [['customer',40],['username',50],['password',50]])if(typeof values?.[key]!=='string'||!values[key].trim()||values[key].length>max)throw fail('LOGIN','Bitte Kundennummer, Benutzername und Kennwort eingeben.');
+    return {customer:values.customer.trim(),username:values.username.trim(),password:values.password};
+   };
+   if(body.action==='accounts')return json(await account('list'));
+   if(['account-create','account-grant','account-delete'].includes(body.action)){
+    if(profile.role!=='business')throw fail('FORBIDDEN','Nur das Geschäftskonto kann Neugart-Zugänge verwalten.',403);
+    if(body.action==='account-create'){
+     const label=typeof body.label==='string'?body.label.trim():'';
+     if(!label||label.length>80)throw fail('LABEL','Bitte einen Namen für den Zugang eingeben.');
+     const credentials=validCredentials(body);
+     await merchant.connect({shop:'efg',...credentials});
+     return json(await account('create',{label,credentials}));
+    }
+    if(!uuid.test(body.account_id||''))throw fail('ACCOUNT','Bitte einen Zugang auswählen.');
+    if(body.action==='account-delete')return json(await account('delete',{id:body.account_id}));
+    if(!Array.isArray(body.employee_ids)||body.employee_ids.length>500||body.employee_ids.some(id=>!uuid.test(id)))throw fail('EMPLOYEES','Ungültige Mitarbeiterauswahl.');
+    return json(await account('grant',{id:body.account_id,employee_ids:body.employee_ids}));
+   }
+   const readMaterials=async params=>{
+    const response=await fetch(env.url+'/rest/v1/materials?'+params,{headers:serviceHeaders,signal:AbortSignal.timeout(10000)});
+    if(!response.ok)throw fail('MATERIALS','Die Neugart-Artikel konnten nicht geladen werden.',502);
+    return response.json();
+   };
+   if(body.action==='search'){
+    if(profile.role!=='employee'||!uuid.test(profile.business_id||'')||!(await account('list')).some(a=>a.id===body.account_id))throw fail('ACCOUNT','Dieser Neugart-Zugang ist nicht freigegeben.',403);
+    const term=String(body.query||'').trim().replace(/[^\p{L}\p{N} .-]/gu,'').slice(0,80);
+    if(term.length<2)return json([]);
+    const params=new URLSearchParams({select:'id,name,unit,catalog_article_number,catalog_supplier',business_id:'eq.'+profile.business_id,active:'eq.true',catalog_supplier:'ilike.*neugart*',or:'(name.ilike.*'+term+'*,catalog_article_number.ilike.*'+term+'*)',order:'name.asc,id.asc',limit:'40'});
+    return json(await readMaterials(params));
+   }
+   const delegated=uuid.test(body.account_id||'');
+   if(profile.role==='employee'&&!delegated)throw fail('FORBIDDEN','Bitte einen freigegebenen Neugart-Zugang wählen.',403);
    const {company,request_id:id}=body,supplier=String(body.supplier||'').trim();if(!uuid.test(company||'')||!uuid.test(id||'')||supplier.length>120||!/neugart|\bgc\b|efg/i.test(supplier))throw fail('SUPPLIER','Für diesen Fachhändler ist noch keine automatische Warenkorbanbindung vorhanden.');
+   if(delegated&&(!/neugart/i.test(supplier)||!['business','employee'].includes(profile.role)))throw fail('ACCOUNT','Gespeicherte Zugänge sind nur für Neugart verfügbar.',403);
+   if(profile.role==='employee'&&company!==profile.business_id)throw fail('FORBIDDEN','Der Einkauf gehört nicht zu diesem Konto.',403);
    if(profile.role==='business'&&company!==user.id)throw fail('FORBIDDEN','Der Einkauf gehört nicht zu diesem Konto.',403);
-   const companies=await read('/rest/v1/profiles?select=id,role&id=eq.'+company+'&role=eq.business');if(!companies.some(p=>p.id===company))throw fail('FORBIDDEN','Die Firma ist nicht verfügbar.',403);
+   const saved=delegated?await account('credentials',{id:body.account_id}):null;
+   if(delegated&&saved?.company!==company)throw fail('ACCOUNT','Dieser Neugart-Zugang gehört nicht zu dieser Firma.',403);
+   const companies=profile.role==='employee'?[{id:company}]:await read('/rest/v1/profiles?select=id,role&id=eq.'+company+'&role=eq.business');if(!companies.some(p=>p.id===company))throw fail('FORBIDDEN','Die Firma ist nicht verfügbar.',403);
    if(!Array.isArray(body.lines)||!body.lines.length||body.lines.length>1000)throw fail('LINES','Bitte 1 bis 1000 Artikel auswählen.');
    const ids=body.lines.map(l=>l.material_id);if(ids.some(x=>!uuid.test(x))||new Set(ids).size!==ids.length)throw fail('LINES','Die Artikelauswahl ist ungültig.');
-   const params=new URLSearchParams({select:'id,catalog_article_number,catalog_supplier,business_id,unit',business_id:'eq.'+company,active:'eq.true',catalog_supplier:'eq.'+supplier,id:'in.('+ids.join(',')+')'}),materials=[];for(let offset=0;offset<ids.length;offset+=100){params.set('id','in.('+ids.slice(offset,offset+100).join(',')+')');materials.push(...await read('/rest/v1/materials?'+params));}
+   const params=new URLSearchParams({select:'id,catalog_article_number,catalog_supplier,business_id,unit',business_id:'eq.'+company,active:'eq.true',catalog_supplier:'eq.'+supplier,id:'in.('+ids.join(',')+')'}),materials=[];for(let offset=0;offset<ids.length;offset+=100){params.set('id','in.('+ids.slice(offset,offset+100).join(',')+')');materials.push(...await (profile.role==='employee'?readMaterials(params):read('/rest/v1/materials?'+params)));}
    if(materials.length!==ids.length||materials.some(m=>m.business_id!==company||m.catalog_supplier!==supplier))throw fail('LINES','Ein Artikel gehört nicht zum ausgewählten Fachhändler oder zur Firma.',403);
    const grouped=new Map();for(const l of body.lines){const m=materials.find(m=>m.id===l.material_id),sku=String(m.catalog_article_number||'').trim(),qu=units[String(m.unit||'').toLowerCase().trim()];if(!sku||sku.length>120||/[\u0000-\u001f]/.test(sku)||!qu)throw fail('ARTICLE','Artikelnummer oder Bestelleinheit ist unvollständig.');const cents=quantity(l.quantity),existing=grouped.get(sku);if(existing&&existing.qu!==qu)throw fail('UNIT','Eine Artikelnummer enthält widersprüchliche Bestelleinheiten.');if(existing){existing.cents+=cents;existing.material_ids.push(m.id);}else grouped.set(sku,{sku,qu,cents,material_ids:[m.id]});}
    const lines=[...grouped.values()].sort((a,b)=>a.sku.localeCompare(b.sku));
-   for(const [key,max]of [['customer',40],['username',50],['password',50]])if(typeof body[key]!=='string'||!body[key].length||body[key].length>max)throw fail('LOGIN','Bitte Kundennummer, Benutzername und Kennwort eingeben.');
-   const shop=/neugart|efg/i.test(supplier)?'efg':'gc',customer=body.customer.trim(),username=body.username.trim();secret=body.password;
+   const credentials=validCredentials(saved?.credentials||body);
+   const shop=/neugart|efg/i.test(supplier)?'efg':'gc',customer=credentials.customer,username=credentials.username;secret=credentials.password;
    const cartName=!/neugart/i.test(supplier)||body.cart_name===undefined?'':typeof body.cart_name==='string'?body.cart_name.trim():null;
    if(cartName===null||cartName.length>60||/[\u0000-\u001f\u007f]/.test(cartName))throw fail('CART_NAME','Bitte einen Warenkorbnamen mit höchstens 60 Zeichen eingeben.');
-   const fingerprint=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify([company,supplier,shop,customer.replace(/^0+/,''),username.toUpperCase(),lines,...(cartName?[cartName]:[])]))))).map(n=>n.toString(16).padStart(2,'0')).join('');
-   const session=await merchant.connect({shop,customer,username,password:secret});secret='';body.password='';
+   const fingerprint=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify([company,supplier,shop,customer.replace(/^0+/,''),username.toUpperCase(),lines,...(cartName?[cartName]:[]),...(delegated?[body.account_id]:[])]))))).map(n=>n.toString(16).padStart(2,'0')).join('');
+   const session=await merchant.connect({shop,customer,username,password:secret});secret='';body.password='';credentials.password='';if(saved?.credentials)saved.credentials.password='';
    const db=async(method,query,data)=>{const r=await fetch(env.url+'/rest/v1/supplier_cart_transfers_v949'+query,{method,headers:{apikey:env.serviceKey,Authorization:'Bearer '+env.serviceKey,'Content-Type':'application/json',Prefer:method==='POST'?'resolution=ignore-duplicates,return=representation':'return=representation'},...(data?{body:JSON.stringify(data)}:{}),signal:AbortSignal.timeout(10000)});if(!r.ok)throw fail('RECEIPT','Die Übertragung konnte nicht sicher protokolliert werden. Bitte nicht erneut senden.',502);return r.json();};
    const inserted=await db('POST','?on_conflict=id',{id,user_id:user.id,company_id:company,fingerprint,state:'started'}),where='?id=eq.'+id+'&user_id=eq.'+user.id+'&company_id=eq.'+company;
    let job=inserted[0];if(!job){const previous=await db('GET',where);job=previous[0];if(!job||job.fingerprint!==fingerprint)throw fail('CONFLICT','Dieser Übertragungsversuch gehört zu einer anderen Auswahl.',409);if(!job.cart_ref)throw fail('PENDING','Die erste Übertragung ist noch nicht eindeutig abgeschlossen. Es werden keine Artikel erneut gesendet.',409);}

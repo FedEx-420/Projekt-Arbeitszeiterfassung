@@ -66,9 +66,15 @@ async function main() {
     assert.equal(profileReads, 1);
     assert.equal(tokenRequests, 1);
     await page.locator('[data-date]').waitFor({timeout: 5000});
-    assert.ok(releaseMaterials);
     await page.locator('[data-action="shift-day"][data-days="-1"]').click();
     const selectedDate = await page.locator('[data-date]').inputValue();
+    assert.equal(materialReads,0,'login does not download the material catalog');
+    await page.locator('#app-menu-toggle').click();
+    await page.locator('#app-menu-panel summary').filter({hasText:/B.ro/}).click();
+    await page.locator('[data-view=materials]').click();
+    await page.waitForFunction(()=>document.querySelector('[data-startup-view-pending]'));
+    await page.waitForTimeout(30);
+    assert.ok(releaseMaterials);
     await page.locator('#app-menu-toggle').click();
     await page.locator('[data-view=customers]').click();
     await page.getByRole('heading', {name:'Kundenliste',exact:true}).waitFor({timeout:5000});

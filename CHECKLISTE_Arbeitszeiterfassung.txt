@@ -11,6 +11,12 @@ ZEICHEN
 Ein erfolgreicher Test mit Beispieldaten ist kein Live-Test jedes Geschäftskontos.
 
 ALS NÄCHSTES
+[x] Doppelten Material-Namensindex in Supabase entfernt. Der eindeutige
+    Index ist weiterhin gültig. Rund 17 MiB weniger Indexspeicher.
+[x] Materialabruf aus der Anmeldung herausgenommen und auf Abruf mit
+    ID-Cursor umgestellt. Login und Einkauf im Browser geprüft (v973).
+[ ] Festplattenlast nach v973 unter echter Nutzung messen. Vollabruf beim
+    ersten Öffnen materialabhängiger Bereiche durch Trefferabfragen ersetzen.
 [x] Menüs beim Start nach ihren eigenen Daten freigeben. Kundenformular
     bleibt bei angehaltenem Materialabruf erreichbar (v972).
 [x] Betriebliche Favoriten für freigegebene Mitarbeitende im Neugart-Einkauf

@@ -13,7 +13,7 @@
     businessId: '', businessBrand: null, employeeId: '', customerId: '', customerSearch: '', materialId: '', orderId: '', timeEntryId: '', orderCustomer: '', orderOrigin: 'orders', billingKey: '', billingMode: 'open', menu: false, vacationForm: false, appointmentForm: false, composeMessage: false, mailboxFolder: 'received', notice: null, busy: false,
     rows: { people: [], workweeks: [], entries: [], orders: [], items: [], customers: [], customerRates: [], days: [], vacations: [], messages: [], attachments: [], recipients: [], materials: [], appointments: [], planningRequests: [], payslips: [], documents: [] }
   };
-  let startupStage = '', startupGeneration = 0, startupAccountReady = null;
+  let startupStage = '', startupGeneration = 0, startupAccountReady = null, materialLoadState = 'idle';
   const startupLoaded = new Set(), startupFailed = new Set();
   const startupViewData = {
     home: ['entries','orders','days','vacations','workweeks','businessRules'],
@@ -39,9 +39,15 @@
     legal: ['legal'],
     datev: ['datev','ledger','legal']
   };
+  function viewDataNeeds() {
+    if (state.view === 'shopping' && state.profile?.role === 'employee') return [];
+    const needs = startupViewData[state.view] || [];
+    return state.view === 'customers' && state.customerId && state.customerId !== 'new' && isManager()
+      ? [...needs,'materials'] : needs;
+  }
   function startupViewReady() {
-    const needs = state.view === 'shopping' && state.profile?.role === 'employee' ? [] : startupViewData[state.view] || [];
-    return ['people',...needs].every(name => !startupFailed.has(name) && (startupStage !== 'data' || startupLoaded.has(name)));
+    return ['people',...viewDataNeeds()].every(name => !startupFailed.has(name) &&
+      (name === 'materials' ? materialLoadState === 'ready' : startupStage !== 'data' || startupLoaded.has(name)));
   }
   function startupDataReady(name, ok) {
     if (ok) startupLoaded.add(name);
@@ -226,6 +232,7 @@
   function logout() {
     startupGeneration++;
     startupStage = '';
+    materialLoadState = 'idle';
     planningSync.reset();
     auth.clear();
     state.profile = state.businessBrand = null;
@@ -264,6 +271,7 @@
     const current = () => generation === startupGeneration && state.session?.user?.id === user;
     state.view = 'home'; state.menu = false; state.customerId = ''; state.customerSearch = ''; state.orderId = ''; state.timeEntryId = ''; state.billingKey = ''; state.vacationForm = false; state.composeMessage = false;
     startupStage = 'verify';
+    materialLoadState = 'idle';
     startupLoaded.clear();
     startupFailed.clear();
     let accountReady;
@@ -427,12 +435,16 @@
     return `<div class="account-selector">${businessesHtml}<label>Arbeitskonto ansehen<select data-select="employee">${workers().map(person => `<option value="${person.id}" ${same(person.id, workerId()) ? 'selected' : ''}>${escape(person.username)}</option>`).join('')}</select></label></div>`;
   }
   function appView() {
+    if (materialLoadState === 'idle' && viewDataNeeds().includes('materials')) {
+      if (state.rows.materials.length) materialLoadState = 'ready';
+      else startMaterialLoad();
+    }
     const title = managerBusiness()?.company_name || 'Zeiterfassung';
     const headerLogo = companyLogoUrl(managerBusiness()), roleName = isAdmin() ? 'Administrator' : isBusiness() ? 'Geschäftsleitung' : 'Mitarbeiter';
     const current = state.view === 'invoice-draft'?'invoices':state.view === 'order-detail' ? (['invoices','invoices-paid','customers','planning'].includes(state.orderOrigin) ? state.orderOrigin : 'orders') : state.view === 'billing-detail' ? (state.billingMode === 'paid' ? 'invoices-paid' : 'invoices') : state.view;
     const items = menuItems(), navigation = window.WorktimeNavigation?.markup({items,current,open:state.menu}) || `<button type="button" class="menu-toggle" data-action="menu" aria-expanded="${state.menu}">Menü ⌄</button>${state.menu ? `<section class="app-menu-sheet"><header><b>Menü auswählen</b><button type="button" class="secondary small" data-action="menu">Schließen</button></header><nav>${items.map(([id,text])=>`<button type="button" data-action="nav" data-view="${id}" class="${current===id?'active':''}">${text}</button>`).join('')}<hr><button type="button" data-action="logout">Abmelden</button></nav></section>` : ''}`;
     const context = `<section class="workspace-context" aria-label="Aktueller Bereich und Arbeitskonto"><div class="workspace-location"><span aria-hidden="true"></span><strong>${escape(window.WorktimeNavigation?.currentLabel(items,current) || 'Übersicht')}</strong></div>${selector()}</section>`;
-    return `<div class="app-shell"><header class="topbar"><div class="brand-identity">${headerLogo ? `<img src="${escape(headerLogo)}" alt="Firmenlogo von ${escape(title)}">` : '<div class="brand-mark" aria-hidden="true">ZE</div>'}<div class="brand-caption"><h1>${escape(title)}</h1><p>${escape(state.profile?.username || '')} · ${roleName}</p></div></div><div class="top-actions">${navigation}</div></header><main class="content">${context}${!startupViewReady() ? `<section class="panel" data-startup-view-pending>${startupStage==='data'?'<p role="status">Daten für diesen Bereich werden geladen …</p>':'<p role="alert">Die Daten für diesen Bereich konnten nicht vollständig geladen werden.</p><button type="button" class="primary" data-action="retry-startup">Erneut versuchen</button>'}</section>` : viewHtml()}${noticeHtml()}</main></div>`;
+    return `<div class="app-shell"><header class="topbar"><div class="brand-identity">${headerLogo ? `<img src="${escape(headerLogo)}" alt="Firmenlogo von ${escape(title)}">` : '<div class="brand-mark" aria-hidden="true">ZE</div>'}<div class="brand-caption"><h1>${escape(title)}</h1><p>${escape(state.profile?.username || '')} · ${roleName}</p></div></div><div class="top-actions">${navigation}</div></header><main class="content">${context}${!startupViewReady() ? `<section class="panel" data-startup-view-pending>${(startupStage==='data'||materialLoadState==='loading')&&!viewDataNeeds().some(name=>startupFailed.has(name))?'<p role="status">Daten für diesen Bereich werden geladen …</p>':'<p role="alert">Die Daten für diesen Bereich konnten nicht vollständig geladen werden.</p><button type="button" class="primary" data-action="retry-startup">Erneut versuchen</button>'}</section>` : viewHtml()}${noticeHtml()}</main></div>`;
   }
   function viewHtml() { return ({ home: homeView, time: timeView, orders: ordersView, 'order-detail': orderDetailView, calendar: calendarView, customers: customersView, mailbox: mailboxView, materials: materialsView, shopping: shoppingView, invoices: invoicesView, 'invoices-paid': paidInvoicesView, 'billing-detail': billingDetailView, settings: settingsView }[state.view] || homeView)(); }
 
@@ -1312,6 +1324,43 @@
     }
     throw lastError || new Error('Die Daten konnten nicht geladen werden.');
   }
+  async function readMaterialPages(isCurrent, timed) {
+    const result = [];
+    const limit = 500;
+    let cursor = '';
+    while (isCurrent()) {
+      const after = cursor ? '&id=gt.'+encodeURIComponent(cursor) : '';
+      const page = await api('/rest/v1/materials?select=*&order=id.asc&limit='+limit+after,
+        timed ? { signal: AbortSignal.timeout(10000) } : {});
+      if (!Array.isArray(page)) throw new Error('Der Materialabruf konnte nicht bestätigt werden.');
+      result.push(...page);
+      if (page.length < limit) {
+        const collator = new Intl.Collator('de');
+        return result.sort((a,b) => collator.compare(a.name,b.name));
+      }
+      const next = page.at(-1)?.id;
+      if (!next || next === cursor) throw new Error('Die Materialliste konnte nicht vollständig gelesen werden.');
+      cursor = next;
+    }
+    return [];
+  }
+  async function updateMaterials(isCurrent, timed) {
+    const materials = await readMaterialPages(isCurrent, timed);
+    if (!isCurrent()) return;
+    state.rows.materials = materials;
+    materialLoadState = 'ready';
+    startupFailed.delete('materials');
+  }
+  function startMaterialLoad() {
+    const generation = startupGeneration, actor = state.profile?.id;
+    const current = () => generation === startupGeneration && actor === state.profile?.id;
+    materialLoadState = 'loading';
+    updateMaterials(current, true).catch(() => {
+      if (current()) { materialLoadState = 'failed'; startupFailed.add('materials'); }
+    }).finally(() => {
+      if (current() && viewDataNeeds().includes('materials') && root.querySelector('[data-startup-view-pending]')) render();
+    });
+  }
   async function reload(isCurrent = () => true, onDataReady) {
     planningSync.reset();
     const issues = [];
@@ -1328,7 +1377,9 @@
     const background = Promise.all([
       load('items', 'work_order_items'), load('messages', 'mailbox_messages', 'select=*&order=created_at.desc'),
       load('attachments', 'mailbox_attachments', 'select=*&order=created_at.asc'),
-      load('materials', 'materials', 'select=*&order=name.asc,id.asc'), load('payslips', 'employee_payslips', 'select=*&order=created_at.desc'),
+      (!onDataReady && materialLoadState === 'ready'
+        ? updateMaterials(isCurrent, false).catch(() => issues.push('materials')) : Promise.resolve()),
+      load('payslips', 'employee_payslips', 'select=*&order=created_at.desc'),
       load('documents', 'work_order_documents'), loadRecipients(), loadPlanningRequests(isCurrent, Boolean(onDataReady)).then(() => { if (isCurrent()) onDataReady?.('planningRequests'); })
     ]);
     await people;

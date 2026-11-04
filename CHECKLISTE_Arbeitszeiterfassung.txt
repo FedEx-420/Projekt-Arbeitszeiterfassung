@@ -11,6 +11,13 @@ ZEICHEN
 Ein erfolgreicher Test mit Beispieldaten ist kein Live-Test jedes Geschäftskontos.
 
 ALS NÄCHSTES
+[x] Eigenes Warenkorb-Menü für den persönlichen Neugart-Einkauf.
+    Artikelzugabe mit Bestätigung und Positionszähler versehen (v976).
+[x] Warenkorb nach Mitarbeiter, Betrieb und Händlerzugang trennen.
+    Mengen und Namen für die Browsersitzung sichern und prüfen (v976).
+[x] Anmeldeformular beim Händleraufruf bis zur Navigation erhalten und
+    Wiederöffnen des bestätigten Warenkorbs ohne erneute Zugabe prüfen.
+[ ] Weiterleitung in der produktiven iPhone-/Neugart-Sitzung gegenprüfen.
 [x] Katalogsuche beim Tippen starten, Treffer und Favoriten getrennt
     anzeigen. Browserprüfung mit unterschiedlichen Daten bestanden (v975).
 [x] Fehlende lokale Neugart-Treffer im Onlinekatalog suchen. Ausgewählte

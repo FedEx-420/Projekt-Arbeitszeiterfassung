@@ -114,6 +114,12 @@
         }
       }
     }
+    root.addEventListener('worktime-favorite-search',event=>{
+      if(state.view!=='shopping'||!root.querySelector('[data-neugart-search]'))return;
+      query=event.detail.article.catalog_article_number||event.detail.article.catalog_manufacturer_number||event.detail.article.name||'';
+      manufacturer='';category='';searchCatalog();
+      root.querySelector('[data-neugart-results]')?.scrollIntoView({block:'start'});
+    });
     root.addEventListener('input',event=>{
       if(event.target.closest('[data-ng-form="cart"]')){capture();return;}
       const form=event.target.closest('[data-neugart-search]');

@@ -70,6 +70,12 @@
   root.addEventListener('change',e=>{const key=e.target.dataset.psFeature;if(!key||!ensure()||adding)return;if(e.target.value)answers[key]=e.target.value;else delete answers[key];question='';start();});
   root.addEventListener('click',e=>{const b=e.target.closest('[data-ps-suggest-query],[data-ps-suggest-filter]');if(!b||!ensure()||adding)return;e.preventDefault();if(b.hasAttribute('data-ps-suggest-query'))query=b.dataset.psSuggestQuery;else{filters[b.dataset.psSuggestFilter]=b.dataset.value;query='';}start();});
   root.addEventListener('click',event=>{const button=event.target.closest('[data-action="nav"]');if(button&&button.dataset.view!=='shopping'){serial++;onlineSerial++;clearTimeout(timer);clearTimeout(onlinePaint);onlinePaint=null;typing=preparing=busy=adding=false;onlineBusy=false;onlineKey='';materialPool=null;basePool=[];rows=[];poolCache=quickCache=null;}},true);
+  root.addEventListener('worktime-favorite-search',event=>{
+   if(state.view!=='shopping'||!root.querySelector('[data-purchase-search]')||!ensure()||adding)return;
+   const m=event.detail.article;query=m.catalog_article_number||m.catalog_manufacturer_number||m.name||'';
+   filters={manufacturer:'',category:'',supplier:m.catalog_supplier||''};answers={};question='';start();
+   root.querySelector('.ps-progress')?.scrollIntoView({block:'start'});
+  });
   root.addEventListener('input',e=>{if(!e.target.matches('[data-ps-field="query"]')||!ensure()||adding)return;query=e.target.value;typing=true;for(const input of root.querySelectorAll('[data-ps-source-name]'))sourceNames.set(input.closest('[data-ps-row]').dataset.psRow,input.value);resetCursor();onlineSerial++;onlineRows=[];onlineCursor=null;onlineBusy=false;onlineKey='';serial++;clearTimeout(timer);clearTimeout(onlinePaint);onlinePaint=null;materialPool=null;basePool=[];rows=[];quickCache=poolCache=null;busy=true;progress='Suche wird vorbereitet …';const label=root.querySelector('.ps-progress');if(label)label.textContent=progress;const results=root.querySelector('.ps-results');if(results)results.replaceChildren();root.querySelector('.article-suggestions')?.remove();for(const button of root.querySelectorAll('[data-ps-more],[data-ps-prev]'))button.disabled=true;timer=setTimeout(start,180);});
 
   root.addEventListener('change',e=>{if(!ensure()||adding)return;const k=e.target.dataset.psField;if(k&&k!=='query'){filters[k]=e.target.value;answers={};question='';start();}else if(e.target.matches('[data-ps-question]')){question=e.target.value;update();}});

@@ -11,6 +11,11 @@ ZEICHEN
 Ein erfolgreicher Test mit Beispieldaten ist kein Live-Test jedes Geschäftskontos.
 
 ALS NÄCHSTES
+[x] Favoriten nur durch Verwaltung und Geschäftskonten entfernen;
+    Mitarbeiter auch bei eigenen Einträgen serverseitig sperren (v980).
+[x] „Artikel suchen“ in Favoriten führt sofort zur Trefferanzeige;
+    widersprüchliche Filter zurücksetzen und Favoritenbereich zuklappen.
+    Neugart-, Material- und Katalogsuche im Browser geprüft (v980).
 [x] Anmeldeschlüssel aus direkten und umschlossenen Händlerantworten
     auswerten. Ablehnungen und ungültige Schlüssel abweisen (v977).
 [x] Bestätigten Händlerwarenkorb auch bei fehlendem Anmeldeschlüssel

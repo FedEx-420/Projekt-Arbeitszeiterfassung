@@ -1,0 +1,23 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),{fixture}=require('./team-db-fixture.cjs');
+(async()=>{const {db,ids,actor,admin}=await fixture();try{
+ await db.exec(`create function app_private.current_business_id() returns uuid language sql stable security definer set search_path='' as $$select case when role='business' then id else business_id end from public.profiles where id=auth.uid()$$;
+ create function app_private.is_administrator() returns boolean language sql stable security definer set search_path='' as $$select exists(select 1 from public.profiles where id=auth.uid() and role='administrator')$$;
+ grant execute on function app_private.current_business_id(),app_private.is_administrator() to authenticated;
+ create table public.neugart_accounts_v971(company_id uuid,employee_ids uuid[]);`);
+ await db.query('insert into neugart_accounts_v971 values($1,$2)',[ids.business,[ids.anna,ids.max]]);
+ for(const file of ['supabase/migrations/20261102222025_material_favorites_v959.sql','supabase/migrations/20261104101500_shared_purchase_favorites_v972.sql','supabase/migrations/20261104090643_favorites_manager_removal_v980.sql'])await db.exec(fs.readFileSync(path.resolve(__dirname,'../..',file),'utf8'));
+ await actor('anna');
+ const list=(await db.query("insert into material_favorite_lists_v959(business_id,name) values($1,'Employee list') returning id",[ids.business])).rows[0].id;
+ const item=(await db.query("insert into material_favorite_items_v959(list_id,business_id,article_key,snapshot) values($1,$2,'SKU-ONE','{}') returning id",[list,ids.business])).rows[0].id;
+ assert.equal((await db.query('delete from material_favorite_items_v959 where id=$1 returning id',[item])).rows.length,0,'employee cannot delete even their own favorite');
+ assert.equal((await db.query('delete from material_favorite_lists_v959 where id=$1 returning id',[list])).rows.length,0,'employee cannot cascade-delete their own list');
+ await assert.rejects(db.query("update material_favorite_items_v959 set article_key='REPLACEMENT' where id=$1",[item]),/Favoriten/);
+ await actor('max');assert.equal((await db.query('select * from material_favorite_items_v959')).rows.length,1);
+ assert.equal((await db.query('delete from material_favorite_items_v959 returning id')).rows.length,0,'coworker cannot remove shared items');
+ await actor('otherBusiness');assert.equal((await db.query('delete from material_favorite_items_v959 returning id')).rows.length,0);
+ await actor('business');assert.equal((await db.query('delete from material_favorite_items_v959 where id=$1 returning id',[item])).rows.length,1,'company can remove employee-created shared favorite');
+ await actor('anna');await db.query("insert into material_favorite_items_v959(list_id,business_id,article_key,snapshot) values($1,$2,'SKU-TWO','{}')",[list,ids.business]);
+ await actor('admin');assert.equal((await db.query('delete from material_favorite_items_v959 returning id')).rows.length,1,'admin can remove shared favorites');
+ await admin();assert.equal((await db.query('select * from material_favorite_lists_v959 where id=$1',[list])).rows.length,1);
+ console.log('PASS favorites v980: employees read/add but cannot delete own/shared entries, cascade-delete or replace identity; company and admin can remove; other company denied; isolated database only');
+ }finally{await db.close();}})().catch(e=>{console.error(e);process.exitCode=1;});

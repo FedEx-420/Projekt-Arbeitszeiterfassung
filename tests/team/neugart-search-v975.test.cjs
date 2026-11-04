@@ -14,7 +14,7 @@ const {chromium}=require('playwright');
    const state={profile:{id:'employee',role:'employee',business_id:'company'},session:{user:{id:'employee'}},view:'shopping',people:[]};
    window.calls=[];
    const api=async(path,options)=>{
-    const b=options?.body;calls.push({path,body:b});
+    const b=options?.body;calls.push({path,body:b,method:options?.method});
     if(path.includes('material_favorite_lists'))return [{id:'favorites',owner_id:'manager',name:'Werkzeug'}];
     if(path.includes('material_favorite_items'))return [{id:'favorite',list_id:'favorites',snapshot:{name:'Wago Favorit',catalog_article_number:'221-412',catalog_supplier:'Neugart'}}];
     if(b.action==='accounts')return [{id:'account',label:'Neugart Betrieb'}];
@@ -33,9 +33,25 @@ const {chromium}=require('playwright');
   });
   await page.locator('[data-favorites-content]').getByText('Wago Favorit').waitFor({state:'attached'});
   await page.locator('[data-article-favorites] > summary').click();
+  assert.equal(await page.locator('[data-favorite-remove]').count(),0,'employees have no remove control');
+  await page.evaluate(()=>{const b=document.createElement('button');b.dataset.favoriteRemove='favorite';b.textContent='forged remove';document.querySelector('main').append(b);b.click();b.remove();});
+  assert.equal(await page.evaluate(()=>calls.some(c=>c.method==='DELETE')),false,'forged remove button is ignored');
+  await page.locator('[data-neugart-search] [name=manufacturer]').fill('Wrong manufacturer');
+  await page.locator('[data-neugart-search] [name=category]').fill('Wrong category');
+  await page.locator('[data-favorite-find]').click();
+  await page.locator('[data-neugart-results]').getByText('221-412 Katalogartikel',{exact:false}).waitFor();
+  assert.equal(await page.locator('[data-neugart-search] [name=query]').inputValue(),'221-412');
+  assert.equal(await page.locator('[data-neugart-search] [name=manufacturer]').inputValue(),'');
+  assert.equal(await page.locator('[data-neugart-search] [name=category]').inputValue(),'');
+  assert.equal(await page.locator('[data-article-favorites]').getAttribute('open'),null,'results are revealed immediately');
+  for(const role of ['business','administrator']){
+   await page.evaluate(role=>{qa.state.profile.role=role;qa.render();},role);
+   assert.equal(await page.locator('[data-favorite-remove]').count(),1);
+  }
+  await page.evaluate(()=>{qa.state.profile.role='employee';qa.render();});
   await page.locator('[data-neugart-search] [name=query]').fill('Hager');
   await page.locator('[data-neugart-results]').getByText('Hager Katalogartikel',{exact:false}).waitFor();
-  assert.match(await page.locator('[data-article-favorites]').innerText(),/Wago Favorit/);
+  assert.match(await page.locator('[data-article-favorites]').textContent(),/Wago Favorit/);
   assert.doesNotMatch(await page.locator('[data-neugart-results]').innerText(),/Wago Favorit/);
   await page.locator('[data-neugart-results] [data-ng-action=add]').click();
   assert.equal(await page.locator('[data-ng-form=cart]').count(),0);

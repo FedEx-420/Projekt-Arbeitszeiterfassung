@@ -130,3 +130,16 @@ sind mit isolierten Browser-/Serverfixtures geprüft. Ein echter iPhone-Test
 
 Temporäre IDS-Versuche und öffentliche Shop-Code-Diagnosen sind entfernt.
 Weitere Angaben: [Prüfbericht v979](docs/Pruefstand_v979.md).
+
+## v980 – Favoritenrechte und direkte Suche
+
+Nur Administratoren und das zugehörige Geschäftskonto dürfen Favoriten
+entfernen. Restriktive DELETE-Regeln schützen auch Mitarbeiter-Eigentum
+und das Löschen ganzer Listen mit Kaskade. Identitätswechsel per UPDATE
+sind für Mitarbeiter gesperrt. Lesen und Hinzufügen bleiben unverändert.
+
+Die Favoritensuche nutzt ein gemeinsames Suchereignis: Neugart, Materialien
+und lokale Einkaufskataloge starten sofort, löschen widersprüchliche
+Merkmalsfilter, klappen die Favoriten zu und zeigen den Trefferbereich.
+Datenbankrechte und alle drei Suchwege sind mit isolierten Fixtures geprüft.
+Die Supabase-Migration wurde angewendet und die aktiven Regeln kontrolliert.

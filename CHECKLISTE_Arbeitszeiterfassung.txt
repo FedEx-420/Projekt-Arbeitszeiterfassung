@@ -11,6 +11,18 @@ ZEICHEN
 Ein erfolgreicher Test mit Beispieldaten ist kein Live-Test jedes Geschäftskontos.
 
 ALS NÄCHSTES
+[x] Menüs beim Start nach ihren eigenen Daten freigeben. Kundenformular
+    bleibt bei angehaltenem Materialabruf erreichbar (v972).
+[x] Betriebliche Favoriten für freigegebene Mitarbeitende im Neugart-Einkauf
+    anzeigen und bearbeiten. Zugriff einer Fremdfirma abgewiesen (v972).
+[ ] Originalkataloge aus den bisherigen Browserbeständen sicher übertragen
+    und für freigegebene Mitarbeitende geräteübergreifend bereitstellen.
+[ ] Gemeinsame Einkaufsansicht, Materialbearbeitung und Admin-Verwaltung
+    der Händlerzugänge für die jeweiligen Rollen vervollständigen.
+[ ] Gemeldete A.1-/C.1-Bilder anhand exakter Hersteller- und Händlernummern
+    prüfen und verwechselte Fotos korrigieren.
+[ ] Supabase-Disk-I/O senken und messen. Vollabrufe der Materialtabelle
+    reduzieren und den redundanten Namensindex separat prüfen.
 [x] Neugart-Zugänge mit Supabase Vault speichern, löschen und je Mitarbeiter
     freigeben. Client-Zugriff auf Geheimnisse serverseitig gesperrt (v971).
 [x] Benannter Neugart-Warenkorb mit freigegebenem Zugang im isolierten

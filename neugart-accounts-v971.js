@@ -39,8 +39,8 @@
       return `<section class="panel"><h2>Neugart-Einkauf</h2>${feedback()}
       ${accounts===null?'<p>Freigaben werden geladen …</p>':!accounts.length?'<button type="button" class="secondary" data-ng-action="load">Freigaben erneut prüfen</button>':`
       <label>Neugart-Zugang<select data-ng-account>${accounts.map(a=>`<option value="${esc(a.id)}" ${a.id===accountId?'selected':''}>${esc(a.label)}</option>`).join('')}</select></label>
-      <form data-ng-form="search"><label>Artikelname oder Artikelnummer<input name="query" minlength="2" maxlength="80" required value="${esc(query)}"></label><button class="primary" ${pending?'disabled':''}>Artikel suchen</button></form>
-      ${results.map(m=>`<article class="row-card"><span>${esc(m.name)} · ${esc(m.catalog_article_number)}</span><button type="button" class="secondary" data-ng-action="add" data-id="${esc(m.id)}">Hinzufügen</button></article>`).join('')}
+      <form data-ng-form="search" data-neugart-search><label>Artikelname oder Artikelnummer<input name="query" minlength="2" maxlength="80" required value="${esc(query)}"></label><button class="primary" ${pending?'disabled':''}>Artikel suchen</button></form>
+      ${results.map(m=>`<article class="row-card">${window.WorktimeArticleTools?.html(m)||''}<span>${esc(m.name)} · ${esc(m.catalog_article_number)}</span><button type="button" class="secondary" data-ng-action="add" data-id="${esc(m.id)}">Hinzufügen</button></article>`).join('')}
       ${basket.length?`<form data-ng-form="cart"><h3>Warenkorb</h3><label>Warenkorbname<input name="cart_name" maxlength="60" value="${esc(cartName)}"></label>${basket.map(m=>`<label>${esc(m.name)} · ${esc(m.unit)}<input type="number" min="0.01" max="999999.99" step="0.01" required name="qty:${esc(m.id)}" value="${esc(m.quantity)}"></label><button type="button" class="secondary" data-ng-action="remove" data-id="${esc(m.id)}">Entfernen</button>`).join('')}<button class="primary" ${pending?'disabled':''}>Artikel übertragen und Warenkorb öffnen</button></form>`:''}`}</section>`;
     }
     function capture() {

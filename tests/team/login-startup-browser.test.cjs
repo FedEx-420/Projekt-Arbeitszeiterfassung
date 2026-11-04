@@ -69,7 +69,14 @@ async function main() {
     assert.ok(releaseMaterials);
     await page.locator('[data-action="shift-day"][data-days="-1"]').click();
     const selectedDate = await page.locator('[data-date]').inputValue();
-    const backgroundFinished = page.waitForResponse(r => new URL(r.url()).pathname === '/rest/v1/customer_hourly_rates');
+    await page.locator('#app-menu-toggle').click();
+    await page.locator('[data-view=customers]').click();
+    await page.getByRole('heading', {name:'Kundenliste',exact:true}).waitFor({timeout:5000});
+    await page.locator('[data-action="new-customer"]').click();
+    await page.locator('form[data-form="customer"]').waitFor({timeout:5000});
+    const backgroundFinished = page.waitForResponse(r => new URL(r.url()).pathname === '/rest/v1/materials');
+    await page.locator('#app-menu-toggle').click();
+    await page.locator('[data-view=home]').click();
     holdMaterials = false;
     releaseMaterials();
     await backgroundFinished;
@@ -93,7 +100,7 @@ async function main() {
     await page.reload();
     await form.waitFor();
     assert.deepEqual(errors, []);
-    console.log('PASS verified start page before material download, one startup load, saved session after temporary outage, manual logout');
+    console.log('PASS interactive home and customer edit form before material download, one startup load, saved session after temporary outage, manual logout');
   } finally {
     await browser.close();
     await new Promise(resolve => server.close(resolve));

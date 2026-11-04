@@ -98,3 +98,5 @@ v970 zeigt die App nach bestätigtem Profil und gibt Übersicht und Zeiterfassun
 Für Neugart ist der frei wählbare Warenkorbname vorbereitet. Der Name geht beim Anlegen an den Händler und ist Teil der Wiederholungsprüfung. Die Freigabe gespeicherter Konten und die Veröffentlichung sind offen.
 
 v971 ergänzt Neugart-Zugänge für Geschäftskonten. Supabase Vault schützt die Zugangsdaten. Mitarbeiter erhalten im Einkauf ausschließlich die freigegebenen Konten. Übergabe und Widerruf sind isoliert geprüft. Die abschließende Bestellung erfolgt im Händlerportal. Der Test mit realen Zugangsdaten bleibt offen.
+
+v972 entkoppelt das Öffnen der Menüs vom gesamten Startabruf und teilt betriebliche Favoriten im Neugart-Einkauf. Supabase meldet knappes Disk-I/O-Budget. Eine aggregierte Messung ergab 176 MB Datenbank, davon rund 119 MB Materialtabelle inklusive Indexen und rund 17 MB für einen zum eindeutigen Namensindex redundanten Suchindex. Originalkataloge und die gemeldete Bildverwechslung bleiben offen.

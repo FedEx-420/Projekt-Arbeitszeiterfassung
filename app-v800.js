@@ -13,7 +13,41 @@
     businessId: '', businessBrand: null, employeeId: '', customerId: '', customerSearch: '', materialId: '', orderId: '', timeEntryId: '', orderCustomer: '', orderOrigin: 'orders', billingKey: '', billingMode: 'open', menu: false, vacationForm: false, appointmentForm: false, composeMessage: false, mailboxFolder: 'received', notice: null, busy: false,
     rows: { people: [], workweeks: [], entries: [], orders: [], items: [], customers: [], customerRates: [], days: [], vacations: [], messages: [], attachments: [], recipients: [], materials: [], appointments: [], planningRequests: [], payslips: [], documents: [] }
   };
-  let startupStage = '', startupGeneration = 0, startupHomeReady = false;
+  let startupStage = '', startupGeneration = 0, startupAccountReady = null;
+  const startupLoaded = new Set(), startupFailed = new Set();
+  const startupViewData = {
+    home: ['entries','orders','days','vacations','workweeks','businessRules'],
+    time: ['entries','orders','days','vacations','workweeks','customers','appointments','businessRules'],
+    orders: ['orders','entries','items','customers','customerRates','materials','days','vacations','appointments','team','businessRules'],
+    'order-detail': ['orders','items','customers','customerRates','materials','documents','days','vacations','team'],
+    calendar: ['appointments','orders','entries','days','vacations','workweeks','businessRules'],
+    customers: ['customers','customerRates','orders','entries','items','documents'],
+    receipts: ['days','vacations','device'],
+    planning: ['appointments','planningRequests','customers','orders','entries','days','vacations','team','businessRules'],
+    mailbox: ['messages','attachments','recipients','mailbox'],
+    materials: ['materials'],
+    shopping: ['materials'],
+    catalogs: ['materials'],
+    'supplier-catalogs': ['materials'],
+    offers: ['offers','customers','customerRates','materials','legal'],
+    settings: ['device','businessRules','legal'],
+    invoices: ['orders','items','customers','customerRates','materials','documents','ledger','legal'],
+    'invoices-paid': ['orders','items','customers','customerRates','materials','documents','ledger','legal'],
+    'invoice-draft': ['orders','items','customers','customerRates','materials','documents','ledger','legal'],
+    'billing-detail': ['orders','items','customers','customerRates','materials','documents','ledger','legal'],
+    platform: ['platform'],
+    legal: ['legal'],
+    datev: ['datev','ledger','legal']
+  };
+  function startupViewReady() {
+    const needs = state.view === 'shopping' && state.profile?.role === 'employee' ? [] : startupViewData[state.view] || [];
+    return ['people',...needs].every(name => !startupFailed.has(name) && (startupStage !== 'data' || startupLoaded.has(name)));
+  }
+  function startupDataReady(name, ok) {
+    if (ok) startupLoaded.add(name);
+    else startupFailed.add(name);
+    if (startupViewReady() && root.querySelector('[data-startup-view-pending]')) render();
+  }
   let neugartAccounts=null, supplierCart=null, shoppingCatalogWizard=null, shoppingLoading=false, shoppingLoadFailed=false;
   const navigationFeature = window.WorktimeNavigation?.create({root,getOpen:()=>state.menu,setOpen:value=>{state.menu=value;}});
   /* BEGIN SESSION AUTH V859
@@ -213,6 +247,16 @@
     return `<main class="login-page"><section class="login-card"><div class="brand-mark">ZE</div><h1>${heading}</h1><p role="status">${message}</p>${retry ? '<button type="button" class="primary" data-action="retry-startup">Erneut versuchen</button>' : ''}<button type="button" class="link-button" data-action="logout">Abmelden</button></section></main>`;
   }
 
+  async function loadFeature(previous, feature, name, isCurrent, onDataReady) {
+    const account = startupAccountReady;
+    const load = async () => {
+      if (!isCurrent || isCurrent()) await feature.load();
+      if (!isCurrent || isCurrent()) onDataReady?.(name);
+    };
+    if (onDataReady && account) await Promise.all([previous(isCurrent,onDataReady), account.then(load)]);
+    else { await previous(isCurrent,onDataReady); await load(); }
+  }
+
   async function loadApp(administratorLogin) {
     const user = state.session?.user?.id;
     if (!user) return render();
@@ -220,7 +264,10 @@
     const current = () => generation === startupGeneration && state.session?.user?.id === user;
     state.view = 'home'; state.menu = false; state.customerId = ''; state.customerSearch = ''; state.orderId = ''; state.timeEntryId = ''; state.billingKey = ''; state.vacationForm = false; state.composeMessage = false;
     startupStage = 'verify';
-    startupHomeReady = false;
+    startupLoaded.clear();
+    startupFailed.clear();
+    let accountReady;
+    startupAccountReady = new Promise(resolve => { accountReady = resolve; });
     state.busy = true;
     render();
     try {
@@ -235,10 +282,10 @@
       state.profile = profile;
       startupStage = 'data';
       render();
-      await reload(current, () => {
-        startupHomeReady = true;
-        state.busy = false;
-        render();
+      state.busy = false;
+      await reload(current, (name, ok = true) => {
+        if (name === 'people') accountReady();
+        startupDataReady(name, ok);
       });
       if (current()) startupStage = '';
     } catch (error) {
@@ -253,7 +300,8 @@
         startupStage = 'retry';
       }
     } finally {
-      if (generation === startupGeneration && !(state.profile && startupHomeReady && state.view === 'time')) {
+      accountReady();
+      if (generation === startupGeneration && (!state.profile || root.querySelector('[data-startup-view-pending]'))) {
         state.busy = false;
         render();
         window.scrollTo({top:0,left:0,behavior:'instant'});
@@ -384,7 +432,7 @@
     const current = state.view === 'invoice-draft'?'invoices':state.view === 'order-detail' ? (['invoices','invoices-paid','customers','planning'].includes(state.orderOrigin) ? state.orderOrigin : 'orders') : state.view === 'billing-detail' ? (state.billingMode === 'paid' ? 'invoices-paid' : 'invoices') : state.view;
     const items = menuItems(), navigation = window.WorktimeNavigation?.markup({items,current,open:state.menu}) || `<button type="button" class="menu-toggle" data-action="menu" aria-expanded="${state.menu}">Menü ⌄</button>${state.menu ? `<section class="app-menu-sheet"><header><b>Menü auswählen</b><button type="button" class="secondary small" data-action="menu">Schließen</button></header><nav>${items.map(([id,text])=>`<button type="button" data-action="nav" data-view="${id}" class="${current===id?'active':''}">${text}</button>`).join('')}<hr><button type="button" data-action="logout">Abmelden</button></nav></section>` : ''}`;
     const context = `<section class="workspace-context" aria-label="Aktueller Bereich und Arbeitskonto"><div class="workspace-location"><span aria-hidden="true"></span><strong>${escape(window.WorktimeNavigation?.currentLabel(items,current) || 'Übersicht')}</strong></div>${selector()}</section>`;
-    return `<div class="app-shell"><header class="topbar"><div class="brand-identity">${headerLogo ? `<img src="${escape(headerLogo)}" alt="Firmenlogo von ${escape(title)}">` : '<div class="brand-mark" aria-hidden="true">ZE</div>'}<div class="brand-caption"><h1>${escape(title)}</h1><p>${escape(state.profile?.username || '')} · ${roleName}</p></div></div><div class="top-actions">${navigation}</div></header><main class="content">${context}${startupStage === 'data' && !(startupHomeReady && ['home','time'].includes(state.view)) ? '<section class="panel"><h2>Startseite</h2><p role="status">Arbeitsdaten werden geladen …</p></section>' : viewHtml()}${noticeHtml()}</main></div>`;
+    return `<div class="app-shell"><header class="topbar"><div class="brand-identity">${headerLogo ? `<img src="${escape(headerLogo)}" alt="Firmenlogo von ${escape(title)}">` : '<div class="brand-mark" aria-hidden="true">ZE</div>'}<div class="brand-caption"><h1>${escape(title)}</h1><p>${escape(state.profile?.username || '')} · ${roleName}</p></div></div><div class="top-actions">${navigation}</div></header><main class="content">${context}${!startupViewReady() ? `<section class="panel" data-startup-view-pending>${startupStage==='data'?'<p role="status">Daten für diesen Bereich werden geladen …</p>':'<p role="alert">Die Daten für diesen Bereich konnten nicht vollständig geladen werden.</p><button type="button" class="primary" data-action="retry-startup">Erneut versuchen</button>'}</section>` : viewHtml()}${noticeHtml()}</main></div>`;
   }
   function viewHtml() { return ({ home: homeView, time: timeView, orders: ordersView, 'order-detail': orderDetailView, calendar: calendarView, customers: customersView, mailbox: mailboxView, materials: materialsView, shopping: shoppingView, invoices: invoicesView, 'invoices-paid': paidInvoicesView, 'billing-detail': billingDetailView, settings: settingsView }[state.view] || homeView)(); }
 
@@ -528,8 +576,13 @@
 
   function customersView() {
     const selected = state.rows.customers.find(row => same(row.id, state.customerId));
+    const totals = new Map();
+    for (const entry of effectiveTimeEntries()) {
+      const id = String(entry.customer_id || '');
+      totals.set(id, (totals.get(id) || 0) + n(entry.executed_hours));
+    }
     const list = state.rows.customers.map(row => {
-      const total = effectiveTimeEntries().filter(entry => same(entry.customer_id, row.id)).reduce((sum, entry) => sum + n(entry.executed_hours), 0);
+      const total = totals.get(String(row.id || '')) || 0;
       const removeButton = isManager() ? '<button type="button" class="danger small" data-action="delete-customer" data-id="' + escape(row.id) + '">Löschen</button>' : '';
       return '<article class="row-card" data-customer-search-item data-customer-search="' + escape(customerSearchText(row)) + '"><button type="button" class="row-main" data-action="customer" data-id="' + escape(row.id) + '"><b>' + escape(row.name) + '</b><span>' + h(total) + ' gesamt</span></button>' + removeButton + '</article>';
     }).join('') || '<p class="empty">Noch keine Kunden angelegt.</p>';
@@ -1014,7 +1067,7 @@
     if (action === 'nav') { state.view = button.dataset.view; state.menu = false; state.vacationForm = false; state.composeMessage = false; state.orderId = ''; state.timeEntryId = ''; state.orderCustomer = ''; state.orderOrigin = 'orders'; state.billingKey = ''; render(); window.scrollTo({top:0,behavior:'instant'}); return; }
     if (action === 'shopping-load') return recoverShopping();
     if (action === 'logout') return logout();
-    if (action === 'retry-startup' && startupStage === 'retry') return loadApp();
+    if (action === 'retry-startup' && (startupStage === 'retry' || startupFailed.size)) return loadApp();
     if (action === 'forgot') return perform('Die zuständige Verwaltung wurde informiert.', () => api('/functions/v1/request-password-help', { method: 'POST', body: { username: root.querySelector('[name="username"]')?.value || '' } }));
     if (action === 'pick-day') { state.date = button.dataset.date; state.month = state.date.slice(0, 7); state.timeEntryId = ''; state.vacationForm = false; render(); return; }
     if (action === 'month') { const date = new Date(`${state.month}-01T12:00:00`); date.setMonth(date.getMonth() + n(button.dataset.value)); state.month = date.toISOString().slice(0, 7); render(); return; }
@@ -1259,13 +1312,14 @@
     }
     throw lastError || new Error('Die Daten konnten nicht geladen werden.');
   }
-  async function reload(isCurrent = () => true, onHomeReady) {
+  async function reload(isCurrent = () => true, onDataReady) {
     planningSync.reset();
     const issues = [];
-    const load = async (name, table, query = 'select=*') => { try { const data = await allRows(table, query, Boolean(onHomeReady)); if (isCurrent()) state.rows[name] = data; } catch { issues.push(name); } };
-    const loadRecipients = async () => { try { const data = await api('/functions/v1/mailbox-send', { method: 'POST', body: { action: 'recipients' }, signal: onHomeReady ? AbortSignal.timeout(10000) : undefined }); if (isCurrent()) state.rows.recipients = data?.recipients || []; } catch { issues.push('recipients'); } };
+    const load = async (name, table, query = 'select=*') => { try { const data = await allRows(table, query, Boolean(onDataReady)); if (isCurrent()) state.rows[name] = data; } catch { issues.push(name); } finally { if (isCurrent() && name !== 'people') onDataReady?.(name, !issues.includes(name)); } };
+    const loadRecipients = async () => { try { const data = await api('/functions/v1/mailbox-send', { method: 'POST', body: { action: 'recipients' }, signal: onDataReady ? AbortSignal.timeout(10000) : undefined }); if (isCurrent()) state.rows.recipients = data?.recipients || []; } catch { issues.push('recipients'); } finally { if (isCurrent()) onDataReady?.('recipients', !issues.includes('recipients')); } };
+    const people = load('people', 'profiles');
     const essential = Promise.all([
-      load('people', 'profiles'), load('entries', 'time_entries', 'select=*&order=work_date.desc,created_at.desc'),
+      load('entries', 'time_entries', 'select=*&order=work_date.desc,created_at.desc'),
       load('orders', 'work_orders', 'select=*&order=work_date.desc,created_at.desc'), load('days', 'work_days'),
       load('vacations', 'vacation_requests', 'select=*&order=created_at.desc'),
       load('workweeks','employee_workweeks_v905','select=*&order=employee_id.asc,effective_from.asc'),
@@ -1274,22 +1328,22 @@
     const background = Promise.all([
       load('items', 'work_order_items'), load('messages', 'mailbox_messages', 'select=*&order=created_at.desc'),
       load('attachments', 'mailbox_attachments', 'select=*&order=created_at.asc'),
-      load('materials', 'materials', 'select=*&order=name.asc'), load('payslips', 'employee_payslips', 'select=*&order=created_at.desc'),
-      load('documents', 'work_order_documents'), loadRecipients(), loadPlanningRequests(isCurrent, Boolean(onHomeReady))
+      load('materials', 'materials', 'select=*&order=name.asc,id.asc'), load('payslips', 'employee_payslips', 'select=*&order=created_at.desc'),
+      load('documents', 'work_order_documents'), loadRecipients(), loadPlanningRequests(isCurrent, Boolean(onDataReady)).then(() => { if (isCurrent()) onDataReady?.('planningRequests'); })
     ]);
-    await essential;
+    await people;
     if (!isCurrent()) return;
     state.people = state.rows.people;
     if (isAdmin() && !businesses().some(person => same(person.id, state.businessId))) state.businessId = businesses()[0]?.id || '';
     if (!workers().some(person => same(person.id, state.employeeId))) state.employeeId = workers()[0]?.id || state.profile.id;
-    if (!issues.some(name => ['people','entries','orders','days','vacations','workweeks','customers','appointments'].includes(name))) onHomeReady?.();
-    await background;
-    if (!isCurrent()) return;
-    try { const rates = await allRows('customer_hourly_rates','select=*&order=customer_id.asc', Boolean(onHomeReady)); if (!isCurrent()) return; state.rows.customerRates = rates; state.customerRatesReady=true; } catch { if (!isCurrent()) return; state.customerRatesReady=false; issues.push('customerRates'); }
-    if (!isManager()) { try { const data = await api('/rest/v1/rpc/current_business_branding', { method: 'POST', body: {}, signal: onHomeReady ? AbortSignal.timeout(10000) : undefined }); if (!isCurrent()) return; state.businessBrand = data?.[0] || null; } catch { if (!isCurrent()) return; state.businessBrand = null; } } else state.businessBrand = null;
-    await loadTeamContext();
-    if (!isCurrent()) return;
-    await deviceFeatures?.load();
+    onDataReady?.('people', !issues.includes('people'));
+    const ratesTask = (async () => {
+    try { const rates = await allRows('customer_hourly_rates','select=*&order=customer_id.asc', Boolean(onDataReady)); if (!isCurrent()) return; state.rows.customerRates = rates; state.customerRatesReady=true; } catch { if (!isCurrent()) return; state.customerRatesReady=false; issues.push('customerRates'); } finally { if (isCurrent()) onDataReady?.('customerRates', state.customerRatesReady); }
+    })();
+    if (!isManager()) { try { const data = await api('/rest/v1/rpc/current_business_branding', { method: 'POST', body: {}, signal: onDataReady ? AbortSignal.timeout(10000) : undefined }); if (!isCurrent()) return; state.businessBrand = data?.[0] || null; } catch { if (!isCurrent()) return; state.businessBrand = null; } } else state.businessBrand = null;
+    const teamTask = loadTeamContext().then(() => { if (isCurrent()) onDataReady?.('team'); });
+    const deviceTask = Promise.resolve(deviceFeatures?.load()).then(() => { if (isCurrent()) onDataReady?.('device'); });
+    await Promise.all([essential, background, ratesTask, teamTask, deviceTask]);
     if (!isCurrent()) return;
     if (issues.length) notice('Ein Teil der Daten konnte gerade nicht erneut synchronisiert werden. Bereits geladene Aufträge bleiben sichtbar.', true);
   }
@@ -2189,7 +2243,7 @@
     const menusBeforeV857=menuItems,viewBeforeV857=viewHtml,reloadBeforeV857=reload,renderBeforeV857=render;
     menuItems=()=>{const items=menusBeforeV857();if(isManager())items.splice(items.findIndex(row=>row[0]==='materials'),0,['offers','Angebote',true]);return items;};
     viewHtml=()=>state.view==='offers'?offersFeature.view():viewBeforeV857();
-    reload=async(isCurrent, onHomeReady)=>{await reloadBeforeV857(isCurrent,onHomeReady);if(!isCurrent||isCurrent())await offersFeature.load();};
+    reload=(current, ready)=>loadFeature(reloadBeforeV857,offersFeature,'offers',current,ready);
     render=()=>{renderBeforeV857();offersFeature.setup();};
     offersFeature.bind();
   }
@@ -2199,7 +2253,7 @@
     const menuBeforeV900=menuItems,viewBeforeV900=viewHtml,reloadBeforeV900=reload,settingsBeforeV900=settingsView;
     menuItems=()=>{const items=menuBeforeV900();if(platformFeature.creator())items.splice(items.findIndex(row=>row[0]==='settings'),0,['platform','Preise & Konten',true]);return items;};
     viewHtml=()=>state.view==='platform'?platformFeature.view():viewBeforeV900();
-    reload=async(isCurrent, onHomeReady)=>{await reloadBeforeV900(isCurrent,onHomeReady);if(!isCurrent||isCurrent())await platformFeature.load();};
+    reload=(current, ready)=>loadFeature(reloadBeforeV900,platformFeature,'platform',current,ready);
     settingsView=()=>settingsBeforeV900()+platformFeature.settingsPanel();
   }
   const legalFeature=window.WorktimeLegal?.create({root,state,api,allRows,render:()=>render(),escape,isManager,businessId,managerBusiness});
@@ -2207,7 +2261,7 @@
     const menuBeforeLegalV900=menuItems,viewBeforeLegalV900=viewHtml,reloadBeforeLegalV900=reload,homeBeforeLegalV900=homeView;
     menuItems=()=>{const items=menuBeforeLegalV900();items.splice(items.findIndex(row=>row[0]==='settings'),0,['legal','Unterlagen & Freigaben',true]);return items;};
     viewHtml=()=>state.view==='legal'?legalFeature.view():viewBeforeLegalV900();
-    reload=async(isCurrent, onHomeReady)=>{await reloadBeforeLegalV900(isCurrent,onHomeReady);if(!isCurrent||isCurrent())await legalFeature.load();};
+    reload=(current, ready)=>loadFeature(reloadBeforeLegalV900,legalFeature,'legal',current,ready);
     homeView=()=>homeBeforeLegalV900()+legalFeature.setupPanel();
   }
   const datevFeature=window.WorktimeDatev?.create({root,state,api,allRows,render:()=>render(),escape,isManager,businessId,managerBusiness,today});
@@ -2215,7 +2269,7 @@
     const menuBeforeDatev=menuItems,viewBeforeDatev=viewHtml,reloadBeforeDatev=reload,renderBeforeDatev=render;
     menuItems=()=>{const items=menuBeforeDatev();if(isManager())items.splice(items.findIndex(row=>row[0]==='settings'),0,['datev','Steuer & DATEV',true]);return items;};
     viewHtml=()=>state.view==='datev'?datevFeature.view():viewBeforeDatev();
-    reload=async(isCurrent, onHomeReady)=>{await reloadBeforeDatev(isCurrent,onHomeReady);if(!isCurrent||isCurrent())await datevFeature.load();};
+    reload=(current, ready)=>loadFeature(reloadBeforeDatev,datevFeature,'datev',current,ready);
     render=()=>{datevFeature.afterRender();renderBeforeDatev();};
   }
   const renderBeforeNavigationV901=render;
@@ -2284,7 +2338,7 @@
     const menusBeforeBusiness=menuItems,renderBeforeBusiness=render,reloadBeforeBusiness=reload,planningBeforeBusiness=refreshPlanningData;
     menuItems=()=>menusBeforeBusiness().filter(item=>!['time','receipts'].includes(item[0])).map(item=>item[0]==='invoices'?[item[0],'Noch offene Arbeitsscheine',item[2]]:item[0]==='invoices-paid'?[item[0],'Erstellte Rechnungen',item[2]]:item);
     settingsView=()=>businessFeature.settings(settingsBeforeWorkweekV905());
-    reload=async(isCurrent, onHomeReady)=>{await reloadBeforeBusiness(isCurrent,onHomeReady);if(!isCurrent||isCurrent())await businessFeature.load();};
+    reload=(current, ready)=>loadFeature(reloadBeforeBusiness,businessFeature,'businessRules',current,ready);
     refreshPlanningData=async(...args)=>{const result=await planningBeforeBusiness(...args);if(result!==false)await businessFeature.load();return result;};
     render=()=>{businessFeature.beforeRender();renderBeforeBusiness();businessFeature.mount();};
     businessFeature.mount();
@@ -2293,7 +2347,7 @@
   if(mailboxFeature){
     const reloadBeforeMail=reload,renderBeforeMail=render,refreshBeforeMail=refreshPlanningData;
     mailboxView=()=>mailboxFeature.view();
-    reload=async(isCurrent, onHomeReady)=>{await reloadBeforeMail(isCurrent,onHomeReady);if(!isCurrent||isCurrent())await mailboxFeature.load();};
+    reload=(current, ready)=>loadFeature(reloadBeforeMail,mailboxFeature,'mailbox',current,ready);
     refreshPlanningData=async(...args)=>{const result=await refreshBeforeMail(...args);if(result!==false)await mailboxFeature.load();return result;};
     render=()=>{renderBeforeMail();mailboxFeature.mount();};
   }
@@ -2318,7 +2372,7 @@
   const invoiceLedger=window.WorktimeInvoiceLedger?.create({root,state,api,allRows,render:()=>render(),reload:()=>reload(),isManager,businessId,today,escape,getCompanyDetails:()=>legalFeature?.getCompanyDetails?.()||null,askTax:(data,accept,options)=>window.WorktimeInvoiceTax.ask(data,accept,options),openPdf:openDocumentPdf,scopeOrder:orderInCurrentBusiness});
   if(invoiceLedger){
     const reloadBeforeLedger=reload,viewBeforeLedger=viewHtml,renderBeforeLedger=render;
-    reload=async(isCurrent, onHomeReady)=>{await reloadBeforeLedger(isCurrent,onHomeReady);if(!isCurrent||isCurrent())await invoiceLedger.load();};
+    reload=(current, ready)=>loadFeature(reloadBeforeLedger,invoiceLedger,'ledger',current,ready);
     paidInvoicesView=()=>invoiceLedger.view();
     viewHtml=()=>state.view==='invoice-draft'?invoiceLedger.draftView():viewBeforeLedger();
     printInvoicePdf=group=>invoiceLedger.start(group?.orders||[]);

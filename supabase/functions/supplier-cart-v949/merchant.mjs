@@ -24,6 +24,18 @@ export function createMerchant({fetch,md5,now=Date.now}){
   const set=r.headers.getSetCookie?.()||[];for(const line of set){const part=line.split(';')[0],index=part.indexOf('=');if(index<1)continue;const name=part.slice(0,index),value=part.slice(index+1);if(!/^[A-Za-z0-9_.-]{1,100}$/.test(name)||/[\r\n;]/.test(value)||value.length>12000)continue;if(/(?:^|;)\s*max-age=0(?:;|$)/i.test(line))delete session.cookies[name];else session.cookies[name]=value;}
   const text=await r.text();if(text.length>2000000)throw fail('SHOP_RESPONSE','Die Händlerantwort ist zu groß.',502);try{return JSON.parse(text);}catch{throw fail('SHOP_RESPONSE','Der Händler hat keine lesbare Bestandsantwort geliefert.',502);}
  }
+ async function browserLogin({username,password}){
+  const session={shop:'gc',cookies:{},csrf:null,userHash:''};
+  const settings=await call(session,'/api/account/getsettingsremaining?domain=gconlineplus.de');
+  session.csrf=settings.crsfKey??null;
+  const result=await call(session,'/api/account/login',{username,password,layout:'GC',language:'DE'});
+  let destination;try{destination=new URL('https://'+result.redirect);}catch{}
+  // ONLINE PLUS marks a cross-layout redirect as unsuccessful, status REDIRECT (11).
+  // Its authenticationToken is nevertheless the official one-use browser handoff.
+  const token=loginToken(result.authenticationToken);
+  if(result.status===11&&result.layout==='EFG'&&token&&destination?.origin==='https://efgonlineplus.de'&&!destination.username&&!destination.password&&destination.pathname==='/'&&!destination.search&&!destination.hash)return {token,origin:destination.origin};
+  return null;
+ }
  async function connect({shop,username,password,customer}){
   if(!shops[shop])throw fail('SHOP','Bitte GC oder EFG ONLINE PLUS auswählen.');
   const s={shop,cookies:{},csrf:null,userHash:'',expires:now()+12*3600000};
@@ -47,5 +59,5 @@ export function createMerchant({fetch,md5,now=Date.now}){
   if(needsToken&&!/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(session.apiToken||''))throw fail('RECONNECT','Die Neugart-Artikelsuche ist noch nicht freigeschaltet.',401);
  }
  const online=createOnlineMerchant({call,refresh,fetch,now});
- return {connect,call,online};
+ return {connect,call,online,browserLogin};
 }

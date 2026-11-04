@@ -1,12 +1,23 @@
 import assert from 'node:assert/strict';
 import {createHash,webcrypto} from 'node:crypto';
-import {loginToken} from '../../supabase/functions/supplier-cart-v949/merchant.mjs';
+import {loginToken,createMerchant} from '../../supabase/functions/supplier-cart-v949/merchant.mjs';
 import {createHandler,checkCart} from '../../supabase/functions/supplier-cart-v949/handler.mjs';
 for(const response of ['SYNTHETIC_LOGIN_TOKEN',{authKey:'SYNTHETIC_LOGIN_TOKEN'},{successful:true,obj:'SYNTHETIC_LOGIN_TOKEN'},{successful:true,obj:{authKey:'SYNTHETIC_LOGIN_TOKEN'}},{authenticationToken:'SYNTHETIC_LOGIN_TOKEN'}])assert.equal(loginToken(response),'SYNTHETIC_LOGIN_TOKEN');
 for(const response of [{successful:false,authKey:'SYNTHETIC_LOGIN_TOKEN'},{authKey:'short'},{authKey:'BAD\nLOGIN_TOKEN'},null])assert.equal(loginToken(response),'');
 const owner='10000000-0000-4000-8000-000000000001',company='20000000-0000-4000-8000-000000000001',article='30000000-0000-4000-8000-000000000001',job='40000000-0000-4000-8000-000000000001';
 const md5=x=>createHash('md5').update(x).digest('hex'),env={url:'https://db.invalid',anonKey:'public-fixture',serviceKey:'SYNTHETIC_SERVER_KEY'};
 const json=(x,headers={})=>new Response(JSON.stringify(x),{headers:{'Content-Type':'application/json',...headers}});
+// Cross-layout redirects are intentionally unsuccessful login responses in ONLINE PLUS.
+let redirectResult={successful:false,status:11,layout:'EFG',redirect:'efgonlineplus.de',authenticationToken:'SYNTHETIC_REDIRECT_TOKEN'};
+const redirectMerchant=createMerchant({md5,fetch:async(url,options)=>{
+ const u=new URL(url);assert.equal(u.origin,'https://www.gconlineplus.de');
+ if(u.pathname==='/api/account/getsettingsremaining')return json({crsfKey:null});
+ assert.equal(u.pathname,'/api/account/login');assert.equal(JSON.parse(options.body).layout,'GC');return json(redirectResult);
+}});
+assert.deepEqual(await redirectMerchant.browserLogin({username:'TEST_USER',password:'TEST_PASSWORD'}),{origin:'https://efgonlineplus.de',token:'SYNTHETIC_REDIRECT_TOKEN'});
+for(const change of [{status:1},{layout:'GC'},{redirect:'attacker.invalid'},{redirect:'efgonlineplus.de/private'},{redirect:'efgonlineplus.de?leak=true'},{authenticationToken:'bad\nTOKEN_VALUE'}]){
+ const previous=redirectResult;redirectResult={...previous,...change};assert.equal(await redirectMerchant.browserLogin({username:'TEST_USER',password:'TEST_PASSWORD'}),null);redirectResult=previous;
+}
 const accountId='50000000-0000-4000-8000-000000000001'; let granted=true, onlineFallback=false;
 const jobs=new Map();let adds=0,creates=0,role='administrator',actual=2.5,throwAfterAdd=false;
 const fetch=async(url,options={})=>{const u=new URL(url),body=options.body?JSON.parse(options.body):null,method=options.method||'GET';

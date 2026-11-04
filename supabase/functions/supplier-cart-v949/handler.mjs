@@ -63,11 +63,14 @@ export function createHandler({fetch=globalThis.fetch,env,md5,crypto=globalThis.
    };
    if(body.action==='check-login'){
     if(!uuid.test(body.account_id||''))throw fail('ACCOUNT','Bitte einen Zugang auswählen.');
-    const session=await onlineSession();
-    let response, issue='';
-    try{response=await merchant.call(session,'/api/user/getauthkeylocalapp');}catch(error){issue=error.code||'UNAVAILABLE';}
-    const shape=value=>typeof value==='string'?'string':value&&typeof value==='object'?Object.fromEntries(Object.entries(value).slice(0,16).map(([key,child])=>[key,child&&typeof child==='object'?'object':typeof child])):typeof value;
-    return json({login_confirmed:true,handoff_available:!!(loginToken(response)||session.loginTransfer),response_shape:shape(response),nested_shape:shape(response?.obj),issue});
+    const saved=await account('credentials',{id:body.account_id});
+    if(saved?.company!==scopedCompany)throw fail('ACCOUNT','Der Zugang gehört nicht zu diesem Betrieb.',403);
+    const credentials=validCredentials(saved.credentials);
+    try{
+     await merchant.connect({shop:'efg',...credentials});
+     const handoff=await merchant.browserLogin(credentials);
+     return json({login_confirmed:true,handoff_available:!!handoff,...(handoff?{handoff:{action:handoff.origin+'/?login=true',token:handoff.token}}:{})});
+    }finally{credentials.password='';saved.credentials.password='';}
    }
    if(body.action==='article-add'){
     if(!uuid.test(body.account_id||'')||!uuid.test(scopedCompany||'')||typeof body.sku!=='string'||!body.sku.trim()||body.sku.length>120||/[\u0000-\u001f]/.test(body.sku))throw fail('ARTICLE','Bitte einen gültigen Artikel auswählen.');
@@ -128,7 +131,8 @@ export function createHandler({fetch=globalThis.fetch,env,md5,crypto=globalThis.
    const cartName=!/neugart/i.test(supplier)||body.cart_name===undefined?'':typeof body.cart_name==='string'?body.cart_name.trim():null;
    if(cartName===null||cartName.length>60||/[\u0000-\u001f\u007f]/.test(cartName))throw fail('CART_NAME','Bitte einen Warenkorbnamen mit höchstens 60 Zeichen eingeben.');
    const fingerprint=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify([company,supplier,shop,customer.replace(/^0+/,''),username.toUpperCase(),lines,...(cartName?[cartName]:[]),...(delegated?[body.account_id]:[])]))))).map(n=>n.toString(16).padStart(2,'0')).join('');
-   const session=await merchant.connect({shop,customer,username,password:secret});secret='';body.password='';credentials.password='';if(saved?.credentials)saved.credentials.password='';
+   const session=await merchant.connect({shop,customer,username,password:secret});
+   body.password='';credentials.password='';if(saved?.credentials)saved.credentials.password='';
    const db=async(method,query,data)=>{const r=await fetch(env.url+'/rest/v1/supplier_cart_transfers_v949'+query,{method,headers:{apikey:env.serviceKey,Authorization:'Bearer '+env.serviceKey,'Content-Type':'application/json',Prefer:method==='POST'?'resolution=ignore-duplicates,return=representation':'return=representation'},...(data?{body:JSON.stringify(data)}:{}),signal:AbortSignal.timeout(10000)});if(!r.ok)throw fail('RECEIPT','Die Übertragung konnte nicht sicher protokolliert werden. Bitte nicht erneut senden.',502);return r.json();};
    const inserted=await db('POST','?on_conflict=id',{id,user_id:user.id,company_id:company,fingerprint,state:'started'}),where='?id=eq.'+id+'&user_id=eq.'+user.id+'&company_id=eq.'+company;
    let job=inserted[0];if(!job){const previous=await db('GET',where);job=previous[0];if(!job||job.fingerprint!==fingerprint)throw fail('CONFLICT','Dieser Übertragungsversuch gehört zu einer anderen Auswahl.',409);if(!job.cart_ref)throw fail('PENDING','Die erste Übertragung ist noch nicht eindeutig abgeschlossen. Es werden keine Artikel erneut gesendet.',409);}
@@ -142,7 +146,10 @@ export function createHandler({fetch=globalThis.fetch,env,md5,crypto=globalThis.
    const confirmed=!!items&&items.every(x=>x.confirmed),receipt={company,supplier,request_id:id,confirmed,cart_url:shops[shop]+'/p/cart/'+ref+'/positions',items:items||[],checked_at:new Date(now()).toISOString(),message:confirmed?'Alle Artikel und Mengen wurden im Händlerwarenkorb bestätigt.':'Der Händlerwarenkorb wurde nicht vollständig bestätigt. Es wird nichts erneut gesendet.'};
    await db('PATCH',where,{state:confirmed?'confirmed':'uncertain',receipt,updated_at:new Date(now()).toISOString()});
    // Normal shop sign-in handoff, transient only: never saved with the receipt.
-   let token='';try{const answer=await merchant.call(session,'/api/user/getauthkeylocalapp');token=loginToken(answer);}catch{}if(!token)token=session.loginTransfer;
+   let browserHandoff=null;
+   try{if(shop==='efg')browserHandoff=await merchant.browserLogin({username,password:secret});}catch{/* Preserve the verified cart even if browser sign-in is temporarily unavailable. */}
+   secret='';
+   let token=browserHandoff?.token||'';if(!token)try{const answer=await merchant.call(session,'/api/user/getauthkeylocalapp');token=loginToken(answer);}catch{}if(!token)token=session.loginTransfer;
    return json({...receipt,...(typeof token==='string'&&token.length>8&&token.length<20000?{handoff:{action:receipt.cart_url+'?login=true',token}}:{})});
   }catch(e){return json({code:e.code||'UNAVAILABLE',message:e.code?e.message:'Die Übertragung konnte nicht bestätigt werden. Bitte den Händlerwarenkorb prüfen; es wird nichts automatisch erneut gesendet.'},e.status||502);}finally{secret='';}
  };

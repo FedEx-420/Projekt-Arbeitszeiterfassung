@@ -159,7 +159,14 @@
       if(ngAction==='load')return run(list);
       if(ngAction==='check-login')return run(async current=>{
         const result=await call('check-login',{account_id:id});
-        if(current())status='Händleranmeldung '+(result.login_confirmed?'bestätigt':'nicht bestätigt')+'. Automatische Übergabe '+(result.handoff_available?'verfügbar':'nicht verfügbar')+'. Antwortformat '+JSON.stringify(result.response_shape)+' / '+JSON.stringify(result.nested_shape)+(result.issue?' ('+result.issue+')':'');
+        if(!current())return;
+        status=result.handoff_available?'Händlerzugang bestätigt. Der angemeldete Shop wird geöffnet.':'Händlerzugang bestätigt. Die automatische Shop-Anmeldung ist noch nicht verfügbar.';
+        if(result.handoff){
+          if(result.handoff.action!=='https://efgonlineplus.de/?login=true'||typeof result.handoff.token!=='string'||result.handoff.token.length<9||result.handoff.token.length>20000||/[\u0000-\u001f\u007f]/.test(result.handoff.token))throw Error('Die Shop-Anmeldung konnte nicht bestätigt werden.');
+          const form=document.createElement('form'),input=document.createElement('input');
+          form.method='POST';form.action=result.handoff.action;form.target='_self';form.hidden=true;
+          input.type='hidden';input.name='TOKEN';input.value=result.handoff.token;form.append(input);document.body.append(form);HTMLFormElement.prototype.submit.call(form);setTimeout(()=>form.remove(),60000);
+        }
       });
       if(ngAction==='delete'&&confirm('Neugart-Zugang und alle Freigaben löschen?'))return run(async current=>{await call('account-delete',{account_id:id});if(current())await list(current);});
       if(ngAction==='add'){

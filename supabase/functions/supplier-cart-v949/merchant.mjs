@@ -10,6 +10,11 @@ export function normalizeStock(raw,sku,warehouse,checkedAt){
  if(!text||row.followerSymbol||/nicht gefunden|unbekannt|keine angaben/i.test(text))return {...unknown,text:text||unknown.text};
  return {sku,status:quantity>0&&/verfügbar|vorrätig|auf lager/i.test(text)&&!/nicht verfügbar|nicht vorrätig/i.test(text)?'in_stock':quantity===0?'not_in_stock':'unknown',quantity,text,warehouse,checked_at:checkedAt};
 }
+export function loginToken(value){
+ if(value&&typeof value==='object'&&value.successful===false)return '';
+ const candidates=[value,value?.authKey,value?.authenticationToken,value?.obj,value?.obj?.authKey,value?.obj?.authenticationToken];
+ return candidates.find(token=>typeof token==='string'&&token.length>8&&token.length<20000&&!/[\u0000-\u001f\u007f]/.test(token))||'';
+}
 export function createMerchant({fetch,md5,now=Date.now}){
  async function call(session,path,data,timeoutMs=15000){
   const shop=shops[session.shop],url=new URL(shop.origin+path);url.searchParams.set('layout',shop.layout);
@@ -26,7 +31,7 @@ export function createMerchant({fetch,md5,now=Date.now}){
   const login=await call(s,'/api/account/login',{username,password,layout:shops[shop].layout,language:'DE'});
   if(login.successful!==true)throw fail('LOGIN','Die Anmeldung beim Fachhändler wurde nicht bestätigt. Bitte Zugangsdaten und Onlinezugang prüfen.',401);
   if(login.mandatoryActions?.length)throw fail('SHOP_ACTION','Bitte zuerst die vom Händler angezeigten Schritte direkt im Shop abschließen.',409);
-  s.csrf=login.crsfKey??s.csrf;s.loginTransfer=typeof login.authenticationToken==='string'?login.authenticationToken:'';
+  s.csrf=login.crsfKey??s.csrf;s.loginTransfer=loginToken(login);
   const settings=await call(s,'/api/account/getsettingsremaining?domain='+encodeURIComponent(shops[shop].domain)),u=settings.user;
   if(!u||String(u.customerNumber||'').replace(/^0+/,'')!==customer.replace(/^0+/,''))throw fail('CUSTOMER','Die Kundennummer stimmt nicht mit dem angemeldeten Händlerkonto überein.',403);
   s.csrf=settings.crsfKey??s.csrf;s.userHash=md5(['companyNumber','username','customerNumber'].map(k=>String(u[k]||'').trim().toUpperCase()).join('_'));

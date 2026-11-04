@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import {createHash,webcrypto} from 'node:crypto';
+import {loginToken} from '../../supabase/functions/supplier-cart-v949/merchant.mjs';
 import {createHandler,checkCart} from '../../supabase/functions/supplier-cart-v949/handler.mjs';
+for(const response of ['SYNTHETIC_LOGIN_TOKEN',{authKey:'SYNTHETIC_LOGIN_TOKEN'},{successful:true,obj:'SYNTHETIC_LOGIN_TOKEN'},{successful:true,obj:{authKey:'SYNTHETIC_LOGIN_TOKEN'}},{authenticationToken:'SYNTHETIC_LOGIN_TOKEN'}])assert.equal(loginToken(response),'SYNTHETIC_LOGIN_TOKEN');
+for(const response of [{successful:false,authKey:'SYNTHETIC_LOGIN_TOKEN'},{authKey:'short'},{authKey:'BAD\nLOGIN_TOKEN'},null])assert.equal(loginToken(response),'');
 const owner='10000000-0000-4000-8000-000000000001',company='20000000-0000-4000-8000-000000000001',article='30000000-0000-4000-8000-000000000001',job='40000000-0000-4000-8000-000000000001';
 const md5=x=>createHash('md5').update(x).digest('hex'),env={url:'https://db.invalid',anonKey:'public-fixture',serviceKey:'SYNTHETIC_SERVER_KEY'};
 const json=(x,headers={})=>new Response(JSON.stringify(x),{headers:{'Content-Type':'application/json',...headers}});
@@ -47,7 +50,7 @@ const fetch=async(url,options={})=>{const u=new URL(url),body=options.body?JSON.
   return json({successful:true,obj:{productKey:{productnumber:'HAGER123'},description1:'Hager fixture',quantityUnit:'ST',oX_Supplier:'Hager'}});
  }
  if(u.pathname==='/api/products/getnetpricesandstocksbykbnlist')return json({successful:true,obj:{priceArray:[{priceUnit:1,unit:'ST',netPrice:2,grosPrice:4,grosPriceCurrency:'EUR',netPriceCurrency:'EUR'}]}});
- if(u.pathname==='/api/user/getauthkeylocalapp')return json({authKey:'SYNTHETIC_TRANSIENT_HANDOFF'});
+ if(u.pathname==='/api/user/getauthkeylocalapp')return json({successful:true,obj:'SYNTHETIC_TRANSIENT_HANDOFF'});
  throw Error('Unexpected merchant request');
 };
 const handler=createHandler({fetch,env,md5,crypto:webcrypto}),body={company,supplier:'Neugart',request_id:job,cart_name:'  Baustelle Nord & West  ',customer:'000011',username:'TEST_USER',password:'TEST_PASSWORD',lines:[{material_id:article,quantity:'2.50'}]};

@@ -11,6 +11,12 @@ ZEICHEN
 Ein erfolgreicher Test mit Beispieldaten ist kein Live-Test jedes Geschäftskontos.
 
 ALS NÄCHSTES
+[x] Anmeldeschlüssel aus direkten und umschlossenen Händlerantworten
+    auswerten. Ablehnungen und ungültige Schlüssel abweisen (v977).
+[x] Bestätigten Händlerwarenkorb auch bei fehlendem Anmeldeschlüssel
+    öffnen; vorhandene Shop-Anmeldung im Browser nutzen (v977).
+[ ] Automatische Händleranmeldung im produktiven Warenkorb prüfen.
+    Der direkte Windows-Browserzugriff wurde vom UI-Werkzeug gesperrt.
 [x] Eigenes Warenkorb-Menü für den persönlichen Neugart-Einkauf.
     Artikelzugabe mit Bestätigung und Positionszähler versehen (v976).
 [x] Warenkorb nach Mitarbeiter, Betrieb und Händlerzugang trennen.

@@ -132,7 +132,9 @@
     }
     function openCart(data) {
       const url=new URL(data.cart_url);
-      if(url.origin!=='https://efgonlineplus.de'||!/^\/p\/cart\/[A-Za-z0-9_-]{10,200}\/positions$/.test(url.pathname)||url.search||url.hash||data.handoff?.action!==url.href+'?login=true'||typeof data.handoff.token!=='string'||data.handoff.token.length>20000)throw Error('Die automatische Anmeldung im Neugart-Warenkorb ist nicht verfügbar.');
+      if(!['https://efgonlineplus.de','https://www.gconlineplus.de'].includes(url.origin)||!/^\/p\/cart\/[A-Za-z0-9_-]{10,200}\/positions$/.test(url.pathname)||url.search||url.hash)throw Error('Der Händlerwarenkorb konnte nicht eindeutig zugeordnet werden.');
+      if(!data.handoff){location.assign(url.href);return;}
+      if(data.handoff.action!==url.href+'?login=true'||typeof data.handoff.token!=='string'||data.handoff.token.length<9||data.handoff.token.length>20000||/[\u0000-\u001f\u007f]/.test(data.handoff.token))throw Error('Die Anmeldung im Händlerwarenkorb konnte nicht bestätigt werden.');
       const form=document.createElement('form'),input=document.createElement('input');
       form.method='POST';form.action=data.handoff.action;form.target='_self';form.hidden=true;
       form.dataset.neugartHandoff='';

@@ -1,5 +1,5 @@
 ARBEITSZEITERFASSUNG – GEMEINSAME CHECKLISTE
-Stand: 04.11.2026
+Stand: 05.11.2026
 
 Diese Datei ist die zentrale Aufgabenliste des Projekts. Die Desktop-Verknüpfung
 „Arbeitszeiterfassung - Checkliste“ öffnet genau diese Datei, keine zweite Kopie.
@@ -11,6 +11,11 @@ ZEICHEN
 Ein erfolgreicher Test mit Beispieldaten ist kein Live-Test jedes Geschäftskontos.
 
 ALS NÄCHSTES
+[x] Artikelvorschläge über die volle Positionsbreite darstellen; Angebot bei 320, 390, 844, 1366 und 1920 Pixeln geprüft (v984).
+[x] Admin-Menüs von unnötigen Materialdurchläufen und versteckten Komplettlisten entlasten. Vier Menüs mit 30.000 synthetischen Artikeln geprüft (v984).
+[ ] Reale Kontolatenz aller Admin-Menüs und verbleibende Datenbank-/Vollabrufe messen und weiter verbessern.
+[x] Pauschalrechnung mit Festpreis netto, Steuerprüfung, unveränderlichem Original und Wiederholungsschutz ergänzt; Datenbank, Oberfläche und PDF isoliert geprüft (v984).
+[x] Einkaufsartikel und Hinzufügen-Button auf kleinen Displays ohne horizontalen Überlauf anzeigen; gemeinsamer Artikel-Browsertest bestanden (v984).
 [x] Zwei wiederholte Anmeldeprüfungen in den Datenbankregeln für Planung
     und Dokumente optimiert. Sechs Rollen geprüft; Supabase meldet die
     beiden betroffenen Performance-Warnungen nicht mehr (v983).

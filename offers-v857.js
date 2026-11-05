@@ -49,7 +49,7 @@
     }
     function line(item={kind:'material',name:'',quantity:1,unit_price:0},index=0,settings={kind:'itemized',categories:[],assignment:[]}){
       const labor=item.kind==='labor';
-      const material=(state.rows.materials||[]).find(row=>same(row.id,item.material_id)&&same(row.business_id,businessId()));
+      const material=item.material_id?materialIndex().byId.get(item.material_id):null;
       return `<section class="offer-line" data-offer-line data-kind="${labor?'labor':'material'}" data-material-id="${escape(item.material_id||'')}" data-matched-name="${escape(item.name||'')}"><label class="offer-position">${labor?'Arbeitsleistung':'Material'}<input data-offer-name required maxlength="160" list="offer-${labor?'labor':'materials'}" value="${escape(item.name||'')}" placeholder="${labor?'Monteurstunde, Meisterstunde …':'Artikel eingeben'}"></label><label>${labor?'Stunden':'Menge'}<input data-offer-quantity type="number" required min="${labor?'0.25':'0.01'}" max="100000" step="${labor?'0.25':'0.01'}" value="${escape(item.quantity??1)}"></label>${unitSelect('offer_unit',normalizeUnit(item.unit,labor),`data-offer-unit data-unit-explicit="${item.unit_explicit??Boolean(item.unit)}"`)}<label class="offer-net-price">Netto-Verkaufspreis (€)<small>Ohne Umsatzsteuer eingeben</small><input data-offer-price type="number" inputmode="decimal" required min="0" max="1000000" step="0.0001" value="${escape(item.unit_price??0)}">${priceSlider(item.unit_price,'data-offer-price-slider')}<small class="offer-price-gross" data-offer-price-gross></small></label><div class="offer-line-total"><span>Gesamt netto</span><b data-offer-line-total>${money(n(item.quantity)*n(item.unit_price))}</b></div><button type="button" class="danger small" data-action="offer-remove-line" aria-label="Position entfernen">Entfernen</button><div class="offer-price-presets"><button type="button" class="secondary small" data-action="offer-recommended" data-level="1" ${material?.recommended_price_1==null?'disabled':''}>Empfohlener Netto-VK *${material?.recommended_price_1!=null?' · '+money(material.recommended_price_1):''}</button><button type="button" class="secondary small" data-action="offer-recommended" data-level="2" ${material?.recommended_price_2==null?'disabled':''}>Empfohlener Netto-VK **${material?.recommended_price_2!=null?' · '+money(material.recommended_price_2):''}</button></div>${settings.kind==='fixed'?`<label class="offer-category-assignment">Pauschalkategorie<select data-offer-category-assignment required><option value="">Bitte auswählen</option>${categoryOptions(settings,index)}</select></label>`:''}</section>`;
     }
     function legacyForm(model){
@@ -228,7 +228,6 @@
       root.addEventListener('change',event=>{if(event.target.matches('[data-select="business"]')){state.offerId='';ui.draft=null;load().then(()=>{if(state.view==='offers')render();});}});
     }
     function setup(){
-      materialCache=null;
       const form=root.querySelector('form[data-form="offer"]');if(!form)return;
       form.dataset.resolvedCustomerName=ui.draft?.resolved_customer_name||'';
       form.querySelectorAll('[data-offer-line]').forEach((row,index)=>{const item=ui.draft?.items[index];if(item&&lower(item.name)===lower(row.querySelector('[data-offer-name]').value))row.dataset.resolvedName=item.resolved_name||'';});

@@ -1,0 +1,9 @@
+// Actual PDF renderer with synthetic fixed-price data; no remote calls.
+const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict'),PDFLib=require('pdf-lib');
+async function main(){global.window={PDFLib};for(const file of ['invoice-tax-v905.js','documents-pdf-v857.js'])vm.runInThisContext(fs.readFileSync(path.resolve(__dirname,'../..',file),'utf8'));
+ const data={invoice_fixed_version:984,company:'Fiktiver Testbetrieb',number:'TEST-984',issued:'2026-11-05',from:'2026-11-01',to:'2026-11-03',orderCount:1,finalized:false,customer:'Fiktiver Kunde',days:[{date:'2026-11-01',periods:[{name:'INTERN_STUNDEN',hours:9}]}],items:[{name:'TEST Festpreis',quantity:1,unit:'Pauschal',price:1234.56}],source_snapshot:{secret:'INTERN_MATERIAL'}};
+ data.tax=window.WorktimeInvoiceTax.calculate(data.items,{basis:'net',mode:'standard',confirmed:true});
+ const bytes=await window.DevicePdf.createInvoice(data),pdf=await PDFLib.PDFDocument.load(bytes);let text='';for(const [,object]of pdf.context.enumerateIndirectObjects()){if(object instanceof PDFLib.PDFRawStream){try{const raw=Buffer.from(PDFLib.decodePDFRawStream(object).decode()).toString();for(const m of raw.matchAll(/<([0-9A-Fa-f]+)>\s*Tj/g))text+=Buffer.from(m[1],'hex').toString('latin1')+' ';}catch{}}}
+ assert.match(text,/TEST Festpreis/);assert.match(text,/1[.,]234,56/);assert.match(text,/1[.,]469,13/);assert.doesNotMatch(text,/INTERN_STUNDEN|INTERN_MATERIAL|Einzelpreis/);
+ const out=path.resolve(__dirname,'../../../arbeitszeit-tools/fixed-v984');fs.mkdirSync(out,{recursive:true});fs.writeFileSync(path.join(out,'Pauschalrechnung_Test.pdf'),bytes);console.log(JSON.stringify({passed:4,pages:pdf.getPageCount(),productionRequests:0}));}
+main().catch(e=>{console.error(e);process.exitCode=1;});

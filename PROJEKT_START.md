@@ -208,3 +208,13 @@ Akteuren und 24 vorhandenen Teamdatenbankprüfungen in isolierten Datenbanken
 bestanden. Weitere Hinweise zu Indizes und Vollabrufen sind damit nicht erledigt.
 
 [Prüfbericht und Grenzen](docs/Pruefstand_v983.md).
+
+## v984 – Artikelansicht, Admin-Menüs und Pauschalrechnung
+
+Artikelvorschläge in Angeboten und Arbeitsscheinen belegen die volle Positionsbreite und stehen unter den Eingabefeldern. Foto, Favoritenstern, Netto-EK/VK und Artikelname bleiben lesbar. Der Einkauf stapelt auf kleinen Displays Bild-/Preisbereich und Artikelinhalt; der Hinzufügen-Button läuft nicht mehr über den Rand.
+
+Katalogdekoration, Deutschland-Hinweise und Bestandsdarstellung überspringen fremde Menüs. Die bebilderte Auswahl benötigt keine versteckte Material-Komplettliste. Artikelindizes bleiben bis zum Wechsel von Konto, Firma oder Materialbestand erhalten; bestätigte Einkaufsimporte ersetzen den Material-Array, damit geänderte Einträge die Indizes zuverlässig verwerfen. Rechnungsgruppen werden pro Darstellung einmal berechnet.
+
+Die Rechnungsprüfung bietet unter „Abrechnungsart“ eine Pauschalrechnung mit Leistungsbeschreibung und einem Netto-Festpreis. „Abrechnungsart übernehmen und Steuer prüfen“ lädt den bestätigten Serverstand und verlangt eine neue Steuerprüfung. Änderungen sperren die veraltete Vorschau und den Abschluss. Das PDF zeigt die Pauschalleistung, den Festpreis und die Steuerzusammenfassung; interne Material-/Stundenpositionen bleiben im geschützten Quellstand. Neue RPCs erhalten die bestehenden Rollen-, Firmen-, Quellen-, Sperr- und Wiederholungsprüfungen. Bestehende Rechnungen werden nicht umgeschrieben.
+
+Die isolierten Prüfungen und Grenzen stehen in [Prüfstand v984](docs/Pruefstand_v984.md). Der produktive Admin-Datenbestand und die tatsächliche Netz-/Datenbanklatenz aller Menüs sind noch nicht vollständig gemessen.

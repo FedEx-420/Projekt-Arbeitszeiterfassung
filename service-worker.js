@@ -1,4 +1,4 @@
-const CACHE = 'arbeitszeit-neu-v983';
+const CACHE = 'arbeitszeit-neu-v984';
 const FILES = ['./','./index.html','./styles-v700.css','./responsive-v701.css','./navigation-v710.css','./menu-v720.css','./calendar-v800.css?v=2','./home-v827.css?v=3','./signature-v828.css?v=2','./planned-orders-v855.css','./offers-v857.css?v=908','./material-units-v860.css','./vendor/pdf-lib-1.17.1.min.js','./planning-pdf.js?v=854','./documents-pdf-v857.js?v=908','./offers-v857.js?v=908','./app-v800.js?v=908','./receipt-pdf-v863-1.js','./arrival-timer-v865.js?v=875','./iphone-shortcuts-v870.js','./iphone-shortcuts-v870.css','./owntracks-v871.js?v=908','./owntracks-v871.css?v=906','./device-features-v863.js?v=964','./device-features-v863.css?v=873','./config.js?v=875','./manifest.webmanifest','./icon.svg'];
 FILES.push('./presentation-v900.css','./platform-v900.js','./guidance-v900.js?v=907','./help-topics-v900.js','./navigation-v901.js?v=908','./navigation-v901.css');
 FILES.push('./legal-templates-v900.js','./legal-v900.js');
@@ -75,6 +75,8 @@ for(let i=0;i<FILES.length;i++)if(/^\.\/(catalog-import-v909|catalog-workflow-v9
 for(let i=0;i<FILES.length;i++)if(/^\.\/(purchase-search-v939|supplier-stock-v948)\.js(?:\?.*)?$/.test(FILES[i]))FILES[i]=FILES[i].replace(/\?.*$/,'')+'?v=955';
 for(let i=0;i<FILES.length;i++)if(/^\.\/(purchase-search-v939|material-browser-v926|catalog-store-v933|product-display-v930)\.js(?:\?.*)?$/.test(FILES[i]))FILES[i]=FILES[i].replace(/\?.*$/,'')+'?v=957';
 for(let i=0;i<FILES.length;i++)if(/^\.\/(article-search-v947|product-display-v930|material-browser-v926|purchase-search-v939)\.js(?:\?.*)?$/.test(FILES[i]))FILES[i]=FILES[i].replace(/\?.*$/,'')+'?v=958';
+// Exact entry points for the reviewed v984 release.
+for(let i=0;i<FILES.length;i++)if(["app-v800.js", "article-tools-v959.css", "article-tools-v959.js", "catalog-ui-v908.js", "documents-pdf-v857.js", "german-products-v936.js", "invoice-ledger-ui-v908.js", "offers-v857.js", "product-features-v928.js", "purchase-search-v939.js", "supplier-stock-v948.js"].includes(FILES[i].slice(2).split('?')[0]))FILES[i]=FILES[i].replace(/\?.*$/,'')+'?v=984';
 self.addEventListener('install', event => { event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(FILES))); self.skipWaiting(); });
 self.addEventListener('activate', event => { event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key.startsWith('arbeitszeit-neu-') && key !== CACHE).map(key => caches.delete(key))))); self.clients.claim(); });
 // Never persist authenticated API responses, uploaded receipts or other firms'

@@ -34,3 +34,11 @@ Die aktualisierten vier v984-Prüfdateien sind in `app-review-checks.yml` eingeb
 ## Serverinstallation
 
 Die additive Migration wurde am 05.11.2026 erfolgreich angewendet. Die drei neuen Funktionen sind als SECURITY INVOKER mit leerem search_path installiert, für anonyme Aufrufe gesperrt und für authentifizierte Aufrufe freigegeben. Die bestehenden Rollen-/Firmenprüfungen bleiben im aufgerufenen Rechnungsalgorithmus. Die anschließenden Security-Advisors zeigen dieselben Kategorien und Anzahlen wie vor der Installation, keine neue Warnung durch diese Funktionen. Es wurde keine produktive Rechnung vorbereitet oder abgeschlossen.
+
+## Ergänzung: Admin-Einkauf
+
+Der Admin startete bislang wie ein Geschäftskonto in der allgemeinen Suche mit einem separaten Einkaufsentwurf. Mitarbeiter starteten dagegen im gespeicherten Neugart-Zugang. Die Auswahl des Betriebs aktiviert für Administratoren jetzt direkt diesen gespeicherten Zugang. Der allgemeine Einkauf und dessen bestehende Entwürfe bleiben über den Moduswechsel erhalten. Die Schaltfläche nennt ausdrücklich die Übertragung in den Großhandelswarenkorb; Hinzufügen in der App allein ist keine Übertragungsbestätigung und keine Bestellung.
+
+`admin-neugart-v984.test.cjs` prüft im vollständigen App-Browser: automatischer Admin-Einstieg, richtige Firma/Zugangskennung und Menge im Transfer, Anmelde-POST mit ausschließlich temporärem Token, Wiederöffnen mit derselben Vorgangskennung, leerer eigener Kontext beim Firmenwechsel und den weiterhin funktionierenden Mitarbeiterweg. Bestehender Mitarbeiter-/Neugart-Browserlauf und vollständiger Händler-Edge-Fixturetest bestehen. Keine Händlerkontakte, Übertragungen oder Bestellungen mit realen Daten für diese Prüfung. Die produktive Admin-Gegenprobe bleibt ausdrücklich offen.
+
+Die GitHub-Prüfung fand außerdem eine späte Cache-Überschreibung: ältere Versionsschleifen hinter dem Install-Handler überschrieben die neuen URLs. Die v984-Zuordnung steht nun nach sämtlichen historischen Schleifen. Die bestehende Prüfung der exakten Seiten-/Offline-URLs besteht damit.

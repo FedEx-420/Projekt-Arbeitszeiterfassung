@@ -11,6 +11,8 @@ ZEICHEN
 Ein erfolgreicher Test mit Beispieldaten ist kein Live-Test jedes Geschäftskontos.
 
 ALS NÄCHSTES
+[x] Admin-Einkauf direkt mit gespeichertem Neugart-Zugang des ausgewählten Betriebs öffnen; Übergabe/Anmelde-POST, Wiederholung, Firmenwechsel und Mitarbeiterweg isoliert geprüft (v984).
+[ ] Admin-Händlerübergabe nach Veröffentlichung im produktiven Konto gegenprüfen; keine echten Übertragungen oder Bestellungen zu Testzwecken.
 [x] Artikelvorschläge über die volle Positionsbreite darstellen; Angebot bei 320, 390, 844, 1366 und 1920 Pixeln geprüft (v984).
 [x] Admin-Menüs von unnötigen Materialdurchläufen und versteckten Komplettlisten entlasten. Vier Menüs mit 30.000 synthetischen Artikeln geprüft (v984).
 [ ] Reale Kontolatenz aller Admin-Menüs und verbleibende Datenbank-/Vollabrufe messen und weiter verbessern.

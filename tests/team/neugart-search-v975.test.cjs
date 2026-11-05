@@ -84,7 +84,7 @@ const {chromium}=require('playwright');
     post={method:route.request().method(),body:route.request().postData()};
     return route.fulfill({contentType:'text/html; charset=utf-8',body:'<h1>Bestätigter Händlerwarenkorb</h1>'});
   });
-  await page.getByRole('button',{name:'Artikel bestellen',exact:true}).click();
+  await page.getByRole('button',{name:'Zum Großhändler übertragen und öffnen',exact:true}).click();
   await page.getByRole('heading',{name:'Bestätigter Händlerwarenkorb'}).waitFor();
   assert.equal(post.method,'POST');
   assert.equal(new URLSearchParams(post.body).get('TOKEN'),'synthetic-login-transfer');

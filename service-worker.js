@@ -75,8 +75,6 @@ for(let i=0;i<FILES.length;i++)if(/^\.\/(catalog-import-v909|catalog-workflow-v9
 for(let i=0;i<FILES.length;i++)if(/^\.\/(purchase-search-v939|supplier-stock-v948)\.js(?:\?.*)?$/.test(FILES[i]))FILES[i]=FILES[i].replace(/\?.*$/,'')+'?v=955';
 for(let i=0;i<FILES.length;i++)if(/^\.\/(purchase-search-v939|material-browser-v926|catalog-store-v933|product-display-v930)\.js(?:\?.*)?$/.test(FILES[i]))FILES[i]=FILES[i].replace(/\?.*$/,'')+'?v=957';
 for(let i=0;i<FILES.length;i++)if(/^\.\/(article-search-v947|product-display-v930|material-browser-v926|purchase-search-v939)\.js(?:\?.*)?$/.test(FILES[i]))FILES[i]=FILES[i].replace(/\?.*$/,'')+'?v=958';
-// Exact entry points for the reviewed v984 release.
-for(let i=0;i<FILES.length;i++)if(["app-v800.js", "article-tools-v959.css", "article-tools-v959.js", "catalog-ui-v908.js", "documents-pdf-v857.js", "german-products-v936.js", "invoice-ledger-ui-v908.js", "offers-v857.js", "product-features-v928.js", "purchase-search-v939.js", "supplier-stock-v948.js"].includes(FILES[i].slice(2).split('?')[0]))FILES[i]=FILES[i].replace(/\?.*$/,'')+'?v=984';
 self.addEventListener('install', event => { event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(FILES))); self.skipWaiting(); });
 self.addEventListener('activate', event => { event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key.startsWith('arbeitszeit-neu-') && key !== CACHE).map(key => caches.delete(key))))); self.clients.claim(); });
 // Never persist authenticated API responses, uploaded receipts or other firms'
@@ -124,3 +122,6 @@ for(let i=0;i<FILES.length;i++)if(['article-tools-v959.js','material-browser-v92
 for(let i=0;i<FILES.length;i++)if(['article-tools-v959.css','supplier-cart-ui-v938.js'].includes(FILES[i].split('?')[0].replace('./','')))FILES[i]=FILES[i].split('?')[0]+'?v=982';
 
 for(let i=0;i<FILES.length;i++)if(['offers-v857.js','product-features-v928.js'].includes(FILES[i].split('?')[0].replace('./','')))FILES[i]=FILES[i].split('?')[0]+'?v=982';
+
+// Exact entry points for the reviewed v984 release.
+for(let i=0;i<FILES.length;i++)if(["neugart-accounts-v971.js", "app-v800.js", "article-tools-v959.css", "article-tools-v959.js", "catalog-ui-v908.js", "documents-pdf-v857.js", "german-products-v936.js", "invoice-ledger-ui-v908.js", "offers-v857.js", "product-features-v928.js", "purchase-search-v939.js", "supplier-stock-v948.js"].includes(FILES[i].slice(2).split('?')[0]))FILES[i]=FILES[i].replace(/\?.*$/,'')+'?v=984';

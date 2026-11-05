@@ -42,6 +42,7 @@ async function main(){
 
  await db.exec(fs.readFileSync(path.resolve(__dirname,'../../supabase/migrations/20261029013732_automatic_invoice_numbers_v934.sql'),'utf8'));
  await db.exec(fs.readFileSync(path.resolve(__dirname,'../../supabase/migrations/20261104235149_invoice_fixed_price_v984.sql'),'utf8'));
+ await db.exec(fs.readFileSync(path.resolve(__dirname,'../../supabase/migrations/20261105000441_invoice_fixed_net_basis_v984.sql'),'utf8'));
  const fixed={description:'Fiktive Elektroinstallation zum Festpreis',price:1234.56};
  const prepareFixed=async(orderIds,config=fixed)=>(await db.query('select prepare_invoice_fixed_v984($1,$2,$3) d',[ids.business,JSON.stringify(orderIds),JSON.stringify(config)])).rows[0].d;
  const finishFixed=async(p,config=fixed,id=uuid(984),tax=taxFor(p.document))=>(await db.query('select to_jsonb(issue_invoice_fixed_auto_v984($1,$2,$3,$4,$5,$6,$7)) d',[id,ids.business,'2026-10-17',JSON.stringify(p.selection),JSON.stringify(tax),JSON.stringify(parties),JSON.stringify(config)])).rows[0].d;
@@ -55,6 +56,7 @@ async function main(){
  });
  await test('tampered tax cannot issue the invoice',async()=>{const tax=taxFor(p.document);tax.gross++;await assert.rejects(finishFixed(p,fixed,uuid(983),tax));});
  await test('changing the fixed price changes the reviewed revision',async()=>{assert.notDeepEqual((await prepareFixed([order.id],{...fixed,price:100})).selection,p.selection);});
+ await test('valid gross-basis tax is refused because the fixed price is explicitly net',async()=>{const tax=JSON.parse(JSON.stringify(taxVm.window.WorktimeInvoiceTax.calculate(p.document.items,{basis:'gross',mode:'standard',confirmed:true})));await assert.rejects(finishFixed(p,fixed,uuid(982),tax),/netto/);});
  const timesBefore=(await db.query('select * from time_entries order by id')).rows;let saved;
  await test('fixed invoice freezes total and auto number, locks orders and preserves hours',async()=>{
   saved=await finishFixed(p);assert.equal(saved.document.tax.net,123456);assert.equal(saved.document.tax.gross,146913);assert.equal(saved.invoice_number,'RE-2026-000001');assert.deepEqual(saved.source_snapshot.invoice_fixed_v984,fixed);

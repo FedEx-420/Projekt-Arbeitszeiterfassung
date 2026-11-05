@@ -158,6 +158,7 @@
     return e.finish();
   }
   async function createInvoice(data){
+    if(data.invoice_fixed_version===984&&data.tax?.basis!=='net')throw Error('Der Festpreis der Pauschalrechnung muss netto geprüft sein.');
     if(!data.tax||data.tax.version!==905||data.tax.lines?.length!==data.items.length)throw new Error('Bitte vor der Rechnungserstellung die Umsatzsteuer prüfen.');
     const cancellation=data.cancellationOf,finalized=data.finalized===true;
     const e=await layout(data,cancellation?'Stornorechnung':'Rechnung',data.number,finalized?(cancellation?'Stornorechnung':'Rechnung')+' '+data.number:'Rechnungsvorschau - Abrechnung erfolgt separat');

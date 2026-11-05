@@ -158,6 +158,7 @@
     return e.finish();
   }
   async function createInvoice(data){
+    if(data.invoice_fixed_version===984&&data.tax?.basis!=='net')throw Error('Der Festpreis der Pauschalrechnung muss netto geprüft sein.');
     if(!data.tax||data.tax.version!==905||data.tax.lines?.length!==data.items.length)throw new Error('Bitte vor der Rechnungserstellung die Umsatzsteuer prüfen.');
     const cancellation=data.cancellationOf,finalized=data.finalized===true;
     const e=await layout(data,cancellation?'Stornorechnung':'Rechnung',data.number,finalized?(cancellation?'Stornorechnung':'Rechnung')+' '+data.number:'Rechnungsvorschau - Abrechnung erfolgt separat');
@@ -167,13 +168,20 @@
     e.lines('Ausgestellt am: '+date(data.issued)+' | Leistungszeitraum: '+date(data.from)+(data.to!==data.from?' bis '+date(data.to):''),{size:9,gap:14});
     if(cancellation)e.lines('Vollständige Stornierung der Rechnung '+(typeof cancellation==='string'?cancellation:cancellation.number)+(cancellation.issued?' vom '+date(cancellation.issued):'')+(data.cancellationReason?'\nGrund: '+data.cancellationReason:''),{size:10,gap:15});
     e.lines(data.orderCount+' Arbeitsschein(e)',{size:9,gap:14});
-    for(const day of data.days){
+    for(const day of data.invoice_fixed_version===984?[]:data.days){
       e.context='';e.heading('Ausführung am '+date(day.date),85);e.context=date(day.date);
       e.table(['Mitarbeiter','Von','Bis','Pause','Stunden'],day.periods.map(p=>({numeric:[3,4],cells:[p.name,time(p.start),time(p.end),hours(p.pause),hours(p.hours)]})),[217.28,75,75,74,74]);
     }
+    if(data.invoice_fixed_version===984){
+      if(data.fixed_articles?.length){
+        e.context='';e.heading('Verwendete Artikel',90);
+        e.table(['Artikel','Menge','Einheit'],data.fixed_articles.map(item=>({numeric:[1],cells:[item.name,count(item.quantity),item.unit]})),[365.28,80,70],{numericHeaders:[1]});
+      }
+      e.context='';e.heading('Pauschalrechnung · Festpreis',90);e.table(['Leistungsbeschreibung','Festpreis netto'],data.items.map((item,index)=>({numeric:[1],cells:[item.name,money(data.tax.lines[index].net/100)]})),[375.28,140],{numericHeaders:[1],lastRowReserve:100});}else{
     e.context='';e.heading('Leistungen und Material',90);e.context='Leistungen und Material';
     e.lines('Einzelpreise '+(data.tax.basis==='net'?'netto':'brutto')+' gemäß Auswahl. Positionsbeträge werden auf Cent gerundet.',{size:8,color:e.colors.muted,gap:12});
     e.table(['Pos.','Position / Ausführung','Menge','Einheit','Einzelpreis','Gesamt'],data.items.map((item,index)=>{const line=data.tax.lines[index],rule=window.WorktimeInvoiceTax?.rules[line.code];return {numeric:[0,2,4,5],cells:[String(index+1),[item.name,date(item.date),item.execution,item.description,'Steuer: '+(rule?.label||line.rate+' %')].filter(Boolean).join('\n'),count(item.quantity),item.unit,priceMoney(item.price),money((data.tax.basis==='net'?line.net:line.gross)/100)]};}),[32,175,68,44,93,103.28],{numericHeaders:[0,2,4,5],lastRowReserve:100});
+    }
     e.context='';const summaryRows=2+data.tax.groups.length*(data.tax.groups.length>1?2:1),notesHeight=data.tax.notes.reduce((sum,note)=>sum+32+e.wrap(note.text+'\nRechtsgrundlage: '+note.law+'\nAngabe des Ausstellers: '+note.detail,e.content,9).length*14,0);e.room(Math.min(500,summaryRows*27+48+notesHeight));e.invoiceTotals(data.tax);
     for(const note of data.tax.notes){e.heading('Steuerhinweis',65);e.lines(note.text+'\nRechtsgrundlage: '+note.law+'\nAngabe des Ausstellers: '+note.detail,{size:9,gap:14});}
     if(data.issuer?.iban)e.lines('Bankverbindung: '+data.issuer.iban,{size:9,gap:14});

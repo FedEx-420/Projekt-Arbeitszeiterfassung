@@ -25,6 +25,7 @@ assert.deepEqual(await redirectMerchant.browserLogin({username:'TEST_USER',passw
 for(const change of [{status:1},{layout:'GC'},{redirect:'attacker.invalid'},{redirect:'efgonlineplus.de/private'},{redirect:'efgonlineplus.de?leak=true'},{authenticationToken:'bad\nTOKEN_VALUE'}]){
  const previous=redirectResult;redirectResult={...previous,...change};assert.equal(await redirectMerchant.browserLogin({username:'TEST_USER',password:'TEST_PASSWORD'}),null);redirectResult=previous;
 }
+let hasWarehouse=true, crossLayoutAvailable=true;
 const accountId='50000000-0000-4000-8000-000000000001'; let granted=true, onlineFallback=false;
 const jobs=new Map();let adds=0,creates=0,role='administrator',actual=2.5,throwAfterAdd=false;
 const fetch=async(url,options={})=>{const u=new URL(url),body=options.body?JSON.parse(options.body):null,method=options.method||'GET';
@@ -57,12 +58,12 @@ const fetch=async(url,options={})=>{const u=new URL(url),body=options.body?JSON.
  if(u.origin==='https://www.gconlineplus.de'){
   if(u.pathname==='/api/account/getsettingsremaining')return json({crsfKey:null});
   assert.equal(u.pathname,'/api/account/login');assert.equal(body.password,'TEST_PASSWORD');
-  return json({successful:false,status:11,layout:'EFG',redirect:'efgonlineplus.de',authenticationToken:'SYNTHETIC_REDIRECT_TOKEN'});
+  return crossLayoutAvailable?json({successful:false,status:11,layout:'EFG',redirect:'https://efgonlineplus.de/',authenticationToken:'SYNTHETIC_REDIRECT_TOKEN'}):new Response(null,{status:503});
  }
  assert.equal(u.origin,'https://efgonlineplus.de');assert.equal(options.redirect,'error');assert.ok(!/checkout|delete|sendOffer/.test(u.pathname),'never order or delete');
  const logged=options.headers.Cookie?.includes('sid=PRIVATE_COOKIE');
  assert.equal(u.searchParams.get('crsfKey'),md5((logged?'CSRF':'null')+u.searchParams.get('rand')));
- if(u.pathname==='/api/account/getsettingsremaining')return json({jsonWebToken:'synthetic.token.fixture',crsfKey:logged?'CSRF':null,user:logged?{companyNumber:'777',username:'TEST_USER',customerNumber:'000011',customer:{company:{isSap:false}}}:null,warehouses:[{mfv:'070',warehouseNumber:'070',name:'Testlager'}]});
+ if(u.pathname==='/api/account/getsettingsremaining')return json({jsonWebToken:'synthetic.token.fixture',crsfKey:logged?'CSRF':null,user:logged?{companyNumber:'777',username:'TEST_USER',customerNumber:'000011',customer:{company:{isSap:false}}}:null,warehouses:hasWarehouse?[{mfv:'070',warehouseNumber:'070',name:'Testlager'}]:[]});
  if(u.pathname==='/api/account/login'){assert.equal(body.password,'TEST_PASSWORD');return json({successful:true,mandatoryActions:[],crsfKey:'CSRF'},{'Set-Cookie':'sid=PRIVATE_COOKIE; Path=/; HttpOnly; Secure'});}
  assert.ok(logged);
  if(u.pathname==='/api/carts/createCart'){assert.equal(u.searchParams.get('customerOrderText'),'Baustelle Nord & West');creates++;return json({resultId:'SYNTHETIC_CART_REFERENCE'});}
@@ -93,6 +94,14 @@ assert.equal((await request({...delegated,action:'account-grant',employee_ids:[o
 const list=await (await request({action:'accounts'})).json();
 assert.deepEqual(list,[{id:accountId,label:'Test access',employee_ids:[]}]);
 const loginCheck=await(await request({action:'check-login',account_id:accountId})).json();
+hasWarehouse=false;crossLayoutAvailable=false;
+const fallback=await(await request({action:'check-login',account_id:accountId})).json();
+assert.equal(fallback.handoff?.token,'SYNTHETIC_TRANSIENT_HANDOFF');
+role='administrator';
+const retry=await(await request()).json();
+role='employee';
+assert.equal(retry.confirmed,true);assert.equal(retry.handoff?.token,'SYNTHETIC_TRANSIENT_HANDOFF');
+hasWarehouse=true;crossLayoutAvailable=true;
 assert.equal(loginCheck.handoff_available,true);assert.equal(loginCheck.handoff.action,'https://efgonlineplus.de/?login=true');assert.equal(adds,2,'login check does not write cart positions');
 assert.equal((await request({action:'material-prices',account_id:accountId,ids:['invalid']})).status,400);
 const cart=await (await request(delegated)).json();

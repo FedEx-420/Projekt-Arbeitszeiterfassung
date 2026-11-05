@@ -56,6 +56,8 @@ async function main(){
     const form=()=>page.locator('form[data-form="offer"]');
     async function download(click,filename){const pending=page.waitForEvent('download');await click();const item=await pending;assert.match(item.suggestedFilename(),/\.pdf$/);const file=path.join(output,filename);await item.saveAs(file);const bytes=fs.readFileSync(file);assert.equal(bytes.subarray(0,5).toString(),'%PDF-');assert.ok((await PDFDocument.load(bytes)).getPageCount()>0);assert.equal(new URL(page.url()).hostname,'127.0.0.1');return file;}
     await role('business');
+    // Wait for the real lazy material load before adding synthetic catalog rows.
+    await page.waitForFunction(()=>window.__appTest.state.rows.materials.length>0&&!document.querySelector('[data-startup-view-pending]'));
 
 
 

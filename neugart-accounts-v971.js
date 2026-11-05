@@ -9,7 +9,7 @@
     function sync() {
       if(scope===identity())return;
       searchSerial++;searching=false;searched=false;
-      scope=identity();accounts=null;accountId='';results=[];basket=[];status='';pending=false;query='';manufacturer='';category='';cartName='';attempt=null;shared=false;
+      scope=identity();accounts=null;accountId='';results=[];basket=[];status='';pending=false;query='';manufacturer='';category='';cartName='';attempt=null;shared=state.profile?.role==='administrator';
     }
     const feedback=()=>status?`<p role="status">${esc(status)}</p>`:'';
     async function run(task) {
@@ -44,7 +44,8 @@
       return `<section class="panel"><h2>Neugart-Einkauf</h2><button type="button" class="primary" data-ng-action="cart">Warenkorb öffnen (${basket.length})</button>${state.profile.role==='employee'?'':'<button type="button" class="secondary" data-ng-action="mode">Zur allgemeinen Einkaufssuche</button>'}${feedback()}
       ${accounts===null?'<p>Freigaben werden geladen …</p>':!accounts.length?'<button type="button" class="secondary" data-ng-action="load">Freigaben erneut prüfen</button>':`
       <label>Neugart-Zugang<select data-ng-account>${accounts.map(a=>`<option value="${esc(a.id)}" ${a.id===accountId?'selected':''}>${esc(a.label)}</option>`).join('')}</select></label>
-      <form data-ng-form="search" data-neugart-search><h3>Katalog durchsuchen</h3><label>Artikelname oder Artikelnummer<input name="query" enterkeyhint="search" maxlength="80" value="${esc(query)}"></label><label>Hersteller<input name="manufacturer" maxlength="80" value="${esc(manufacturer)}"></label><label>Kategorie<input name="category" maxlength="80" value="${esc(category)}"></label><button class="primary" ${pending?'disabled':''}>Katalog durchsuchen</button></form>
+      <button type="button" class="secondary" data-ng-action="check-login" data-id="${esc(accountId)}" ${pending?'disabled':''}>Neugart-Konto öffnen</button>
+      <form data-ng-form="search"  data-neugart-search><h3>Katalog durchsuchen</h3><label>Artikelname oder Artikelnummer<input name="query" enterkeyhint="search" maxlength="80" value="${esc(query)}"></label><label>Hersteller<input name="manufacturer" maxlength="80" value="${esc(manufacturer)}"></label><label>Kategorie<input name="category" maxlength="80" value="${esc(category)}"></label><button class="primary" ${pending?'disabled':''}>Katalog durchsuchen</button></form>
       <section data-neugart-results aria-label="Katalogtreffer"><p role="status">${searching?'Katalog wird durchsucht …':searched?results.length+' Katalogtreffer':'Gib einen Artikelnamen, Hersteller oder eine Artikelnummer ein.'}</p>
       ${results.map(m=>`<article class="row-card">${window.WorktimeArticleTools?.html(m)||''}<span>${esc(window.WorktimeProductDisplay?.displayName(m)||m.catalog_product_name||m.name)} · ${esc(m.catalog_article_number)} ${m.catalog_manufacturer?' · '+esc(m.catalog_manufacturer):''}</span><button type="button" class="secondary" data-ng-action="add" data-id="${esc(m.id)}">Hinzufügen</button></article>`).join('')}
       </section>
@@ -53,10 +54,10 @@
     function cartView() {
       sync();
       if(accounts===null){shopping();return '<section class="panel"><h2>Mein Warenkorb</h2><p>Freigaben werden geladen …</p></section>';}
-      return `<section class="panel"><h2>Mein Warenkorb</h2><p>Hier stehen die Artikel, die du für diesen Betrieb und Neugart-Zugang hinzugefügt hast.</p>${feedback()}
+      return `<section class="panel"><h2>Mein Warenkorb</h2><p>Hier stehen die Artikel, die du für diesen Betrieb und Neugart-Zugang hinzugefügt hast. Erst der Button „Zum Großhändler übertragen und öffnen“ überträgt sie in den offiziellen Händlerwarenkorb; dabei wird keine Bestellung ausgelöst.</p>${feedback()}
       <button type="button" class="secondary" data-ng-action="search">Weitere Artikel suchen</button>
       ${accounts.length?`<label>Neugart-Zugang<select data-ng-account>${accounts.map(a=>`<option value="${esc(a.id)}" ${a.id===accountId?'selected':''}>${esc(a.label)}</option>`).join('')}</select></label>`:'<p>Für dich ist kein Neugart-Zugang freigegeben.</p>'}
-      ${basket.length?`<form data-ng-form="cart"><label>Warenkorbname<input name="cart_name" maxlength="60" value="${esc(cartName)}"></label>${basket.map(m=>`<label>${window.WorktimeArticleTools?.html(m,{star:false})||''}${esc(m.catalog_product_name||m.name)} · ${esc(m.unit)}<input type="number" min="0.01" max="999999.99" step="0.01" required name="qty:${esc(m.id)}" value="${esc(m.quantity)}"></label><button type="button" class="secondary" data-ng-action="remove" data-id="${esc(m.id)}">Entfernen</button>`).join('')}<div data-ng-totals>${window.WorktimeArticlePrices?.totalsHtml(basket)||''}</div><button class="primary" ${pending?'disabled':''}>${attempt?.confirmed?'Warenkorb beim Großhändler öffnen':'Artikel bestellen'}</button></form>`:'<p>Dein Warenkorb ist leer.</p>'}</section>`;
+      ${basket.length?`<form data-ng-form="cart"><label>Warenkorbname<input name="cart_name" maxlength="60" value="${esc(cartName)}"></label>${basket.map(m=>`<label>${window.WorktimeArticleTools?.html(m,{star:false})||''}${esc(m.catalog_product_name||m.name)} · ${esc(m.unit)}<input type="number" min="0.01" max="999999.99" step="0.01" required name="qty:${esc(m.id)}" value="${esc(m.quantity)}"></label><button type="button" class="secondary" data-ng-action="remove" data-id="${esc(m.id)}">Entfernen</button>`).join('')}<div data-ng-totals>${window.WorktimeArticlePrices?.totalsHtml(basket)||''}</div><button class="primary" ${pending?'disabled':''}>${attempt?.confirmed?'Warenkorb beim Großhändler öffnen':'Zum Großhändler übertragen und öffnen'}</button></form>`:'<p>Dein Warenkorb ist leer.</p>'}</section>`;
     }
     const basketKey=()=> 'worktime-neugart-basket:'+scope+':'+accountId;
     const attemptKey=()=> 'worktime-neugart-attempt:'+scope+':'+accountId;
@@ -176,7 +177,8 @@
       if(ngAction==='check-login')return run(async current=>{
         const result=await call('check-login',{account_id:id});
         if(!current())return;
-        status=result.handoff_available?'Händlerzugang bestätigt. Der angemeldete Shop wird geöffnet.':'Händlerzugang bestätigt. Die automatische Shop-Anmeldung ist noch nicht verfügbar.';
+        status=result.handoff_available?'Händlerzugang bestätigt. Der angemeldete Shop wird geöffnet.':'Händlerzugang bestätigt. Der Händler hat keine automatische Browser-Anmeldung bereitgestellt. Melde dich direkt bei Neugart an.';
+        if(!result.handoff&&result.login_confirmed===true){location.assign('https://efgonlineplus.de/');return;}
         if(result.handoff){
           if(result.handoff.action!=='https://efgonlineplus.de/?login=true'||typeof result.handoff.token!=='string'||result.handoff.token.length<9||result.handoff.token.length>20000||/[\u0000-\u001f\u007f]/.test(result.handoff.token))throw Error('Die Shop-Anmeldung konnte nicht bestätigt werden.');
           const form=document.createElement('form'),input=document.createElement('input');

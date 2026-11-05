@@ -29,14 +29,14 @@ export function createMerchant({fetch,md5,now=Date.now}){
   const settings=await call(session,'/api/account/getsettingsremaining?domain=gconlineplus.de');
   session.csrf=settings.crsfKey??null;
   const result=await call(session,'/api/account/login',{username,password,layout:'GC',language:'DE'});
-  let destination;try{destination=new URL('https://'+result.redirect);}catch{}
+  let destination;try{destination=new URL(result.redirect.startsWith('https://')?result.redirect:'https://'+result.redirect);}catch{}
   // ONLINE PLUS marks a cross-layout redirect as unsuccessful, status REDIRECT (11).
   // Its authenticationToken is nevertheless the official one-use browser handoff.
   const token=loginToken(result.authenticationToken);
   if(result.status===11&&result.layout==='EFG'&&token&&destination?.origin==='https://efgonlineplus.de'&&!destination.username&&!destination.password&&destination.pathname==='/'&&!destination.search&&!destination.hash)return {token,origin:destination.origin};
   return null;
  }
- async function connect({shop,username,password,customer}){
+ async function connect({shop,username,password,customer,requireWarehouse=true}){
   if(!shops[shop])throw fail('SHOP','Bitte GC oder EFG ONLINE PLUS auswählen.');
   const s={shop,cookies:{},csrf:null,userHash:'',expires:now()+12*3600000};
   const initial=await call(s,'/api/account/getsettingsremaining?domain='+encodeURIComponent(shops[shop].domain));s.csrf=initial.crsfKey??null;
@@ -47,8 +47,8 @@ export function createMerchant({fetch,md5,now=Date.now}){
   const settings=await call(s,'/api/account/getsettingsremaining?domain='+encodeURIComponent(shops[shop].domain)),u=settings.user;
   if(!u||String(u.customerNumber||'').replace(/^0+/,'')!==customer.replace(/^0+/,''))throw fail('CUSTOMER','Die Kundennummer stimmt nicht mit dem angemeldeten Händlerkonto überein.',403);
   s.csrf=settings.crsfKey??s.csrf;s.userHash=md5(['companyNumber','username','customerNumber'].map(k=>String(u[k]||'').trim().toUpperCase()).join('_'));
-  s.warehouses=(settings.warehouses||[]).filter(w=>typeof w.mfv==='string'&&typeof w.warehouseNumber==='string'&&typeof w.name==='string').slice(0,300).map(w=>({id:w.mfv.trim()+w.warehouseNumber.trim(),stockId:u.customer?.company?.isSap?w.mfv.trim()+w.warehouseNumber.trim():w.warehouseNumber.trim(),name:clean(w.name,200)}));
-  if(!s.warehouses.length)throw fail('WAREHOUSE','Der Händler hat kein Lager zur Auswahl geliefert.',502);
+  s.warehouses=(Array.isArray(settings.warehouses)?settings.warehouses:[]).filter(w=>typeof w.mfv==='string'&&typeof w.warehouseNumber==='string'&&typeof w.name==='string').slice(0,300).map(w=>({id:w.mfv.trim()+w.warehouseNumber.trim(),stockId:u.customer?.company?.isSap?w.mfv.trim()+w.warehouseNumber.trim():w.warehouseNumber.trim(),name:clean(w.name,200)}));
+  if(requireWarehouse&&!s.warehouses.length)throw fail('WAREHOUSE','Der Händler hat kein Lager zur Auswahl geliefert.',502);
   return s;
  }
  async function refresh(session,needsToken=false){
@@ -73,5 +73,18 @@ export function createMerchant({fetch,md5,now=Date.now}){
   }
   return found;
  }
- return {connect,call,online,browserLogin,prices};
+ async function handoffToken(session,credentials){
+  if(session.shop==='efg'){
+   try{
+    const handoff=await browserLogin(credentials);
+    if(handoff?.token)return handoff.token;
+   }catch{/* The validated shop session can still issue a handoff. */}
+  }
+  try{
+   const token=loginToken(await call(session,'/api/user/getauthkeylocalapp'));
+   if(token)return token;
+  }catch{/* Use the token from the validated login if present. */}
+  return session.loginTransfer||'';
+ }
+ return {connect,call,online,browserLogin,handoffToken,prices};
 }

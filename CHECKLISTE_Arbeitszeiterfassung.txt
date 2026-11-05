@@ -11,6 +11,8 @@ ZEICHEN
 Ein erfolgreicher Test mit Beispieldaten ist kein Live-Test jedes Geschäftskontos.
 
 ALS NÄCHSTES
+[x] Gautzsch-TXT-Export aus dem allgemeinen Einkauf samt FiF-Upload-Link mit Testdaten geprüft.
+[ ] Gautzsch-Live-Import und automatische Schnittstellen ohne persönliche Kontaktaufnahme verifizieren.
 [x] Neugart-Warenkorb wurde vom Nutzer nach v986 als wieder funktionsfähig bestätigt.
 [x] Neugart-Verfügbarkeit mit vier Ampelvarianten und Händlertext für sichtbare gemeinsame Artikelkarten ergänzt und mit Testdaten geprüft (v987).
 [ ] Alle Neugart-Portalstatus und Lager-/Lieferterminvarianten mit anonymisierten Echtbeispielen abgleichen. Artikelansichten ohne eindeutigen Neugart-Bezug gesondert prüfen.

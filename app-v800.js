@@ -28,7 +28,7 @@
     materials: ['materials'],
     shopping: ['materials'],
     catalogs: ['materials'],
-    'supplier-catalogs': ['materials'],
+    'supplier-catalogs': [],
     offers: ['offers','customers','customerRates','materials','legal'],
     settings: ['device','businessRules','legal'],
     invoices: ['orders','items','customers','customerRates','materials','documents','ledger','legal'],
@@ -1799,7 +1799,7 @@
     const [appointments, days, vacations, orders, entries, customers, requests, customerRates, workweeks] = await Promise.all([
       allRows('appointments', 'select=*&order=event_date.asc,id.asc'), allRows('work_days', 'select=*&order=employee_id.asc,work_date.asc'),
       allRows('vacation_requests', 'select=*&order=id.asc'), allRows('work_orders', 'select=*&order=id.asc'), allRows('time_entries', 'select=*&order=id.asc'), allRows('customers', 'select=*&order=name.asc,id.asc'),
-      allRows('planning_requests', 'select=*&order=created_at.desc,id.asc', timed).catch(()=>null),
+      allRows('planning_requests', 'select=*&order=created_at.desc,id.asc', true).catch(()=>null),
       allRows('customer_hourly_rates','select=*&order=customer_id.asc'),allRows('employee_workweeks_v905','select=*&order=employee_id.asc,effective_from.asc')
     ]);
     if (!same(actor, state.profile?.id)) throw new Error('Das Benutzerkonto hat sich geändert. Bitte die Planung erneut öffnen.');

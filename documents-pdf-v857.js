@@ -172,7 +172,12 @@
       e.context='';e.heading('Ausführung am '+date(day.date),85);e.context=date(day.date);
       e.table(['Mitarbeiter','Von','Bis','Pause','Stunden'],day.periods.map(p=>({numeric:[3,4],cells:[p.name,time(p.start),time(p.end),hours(p.pause),hours(p.hours)]})),[217.28,75,75,74,74]);
     }
-    if(data.invoice_fixed_version===984){e.context='';e.heading('Pauschalrechnung · Festpreis',90);e.table(['Leistungsbeschreibung','Festpreis netto'],data.items.map((item,index)=>({numeric:[1],cells:[item.name,money(data.tax.lines[index].net/100)]})),[375.28,140],{numericHeaders:[1],lastRowReserve:100});}else{
+    if(data.invoice_fixed_version===984){
+      if(data.fixed_articles?.length){
+        e.context='';e.heading('Verwendete Artikel',90);
+        e.table(['Artikel','Menge','Einheit'],data.fixed_articles.map(item=>({numeric:[1],cells:[item.name,count(item.quantity),item.unit]})),[365.28,80,70],{numericHeaders:[1]});
+      }
+      e.context='';e.heading('Pauschalrechnung · Festpreis',90);e.table(['Leistungsbeschreibung','Festpreis netto'],data.items.map((item,index)=>({numeric:[1],cells:[item.name,money(data.tax.lines[index].net/100)]})),[375.28,140],{numericHeaders:[1],lastRowReserve:100});}else{
     e.context='';e.heading('Leistungen und Material',90);e.context='Leistungen und Material';
     e.lines('Einzelpreise '+(data.tax.basis==='net'?'netto':'brutto')+' gemäß Auswahl. Positionsbeträge werden auf Cent gerundet.',{size:8,color:e.colors.muted,gap:12});
     e.table(['Pos.','Position / Ausführung','Menge','Einheit','Einzelpreis','Gesamt'],data.items.map((item,index)=>{const line=data.tax.lines[index],rule=window.WorktimeInvoiceTax?.rules[line.code];return {numeric:[0,2,4,5],cells:[String(index+1),[item.name,date(item.date),item.execution,item.description,'Steuer: '+(rule?.label||line.rate+' %')].filter(Boolean).join('\n'),count(item.quantity),item.unit,priceMoney(item.price),money((data.tax.basis==='net'?line.net:line.gross)/100)]};}),[32,175,68,44,93,103.28],{numericHeaders:[0,2,4,5],lastRowReserve:100});

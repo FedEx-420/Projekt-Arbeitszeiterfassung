@@ -43,12 +43,15 @@ async function main(){
  await db.exec(fs.readFileSync(path.resolve(__dirname,'../../supabase/migrations/20261029013732_automatic_invoice_numbers_v934.sql'),'utf8'));
  await db.exec(fs.readFileSync(path.resolve(__dirname,'../../supabase/migrations/20261104235149_invoice_fixed_price_v984.sql'),'utf8'));
  await db.exec(fs.readFileSync(path.resolve(__dirname,'../../supabase/migrations/20261105000441_invoice_fixed_net_basis_v984.sql'),'utf8'));
+ await db.exec(fs.readFileSync(path.resolve(__dirname,'../../supabase/migrations/20261105174500_fixed_invoice_article_list.sql'),'utf8'));
  const fixed={description:'Fiktive Elektroinstallation zum Festpreis',price:1234.56};
  const prepareFixed=async(orderIds,config=fixed)=>(await db.query('select prepare_invoice_fixed_v984($1,$2,$3) d',[ids.business,JSON.stringify(orderIds),JSON.stringify(config)])).rows[0].d;
  const finishFixed=async(p,config=fixed,id=uuid(984),tax=taxFor(p.document))=>(await db.query('select to_jsonb(issue_invoice_fixed_auto_v984($1,$2,$3,$4,$5,$6,$7)) d',[id,ids.business,'2026-10-17',JSON.stringify(p.selection),JSON.stringify(tax),JSON.stringify(parties),JSON.stringify(config)])).rows[0].d;
  await f.actor('business');const order=await f.save(),p=await prepareFixed([order.id]);
  await test('fixed preview replaces public line prices, keeps internal sources and writes nothing',async()=>{
-  assert.equal(p.document.items.length,1);assert.equal(p.document.items[0].price,1234.56);assert.equal(p.document.items[0].quantity,1);assert.equal(p.document.invoice_fixed_version,984);assert.equal(p.document.days.length,0);assert.ok(p.source_snapshot.orders[0].items.length>0);
+  assert.equal(p.document.items.length,1);
+  assert.ok(p.document.fixed_articles.length>0);
+  assert.ok(p.document.fixed_articles.every(article=>Object.keys(article).sort().join(',')==='name,quantity,unit'));assert.equal(p.document.items[0].price,1234.56);assert.equal(p.document.items[0].quantity,1);assert.equal(p.document.invoice_fixed_version,984);assert.equal(p.document.days.length,0);assert.ok(p.source_snapshot.orders[0].items.length>0);
   assert.equal((await db.query('select count(*) n from invoice_batches_v908')).rows[0].n,0);
  });
  await test('blank descriptions, negative prices and sub-cent prices are rejected',async()=>{

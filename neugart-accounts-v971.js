@@ -44,7 +44,8 @@
       return `<section class="panel"><h2>Neugart-Einkauf</h2><button type="button" class="primary" data-ng-action="cart">Warenkorb öffnen (${basket.length})</button>${state.profile.role==='employee'?'':'<button type="button" class="secondary" data-ng-action="mode">Zur allgemeinen Einkaufssuche</button>'}${feedback()}
       ${accounts===null?'<p>Freigaben werden geladen …</p>':!accounts.length?'<button type="button" class="secondary" data-ng-action="load">Freigaben erneut prüfen</button>':`
       <label>Neugart-Zugang<select data-ng-account>${accounts.map(a=>`<option value="${esc(a.id)}" ${a.id===accountId?'selected':''}>${esc(a.label)}</option>`).join('')}</select></label>
-      <form data-ng-form="search" data-neugart-search><h3>Katalog durchsuchen</h3><label>Artikelname oder Artikelnummer<input name="query" enterkeyhint="search" maxlength="80" value="${esc(query)}"></label><label>Hersteller<input name="manufacturer" maxlength="80" value="${esc(manufacturer)}"></label><label>Kategorie<input name="category" maxlength="80" value="${esc(category)}"></label><button class="primary" ${pending?'disabled':''}>Katalog durchsuchen</button></form>
+      <button type="button" class="secondary" data-ng-action="check-login" data-id="${esc(accountId)}" ${pending?'disabled':''}>Neugart-Konto öffnen</button>
+      <form data-ng-form="search"  data-neugart-search><h3>Katalog durchsuchen</h3><label>Artikelname oder Artikelnummer<input name="query" enterkeyhint="search" maxlength="80" value="${esc(query)}"></label><label>Hersteller<input name="manufacturer" maxlength="80" value="${esc(manufacturer)}"></label><label>Kategorie<input name="category" maxlength="80" value="${esc(category)}"></label><button class="primary" ${pending?'disabled':''}>Katalog durchsuchen</button></form>
       <section data-neugart-results aria-label="Katalogtreffer"><p role="status">${searching?'Katalog wird durchsucht …':searched?results.length+' Katalogtreffer':'Gib einen Artikelnamen, Hersteller oder eine Artikelnummer ein.'}</p>
       ${results.map(m=>`<article class="row-card">${window.WorktimeArticleTools?.html(m)||''}<span>${esc(window.WorktimeProductDisplay?.displayName(m)||m.catalog_product_name||m.name)} · ${esc(m.catalog_article_number)} ${m.catalog_manufacturer?' · '+esc(m.catalog_manufacturer):''}</span><button type="button" class="secondary" data-ng-action="add" data-id="${esc(m.id)}">Hinzufügen</button></article>`).join('')}
       </section>
@@ -176,7 +177,8 @@
       if(ngAction==='check-login')return run(async current=>{
         const result=await call('check-login',{account_id:id});
         if(!current())return;
-        status=result.handoff_available?'Händlerzugang bestätigt. Der angemeldete Shop wird geöffnet.':'Händlerzugang bestätigt. Die automatische Shop-Anmeldung ist noch nicht verfügbar.';
+        status=result.handoff_available?'Händlerzugang bestätigt. Der angemeldete Shop wird geöffnet.':'Händlerzugang bestätigt. Der Händler hat keine automatische Browser-Anmeldung bereitgestellt. Melde dich direkt bei Neugart an.';
+        if(!result.handoff&&result.login_confirmed===true){location.assign('https://efgonlineplus.de/');return;}
         if(result.handoff){
           if(result.handoff.action!=='https://efgonlineplus.de/?login=true'||typeof result.handoff.token!=='string'||result.handoff.token.length<9||result.handoff.token.length>20000||/[\u0000-\u001f\u007f]/.test(result.handoff.token))throw Error('Die Shop-Anmeldung konnte nicht bestätigt werden.');
           const form=document.createElement('form'),input=document.createElement('input');

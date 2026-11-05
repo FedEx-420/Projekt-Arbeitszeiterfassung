@@ -11,12 +11,15 @@ ZEICHEN
 Ein erfolgreicher Test mit Beispieldaten ist kein Live-Test jedes Geschäftskontos.
 
 ALS NÄCHSTES
+[x] Schreibgeschützte Katalogbibliothek ohne Materialvollabruf öffnen; 1.205-Artikel-Analyse, PDF-Auszug, Firmen-/Kataloggrenzen und mobile Breiten geprüft (v984).
 [x] Admin-Einkauf direkt mit gespeichertem Neugart-Zugang des ausgewählten Betriebs öffnen; Übergabe/Anmelde-POST, Wiederholung, Firmenwechsel und Mitarbeiterweg isoliert geprüft (v984).
-[ ] Admin-Händlerübergabe nach Veröffentlichung im produktiven Konto gegenprüfen; keine echten Übertragungen oder Bestellungen zu Testzwecken.
+[x] Neugart-Anmeldung und Shopöffnung für Geschäfts-, Mitarbeiter- und Adminkonto robuster machen; Händlerantworten isoliert geprüft (v984).
+[ ] Neugart-Anmeldung und Warenkorbübertragung im produktiven Geschäftszugang für alle drei Rollen gegenprüfen.
 [x] Artikelvorschläge über die volle Positionsbreite darstellen; Angebot bei 320, 390, 844, 1366 und 1920 Pixeln geprüft (v984).
 [x] Admin-Menüs von unnötigen Materialdurchläufen und versteckten Komplettlisten entlasten. Vier Menüs mit 30.000 synthetischen Artikeln geprüft (v984).
 [ ] Reale Kontolatenz aller Admin-Menüs und verbleibende Datenbank-/Vollabrufe messen und weiter verbessern.
 [x] Pauschalrechnung mit Festpreis netto, Steuerprüfung, unveränderlichem Original und Wiederholungsschutz ergänzt; Datenbank, Oberfläche und PDF isoliert geprüft (v984).
+[x] Pauschalrechnungen listen Artikel mit Menge und Einheit ohne Einzelpreise. Stundenrechnungen bieten änderbare Artikel-VK vor Abschluss (v984).
 [x] Einkaufsartikel und Hinzufügen-Button auf kleinen Displays ohne horizontalen Überlauf anzeigen; gemeinsamer Artikel-Browsertest bestanden (v984).
 [x] Zwei wiederholte Anmeldeprüfungen in den Datenbankregeln für Planung
     und Dokumente optimiert. Sechs Rollen geprüft; Supabase meldet die

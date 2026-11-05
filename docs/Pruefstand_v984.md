@@ -17,7 +17,7 @@ Stand: 05.11.2026. Ausgangsstand: `3b6d46c` (v983).
 - Derselbe Browserlauf: Trefferbreite und kein horizontaler Überlauf bei 320, 390, 844, 1366 und 1920 Pixeln. Exakte Auswahl des gefundenen Artikels und VK*-Übernahme; Fremdfirmenartikel ausgeschlossen.
 - `invoice-fixed-v984.test.cjs`: neun Prüfungen in einer wegwerfbaren PGlite-Datenbank. Vorschau ohne Buchung, Eingabevalidierung, manipulierte Steuer und Bruttobasis abgewiesen, Festpreis im Fingerprint, exakter Abschluss/Nummer, Wiederholung und abweichender Wiederholungsinhalt, Fremdfirma/Mitarbeiter abgewiesen, Storno und erhaltenes Original/Arbeitszeiten.
 - `invoice-fixed-browser-v984.test.cjs`: vier Prüfungen der tatsächlichen Oberfläche mit abgefangenen APIs. Geänderte Werte sperren alte Vorschau, bestätigter Festpreis/Steuerbetrag im PDF-Modell, responsive Eingabe und exakter Abschluss-Request.
-- `invoice-fixed-pdf-v984.test.cjs`: tatsächliches einseitiges PDF; Leistungsbeschreibung und Beträge 1.234,56 € netto / 1.469,13 € brutto enthalten. Interne Positionen, Stunden und Einzelpreisspalte fehlen. PDF-Inhalte werden aus den erzeugten Streams geprüft.
+- `invoice-fixed-pdf-v984.test.cjs`: tatsächliches einseitiges PDF; Leistungsbeschreibung und Beträge 1.234,56 € netto / 1.469,13 € brutto enthalten. Der verwendete Artikel erscheint mit Menge und Einheit. Stunden und Einzelpreise fehlen. PDF-Inhalte werden aus den erzeugten Streams geprüft.
 - Bestehende Rechnungsregister-Oberfläche (17), Steuerprüfungen (7), Rechnungs-/Angebots-PDFs (2), automatische Nummern (7), Lieferanten-Datenbankfälle (5), Rechnungspreis-Browserfälle (8), Lieferanten-Browserfälle (9), Angebotssteuerung/responsive Felder (12), Start-/Sitzungsprüfung und gemeinsamer Artikel-/Favoriten-Browserlauf erfolgreich.
 - Deutschland-Erkennung mit dem bestehenden nicht-browserbasierten Test erfolgreich. Keine echten Bestellungen, Produktionsrechnungen oder privaten Daten für Tests verwendet.
 
@@ -29,7 +29,7 @@ Der echte Admin-Bestand, Netzwerklatenz und alle Datenbank-Vollabrufe sind noch 
 
 Die historischen zusätzlichen Browserfälle `german-products-browser-v936.test.cjs` und `supplier-stock-browser-v948.test.cjs` scheitern lokal an ihren früheren Treffer-/Bestandskartenerwartungen auch im unveränderten Ausgangsstand. Sie werden nicht als bestanden bezeichnet. Der zuvor ebenfalls vorhandene mobile Überlauf im gemeinsamen Artikel-Browsertest wurde in v984 behoben; dieser aktuelle Ablauf besteht.
 
-Die aktualisierten vier v984-Prüfdateien sind in `app-review-checks.yml` eingebunden. Eine reale Rechnung wird ausschließlich nach ausdrücklicher Abschlussbestätigung des Betriebs erstellt.
+Die v984-Prüfdateien sind in `app-review-checks.yml` eingebunden. Eine reale Rechnung wird ausschließlich nach ausdrücklicher Abschlussbestätigung des Betriebs erstellt.
 
 ## Serverinstallation
 
@@ -42,3 +42,9 @@ Der Admin startete bislang wie ein Geschäftskonto in der allgemeinen Suche mit 
 `admin-neugart-v984.test.cjs` prüft im vollständigen App-Browser: automatischer Admin-Einstieg, richtige Firma/Zugangskennung und Menge im Transfer, Anmelde-POST mit ausschließlich temporärem Token, Wiederöffnen mit derselben Vorgangskennung, leerer eigener Kontext beim Firmenwechsel und den weiterhin funktionierenden Mitarbeiterweg. Bestehender Mitarbeiter-/Neugart-Browserlauf und vollständiger Händler-Edge-Fixturetest bestehen. Keine Händlerkontakte, Übertragungen oder Bestellungen mit realen Daten für diese Prüfung. Die produktive Admin-Gegenprobe bleibt ausdrücklich offen.
 
 Die GitHub-Prüfung fand außerdem eine späte Cache-Überschreibung: ältere Versionsschleifen hinter dem Install-Handler überschrieben die neuen URLs. Die v984-Zuordnung steht nun nach sämtlichen historischen Schleifen. Die bestehende Prüfung der exakten Seiten-/Offline-URLs besteht damit.
+
+Die vollständige CI-Prüfung deckte zudem den blockierten Einstieg in die schreibgeschützte Katalogbibliothek ohne Materialbestand auf. „Fachhändler Kataloge“ benötigt keinen Materialvollabruf mehr. Die vorhandene Prüfung liest alle 1.205 Katalogzeilen, erzeugt den PDF-Auszug und prüft Konto-/Katalogtrennung; der Importassistent behält seine Materialabhängigkeit.
+
+Die Katalogprüfung ist auch bei 320 Pixeln ohne seitlichen Überlauf geprüft; Schaltflächen umbrechen und Artikelbereiche werden auf kleinen Displays gestapelt. Die bestehende Produkt-Assistent-Prüfung wartet jetzt ausdrücklich auf den realen verzögerten Materialabruf, bevor sie künstliche Artikel ergänzt. Damit können die Prüfdaten nicht durch dessen spätere Antwort ersetzt werden; sämtliche 19 fachlichen Prüfungen bleiben unverändert und bestehen.
+
+Die Händler-Fixtures prüfen zusätzlich die Anmeldung ohne Lagerauswahl, absolute Händler-Weiterleitungen und den temporären Schlüssel aus der verifizierten Sitzung. Die produktive Händleranmeldung und exakte Warenkorbübernahme bleiben offen.

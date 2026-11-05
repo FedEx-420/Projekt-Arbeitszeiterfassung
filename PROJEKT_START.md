@@ -234,3 +234,5 @@ Die schreibgeschützte Liste „Fachhändler Kataloge“ wartet nicht mehr auf d
 Der Sitzungsabruf im Neugart-Händlerdienst wurde produktiv mit HTTP 401 abgewiesen. Beim ausdrücklich unangemeldeten Abruf lässt v986 den regulären Händlerlogin trotzdem zu. Die anschließende Händlerantwort muss die hinterlegte Kundennummer bestätigen. Artikel und Mengen werden über die bestehende protokollierte Übertragung geschrieben und zurückgelesen. Die Weiterleitung öffnet den gefüllten Händlerwarenkorb. Der Klick im Händlerportal schließt die Bestellung ab.
 
 Der frühere produktive Transfer und die Rücklesung sind in [Einkauf v949](docs/Einkauf_v949.md) dokumentiert. Das neue Fixture prüft den vollständigen Transfer nach HTTP 401, den Anmeldeschlüssel sowie die Wiederöffnung ohne Duplikate. Ein HTTP 401 nach der Anmeldung blockiert den Schreibzugriff weiterhin. Der produktive Transfer nach der Änderung bleibt zu prüfen.
+
+Ergänzende Browserprüfung: Der Übergabeklick sendet einen echten Formular-POST im selben Tab und navigiert zum Händlerwarenkorb. Die Händlerantwort wird im Test abgefangen. Der Live-Warenkorb bleibt bis zur nächsten Übertragung zu prüfen.

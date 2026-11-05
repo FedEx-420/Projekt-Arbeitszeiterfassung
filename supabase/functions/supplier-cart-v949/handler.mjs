@@ -61,6 +61,13 @@ export function createHandler({fetch=globalThis.fetch,env,md5,crypto=globalThis.
     try{return await merchant.connect({shop:'efg',...credentials});}
     finally{credentials.password='';saved.credentials.password='';}
    };
+   if(body.action==='availability'){
+    if(!uuid.test(body.account_id||'')||!uuid.test(scopedCompany||''))throw fail('ACCOUNT','Bitte einen freigegebenen Neugart-Zugang auswählen.');
+    const skus=body.skus;
+    if(!Array.isArray(skus)||!skus.length||skus.length>12||new Set(skus).size!==skus.length||
+       skus.some(sku=>typeof sku!=='string'||!sku.trim()||sku.length>120||/[\u0000-\u001f\u007f]/.test(sku)))throw fail('ARTICLE','Die Artikelauswahl ist ungültig.');
+    return json({company:scopedCompany,account_id:body.account_id,...await merchant.availability(await onlineSession(),skus)});
+   }
    if(body.action==='check-login'){
     if(!uuid.test(body.account_id||''))throw fail('ACCOUNT','Bitte einen Zugang auswählen.');
     const saved=await account('credentials',{id:body.account_id});
@@ -110,7 +117,7 @@ export function createHandler({fetch=globalThis.fetch,env,md5,crypto=globalThis.
     const local=await readMaterials(params);
     if(local.length)return json(local);
     const session=await onlineSession();
-    const remote=await merchant.online.search(session,{query:[term,brand,category].filter(Boolean).join(' '),warehouse:session.warehouses[0]?.id,inStockOnly:true});
+    const remote=await merchant.online.search(session,{query:[term,brand,category].filter(Boolean).join(' '),warehouse:session.warehouses[0]?.id,inStockOnly:body.in_stock_only===true});
     const products=remote.products.filter(p=>!p.locked).slice(0,40);
     let prices=new Map();try{prices=await merchant.prices(session,products.filter(p=>!p.price_hidden).map(p=>p.sku));}catch{}
     return json(products.map(p=>({

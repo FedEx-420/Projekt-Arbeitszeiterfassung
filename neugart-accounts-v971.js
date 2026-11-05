@@ -2,14 +2,14 @@
 (function () {
   'use strict';
   window.WorktimeNeugartAccounts = { create({root,state,api,businessId,render,escape:esc}) {
-    let scope='', accounts=null, accountId='', results=[], basket=[], status='', pending=false, query='', manufacturer='', category='', cartName='', attempt=null, shared=false;
+    let scope='', accounts=null, accountId='', results=[], basket=[], status='', pending=false, query='', manufacturer='', category='', cartName='', onlyAvailable=false, attempt=null, shared=false;
     let searchSerial=0, searching=false, searched=false;
     const identity=()=>state.profile?.id&&businessId()?state.profile.id+':'+businessId():'';
     const call=(action,body={})=>api('/functions/v1/supplier-cart-v949',{method:'POST',body:{action,company:businessId(),...body}});
     function sync() {
       if(scope===identity())return;
       searchSerial++;searching=false;searched=false;
-      scope=identity();accounts=null;accountId='';results=[];basket=[];status='';pending=false;query='';manufacturer='';category='';cartName='';attempt=null;shared=state.profile?.role==='administrator';
+      scope=identity();accounts=null;accountId='';results=[];basket=[];status='';pending=false;query='';manufacturer='';category='';cartName='';onlyAvailable=false;attempt=null;shared=state.profile?.role==='administrator';
     }
     const shopUrl='https://efgonlineplus.de/';
     const shopLink=()=>`<a href="${shopUrl}" target="_blank" rel="noopener noreferrer">Neugart-Shop direkt öffnen</a>`;
@@ -48,7 +48,7 @@
       ${accounts===null?'<p>Freigaben werden geladen …</p>':!accounts.length?'<button type="button" class="secondary" data-ng-action="load">Freigaben erneut prüfen</button>':`
       <label>Neugart-Zugang<select data-ng-account>${accounts.map(a=>`<option value="${esc(a.id)}" ${a.id===accountId?'selected':''}>${esc(a.label)}</option>`).join('')}</select></label>
       ${accountButton(accountId)} ${shopLink()}
-      <form data-ng-form="search" data-neugart-search><h3>Katalog durchsuchen</h3><label>Artikelname oder Artikelnummer<input name="query" enterkeyhint="search" maxlength="80" value="${esc(query)}"></label><label>Hersteller<input name="manufacturer" maxlength="80" value="${esc(manufacturer)}"></label><label>Kategorie<input name="category" maxlength="80" value="${esc(category)}"></label><button class="primary" ${pending?'disabled':''}>Katalog durchsuchen</button></form>
+      <form data-ng-form="search" data-neugart-search data-neugart-available-only="${onlyAvailable}"><h3>Katalog durchsuchen</h3><label>Artikelname oder Artikelnummer<input name="query" enterkeyhint="search" maxlength="80" value="${esc(query)}"></label><label>Hersteller<input name="manufacturer" maxlength="80" value="${esc(manufacturer)}"></label><label>Kategorie<input name="category" maxlength="80" value="${esc(category)}"></label><label><input type="checkbox" name="only_available" ${onlyAvailable?'checked':''}> Bestätigt nicht lagernde Artikel ausblenden</label><button class="primary" ${pending?'disabled':''}>Katalog durchsuchen</button></form>
       <section data-neugart-results aria-label="Katalogtreffer"><p role="status">${searching?'Katalog wird durchsucht …':searched?results.length+' Katalogtreffer':'Gib einen Artikelnamen, Hersteller oder eine Artikelnummer ein.'}</p>
       ${results.map(m=>`<article class="row-card">${window.WorktimeArticleTools?.html(m)||''}<span>${esc(window.WorktimeProductDisplay?.displayName(m)||m.catalog_product_name||m.name)} · ${esc(m.catalog_article_number)} ${m.catalog_manufacturer?' · '+esc(m.catalog_manufacturer):''}</span><button type="button" class="secondary" data-ng-action="add" data-id="${esc(m.id)}">Hinzufügen</button></article>`).join('')}
       </section>
@@ -94,6 +94,7 @@
       query=form.elements.query.value;
       manufacturer=form.elements.manufacturer.value;
       category=form.elements.category.value;
+      onlyAvailable=form.elements.only_available.checked;
     }
     async function searchCatalog() {
       sync();
@@ -109,7 +110,7 @@
       const progress=root.querySelector('[data-neugart-results] [role="status"]');
       if(progress)progress.textContent='Katalog wird durchsucht …';
       try{
-        const rows=await call('search',{account_id:selected,query,manufacturer,category});
+        const rows=await call('search',{account_id:selected,query,manufacturer,category,in_stock_only:onlyAvailable});
         if(!current())return;
         results=rows;searched=true;status='';
       }catch(error){if(current()){status=error.message;results=[];searched=true;}}
@@ -241,6 +242,6 @@
         }
       });
     });
-    return {shopping,cartView,settings,count:()=>{sync();return basket.length;},isShared:()=>{sync();return shared;}};
+    return {shopping,cartView,settings,selectedAccount:()=>{sync();return accountId;},count:()=>{sync();return basket.length;},isShared:()=>{sync();return shared;}};
   }};
 })();

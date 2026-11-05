@@ -15,3 +15,10 @@
 
 .ps-product button{max-width:100%;white-space:normal;overflow-wrap:anywhere}
 @media(max-width:560px){.ps-product{display:grid;grid-template-columns:minmax(0,1fr)}.ps-product>.article-tools{flex-direction:row;align-items:center;width:100%}.ps-product>.article-tools .article-unit-prices{flex:1 1 140px}}
+
+.article-stock{display:flex;align-items:baseline;gap:.35rem;font-size:.75rem;line-height:1.3;overflow-wrap:break-word}
+.article-stock::before{content:'';display:inline-block;flex:0 0 .65rem;height:.65rem;border:1px solid #52616a;border-radius:50%;background:#cbd5db}
+.article-stock[data-indicator="green"]::before{background:#218449}
+.article-stock[data-indicator="split"]::before{background:linear-gradient(90deg,#218449 50%,#edc43a 50%)}
+.article-stock[data-indicator="yellow"]::before{background:#edc43a}
+.article-stock[data-indicator="red"]::before{background:#bb3737}

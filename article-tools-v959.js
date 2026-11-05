@@ -15,7 +15,7 @@
  function key(m){if(m.catalog_supplier&&m.catalog_article_number)return JSON.stringify(['supplier',m.catalog_supplier,m.catalog_article_number,m.unit||'Stk']);return m.id?JSON.stringify(['material',m.id]):'';}
  const payload=m=>esc(JSON.stringify(snapshot(m)));
  function html(m,{star=true}={}){if(!m)return '';return `<span class="article-tools" data-article-payload="${payload(m)}">${star&&key(m)?'<button type="button" class="article-star" data-article-star aria-label="Zu Favoritenliste hinzufügen" aria-pressed="false">☆</button>':''}${priceHtml(m)}</span>`;}
- function create({root,state,businessId,api}){
+ function create({root,state,businessId,api,selectedNeugartAccount=()=>''}){
   let scope='',lists=[],items=[],loaded=false,loading=false,error='',serial=0,dialog=null,selectedList='',panelOpen=false,writing=false,favoritePage=0,priceCache=new Map();
   const current=()=>state.profile&&state.session?.user?.id&&businessId()?state.session.user.id+':'+businessId():'';
   const canRemove=()=>['administrator','business'].includes(state.profile?.role);
@@ -24,7 +24,75 @@
   async function load(){if(!ensure()||loaded)return;if(loading)return loading;const stamp=scope,n=++serial,company=String(businessId());loading=(async()=>{try{const suffix='?select=*&business_id=eq.'+encodeURIComponent(company)+'&order=created_at.asc';const readAll=async table=>{const out=[];for(let offset=0;;offset+=500){const rows=await api('/rest/v1/'+table+suffix+'&limit=500&offset='+offset);if(current()!==stamp||serial!==n)throw new DOMException('Konto gewechselt.','AbortError');out.push(...rows);if(rows.length<500)return out;}};const [ls,it]=await Promise.all([readAll('material_favorite_lists_v959'),readAll('material_favorite_items_v959')]);if(current()!==stamp||serial!==n)return;lists=ls;items=it;loaded=true;error='';}catch(e){if(current()===stamp&&serial===n)error='Favoriten konnten nicht geladen werden. '+e.message;}finally{if(current()===stamp&&serial===n){loading=false;paintPanel();decorate();}}})();return loading;}
   function read(el){try{return JSON.parse(el.dataset.articlePayload);}catch{return null;}}
   function photo(el,m){const url=window.WorktimeProductDisplay?.image(m)||'',old=el.querySelector('[data-article-photo]');if(old?.dataset.url===url)return;old?.remove();const box=document.createElement('span');box.dataset.articlePhoto='';box.dataset.url=url;box.className='article-photo';if(url){const img=document.createElement('img');img.src=url;img.alt='Artikelfoto: '+(window.WorktimeProductDisplay?.displayName(m)||m.name||'Artikel');img.loading='lazy';img.decoding='async';img.referrerPolicy='no-referrer';img.addEventListener('error',()=>{box.textContent='Kein Bild verfügbar';box.classList.add('article-photo-empty');});box.append(img);}else{box.textContent='Kein Bild hinterlegt';box.classList.add('article-photo-empty');}el.prepend(box);}
-  function decorate(){if(!ensure())return;for(const el of root.querySelectorAll('[data-article-payload]')){const m=read(el);if(!m)continue;photo(el,m);const b=el.querySelector('[data-article-star]');if(b){const yes=items.some(r=>r.article_key===key(m));b.textContent=yes?'★':'☆';b.setAttribute('aria-pressed',String(yes));b.setAttribute('aria-label',yes?'Favoritenlisten für diesen Artikel auswählen':'Zu Favoritenliste hinzufügen');}}}
+  const availabilityLabels={green:'Auf Lager',split:'Teilbestand oder weiterer Zulauf',yellow:'Lieferung angekündigt',red:'Nicht lieferbar',unknown:'Verfügbarkeit nicht bestätigt'};
+  const availabilityTtl=120000;
+  let stockScope='',stockAccounts=null,stockAccount='',stockCache=new Map(),stockTimer,stockBusy=false,stockRetryAt=0;
+  const stockApi=(action,company,body={})=>api('/functions/v1/supplier-cart-v949',{method:'POST',body:{action,company,...body}});
+  function scheduleStock(){
+   clearTimeout(stockTimer);
+   stockTimer=setTimeout(updateStock,140);
+  }
+  async function updateStock(){
+   const stamp=current(),company=String(businessId()||'');
+   if(!stamp||document.hidden)return;
+   if(stockScope!==stamp){stockScope=stamp;stockAccounts=null;stockAccount='';stockCache=new Map();stockRetryAt=0;}
+   const cards=[...root.querySelectorAll('[data-article-payload]')].flatMap(el=>{
+    const m=read(el);
+    if(!m?.catalog_article_number||!/neugart/i.test(m.catalog_supplier||''))return [];
+    const hiddenResult=el.closest('[data-neugart-stock-hidden]');
+    const rect=el.getBoundingClientRect();
+    return hiddenResult||rect.height&&rect.bottom>0&&rect.top<innerHeight+200?[{el,sku:m.catalog_article_number}]:[];
+   });
+   if(!cards.length||stockBusy||Date.now()<stockRetryAt)return;
+   stockBusy=true;
+   try{
+    if(!stockAccounts||stockAccounts.expires<=Date.now()){
+     const rows=await stockApi('accounts',company);
+     if(current()!==stamp)return;
+     if(!Array.isArray(rows))throw Error('Ungültige Händlerkonten');
+     stockAccounts={rows,expires:Date.now()+availabilityTtl};
+    }
+    const selected=selectedNeugartAccount(),account=stockAccounts.rows.find(a=>a.id===selected)||(!selected?stockAccounts.rows[0]:null);
+    const accountId=account?.id||'';
+    if(stockAccount!==accountId){stockAccount=accountId;stockCache=new Map();root.querySelectorAll('[data-article-stock]').forEach(el=>el.remove());}
+    const pending=[...new Set(cards.map(c=>c.sku))].filter(sku=>(stockCache.get(sku)?.expires||0)<=Date.now()).slice(0,12);
+    if(account&&pending.length){
+     const data=await stockApi('availability',company,{account_id:accountId,skus:pending});
+     if(current()!==stamp||selectedNeugartAccount()!==selected)return;
+     if(data?.company!==company||data.account_id!==accountId||typeof data.warehouse?.id!=='string'||typeof data.warehouse?.name!=='string'||!Array.isArray(data.items))throw Error('Ungültige Händlerantwort');
+     for(const sku of pending){
+      const matches=data.items.filter(r=>r.sku===sku&&r.warehouse?.id===data.warehouse.id&&Math.abs(Date.now()-Date.parse(r.checked_at))<availabilityTtl);
+      const row=matches.length===1?matches[0]:null;
+      stockCache.set(sku,{row,expires:Date.now()+availabilityTtl});
+     }
+    }
+    for(const {el,sku} of cards){
+     if(!el.isConnected)continue;
+     const row=stockCache.get(sku)?.row,code=Object.hasOwn(availabilityLabels,row?.indicator)?row.indicator:'unknown';
+     let badge=el.querySelector('[data-article-stock]');
+     if(!badge){badge=document.createElement('span');badge.className='article-stock';badge.dataset.articleStock='';el.append(badge);}
+     badge.dataset.indicator=code;
+     badge.textContent=row?.text|| (account?availabilityLabels[code]:'Neugart-Zugang nicht verbunden');
+     badge.title=row?.warehouse?.name?availabilityLabels[code]+' · '+row.warehouse.name:'';
+     const result=el.closest('[data-neugart-results] .row-card');
+     if(result){
+      const hidden=root.querySelector('[data-neugart-available-only="true"]')&&row?.status==='not_in_stock';
+      result.hidden=!!hidden;result.toggleAttribute('data-neugart-stock-hidden',!!hidden);
+     }
+    }
+    if(account&&cards.some(c=>!stockCache.has(c.sku)))scheduleStock();
+   }catch{
+    if(current()===stamp){
+     stockRetryAt=Date.now()+30000;
+     root.querySelectorAll('[data-article-stock]').forEach(el=>el.remove());
+     root.querySelectorAll('[data-neugart-stock-hidden]').forEach(el=>{el.hidden=false;el.removeAttribute('data-neugart-stock-hidden');});
+    }
+   }finally{stockBusy=false;if(current()!==stamp)scheduleStock();}
+  }
+  window.addEventListener('scroll',scheduleStock,{passive:true,capture:true});
+  window.addEventListener('focus',scheduleStock);
+  setInterval(()=>{if(root.isConnected)scheduleStock();},60000);
+  function decorate(){if(!ensure())return;scheduleStock();for(const el of root.querySelectorAll('[data-article-payload]')){const m=read(el);if(!m)continue;photo(el,m);const b=el.querySelector('[data-article-star]');if(b){const yes=items.some(r=>r.article_key===key(m));b.textContent=yes?'★':'☆';b.setAttribute('aria-pressed',String(yes));b.setAttribute('aria-label',yes?'Favoritenlisten für diesen Artikel auswählen':'Zu Favoritenliste hinzufügen');}}}
   function panel(){return `<details class="panel article-favorites" data-article-favorites ${panelOpen?'open':''}><summary>★ Favoritenlisten des Betriebs</summary><div data-favorites-content></div></details>`;}
   function favoriteModel(snapshot){return (state.rows?.materials||[]).find(m=>String(m.business_id)===String(businessId())&&m.id===snapshot.id)||priceCache.get(snapshot.id)||snapshot;}
   async function hydrateFavoritePrices(rows){

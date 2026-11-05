@@ -12,9 +12,22 @@ function clean(value,max=1000){return typeof value==='string'?value.replace(/<[^
 export function normalizeStock(raw,sku,warehouse,checkedAt){
  const unknown={sku,status:'unknown',quantity:null,text:'Der Händler hat für diesen Artikel keinen eindeutigen Bestand geliefert.',warehouse,checked_at:checkedAt};
  if(!raw||raw.successful!==true||!Array.isArray(raw.obj?.stockArray)||raw.obj.stockArray.length!==1)return unknown;
- const row=raw.obj.stockArray[0],text=clean(row.stockText||row.stockTextShort),quantity=typeof row.stockQuantity==='number'&&Number.isFinite(row.stockQuantity)&&row.stockQuantity>=0?row.stockQuantity:null;
- if(!text||row.followerSymbol||/nicht gefunden|unbekannt|keine angaben/i.test(text))return {...unknown,text:text||unknown.text};
- return {sku,status:quantity>0&&/verfügbar|vorrätig|auf lager/i.test(text)&&!/nicht verfügbar|nicht vorrätig/i.test(text)?'in_stock':quantity===0?'not_in_stock':'unknown',quantity,text,warehouse,checked_at:checkedAt};
+ const row=raw.obj.stockArray[0];
+ if(!row||typeof row!=='object')return unknown;
+ const identity=row.productKey?.productnumber??row.productNumber??row.kbn;
+ const text=clean(row.stockText||row.stockTextShort);
+ const quantity=typeof row.stockQuantity==='number'&&Number.isFinite(row.stockQuantity)&&row.stockQuantity>=0?row.stockQuantity:null;
+ if((identity!=null&&String(identity)!==sku)||!text||/nicht gefunden|unbekannt|keine angaben/i.test(text))return unknown;
+ const positive=quantity>0&&/verfügbar|vorrätig|auf lager|lagerbestand/i.test(text)&&!/nicht verfügbar|nicht vorrätig|kein lagerbestand/i.test(text);
+ const partial=/teilmenge|teilweise|teilbestand/i.test(text);
+ const incoming=/zulauf|liefertermin|beschaffungsware|bestellware|lieferbar ab|wieder verfügbar ab/i.test(text);
+ const unavailable=/nicht (mehr )?lieferbar|ausgelistet|keine lieferung möglich/i.test(text);
+ const indicator=unavailable&&!positive&&!incoming?'red':
+  !unavailable&&positive&&(partial||incoming)?'split':
+  !unavailable&&!row.followerSymbol&&positive?'green':
+  !unavailable&&incoming&&quantity===0?'yellow':'unknown';
+ const status=indicator==='green'||indicator==='split'?'in_stock':quantity===0?'not_in_stock':'unknown';
+ return {sku,status,indicator,quantity,text,warehouse,checked_at:checkedAt};
 }
 export function loginToken(value){
  if(value&&typeof value==='object'&&value.successful===false)return '';
@@ -88,6 +101,20 @@ export function createMerchant({fetch,md5,now=Date.now,report=()=>{}}){
   if(needsToken&&!/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(session.apiToken||''))throw fail('RECONNECT','Die Neugart-Artikelsuche ist noch nicht freigeschaltet.',401);
  }
  const online=createOnlineMerchant({call,refresh,fetch,now});
+ async function availability(session,skus){
+  const warehouse=session.warehouses[0];
+  const scope={id:warehouse.id,name:warehouse.name},results=new Array(skus.length);
+  let next=0;
+  await Promise.all(Array.from({length:Math.min(3,skus.length)},async()=>{
+   while(next<skus.length){
+    const index=next++,sku=skus[index];
+    let raw=null;
+    try{raw=await call(session,'/api/products/getnetpricesandstocksbykbnlist',{kbns:[sku],stockId:warehouse.stockId},5000);}catch{/* This SKU stays unconfirmed. */}
+    results[index]=normalizeStock(raw,sku,scope,new Date(now()).toISOString());
+   }
+  }));
+  return {warehouse:scope,items:results};
+ }
  async function prices(session,skus){
   const warehouse=session.warehouses[0];if(!warehouse||!skus.length)return new Map();
   const result=await call(session,'/api/products/getnetpricesandstocksbykbnlist',{kbns:skus,stockId:warehouse.stockId});
@@ -115,5 +142,5 @@ export function createMerchant({fetch,md5,now=Date.now,report=()=>{}}){
   }catch{/* Use the token from the validated login if present. */}
   return session.loginTransfer||'';
  }
- return {connect,call,online,browserLogin,handoffToken,prices};
+ return {connect,call,online,browserLogin,handoffToken,prices,availability};
 }

@@ -228,3 +228,9 @@ Die schreibgeschützte Liste „Fachhändler Kataloge“ wartet nicht mehr auf d
 „Zugang prüfen“ meldet einen Anmeldefehler, wenn die Händler-Sitzung nicht aufgebaut werden kann. Bei einem vorübergehenden Server- oder Netzfehler wird der lesende Sitzungsabruf einmal wiederholt. Warenkorb-Schreibzugriffe werden nicht automatisch wiederholt. Die Händlerdiagnose protokolliert nur Shop, Anfragestufe und HTTP-Status.
 
 „Neugart-Konto öffnen“ steht auch direkt im App-Warenkorb zur Verfügung und verwendet den gespeicherten Zugang getrennt von der Übertragung. Der direkte Link öffnet bei einer Händlerstörung die offizielle Anmeldeseite. Die App meldet Warenkorberfolg weiterhin erst nach bestätigter Rücklesung. Sitzungsfehler, erneuter Transfer mit derselben Vorgangskennung und unabhängige Browser-Anmeldung sind isoliert geprüft. Der Echtzugang bleibt gegenzuprüfen.
+
+## v986 – Gefüllten Neugart-Warenkorb öffnen
+
+Der Sitzungsabruf im Neugart-Händlerdienst wurde produktiv mit HTTP 401 abgewiesen. Beim ausdrücklich unangemeldeten Abruf lässt v986 den regulären Händlerlogin trotzdem zu. Die anschließende Händlerantwort muss die hinterlegte Kundennummer bestätigen. Artikel und Mengen werden über die bestehende protokollierte Übertragung geschrieben und zurückgelesen. Die Weiterleitung öffnet den gefüllten Händlerwarenkorb. Der Klick im Händlerportal schließt die Bestellung ab.
+
+Der frühere produktive Transfer und die Rücklesung sind in [Einkauf v949](docs/Einkauf_v949.md) dokumentiert. Das neue Fixture prüft den vollständigen Transfer nach HTTP 401, den Anmeldeschlüssel sowie die Wiederöffnung ohne Duplikate. Ein HTTP 401 nach der Anmeldung blockiert den Schreibzugriff weiterhin. Der produktive Transfer nach der Änderung bleibt zu prüfen.

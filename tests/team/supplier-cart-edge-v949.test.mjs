@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {createHash,webcrypto} from 'node:crypto';
-import {loginToken,createMerchant} from '../../supabase/functions/supplier-cart-v949/merchant.mjs';
+import {loginToken,createMerchant,normalizeStock} from '../../supabase/functions/supplier-cart-v949/merchant.mjs';
 import {createHandler,checkCart} from '../../supabase/functions/supplier-cart-v949/handler.mjs';
 for(const response of ['SYNTHETIC_LOGIN_TOKEN',{authKey:'SYNTHETIC_LOGIN_TOKEN'},{successful:true,obj:'SYNTHETIC_LOGIN_TOKEN'},{successful:true,obj:{authKey:'SYNTHETIC_LOGIN_TOKEN'}},{authenticationToken:'SYNTHETIC_LOGIN_TOKEN'}])assert.equal(loginToken(response),'SYNTHETIC_LOGIN_TOKEN');
 for(const response of [{successful:false,authKey:'SYNTHETIC_LOGIN_TOKEN'},{authKey:'short'},{authKey:'BAD\nLOGIN_TOKEN'},null])assert.equal(loginToken(response),'');
@@ -24,6 +24,14 @@ const redirectMerchant=createMerchant({md5,fetch:async(url,options)=>{
 assert.deepEqual(await redirectMerchant.browserLogin({username:'TEST_USER',password:'TEST_PASSWORD'}),{origin:'https://efgonlineplus.de',token:'SYNTHETIC_REDIRECT_TOKEN'});
 for(const change of [{status:1},{layout:'GC'},{redirect:'attacker.invalid'},{redirect:'efgonlineplus.de/private'},{redirect:'efgonlineplus.de?leak=true'},{authenticationToken:'bad\nTOKEN_VALUE'}]){
  const previous=redirectResult;redirectResult={...previous,...change};assert.equal(await redirectMerchant.browserLogin({username:'TEST_USER',password:'TEST_PASSWORD'}),null);redirectResult=previous;
+}
+for(const [quantity,text,indicator] of [
+ [8,'Auf Lager','green'],[2,'Auf Lager, weitere Menge im Zulauf','split'],
+ [0,'Beschaffungsware, Liefertermin 08.11.2026','yellow'],[0,'Nicht mehr lieferbar','red'],
+ [0,'Kein Lagerbestand','unknown'],[null,'Keine Angaben','unknown']
+]){
+ const stock=normalizeStock({successful:true,obj:{stockArray:[{stockQuantity:quantity,stockText:text}]}},'000123',{},'now');
+ assert.equal(stock.indicator??'unknown',indicator);
 }
 let hasWarehouse=true, crossLayoutAvailable=true, settingsFailures=0, requireLoginForSettings=false, denySignedInSettings=false;
 const upstream=[];
@@ -76,7 +84,7 @@ const fetch=async(url,options={})=>{const u=new URL(url),body=options.body?JSON.
   assert.equal(u.searchParams.get('kbn'),'HAGER123');
   return json({successful:true,obj:{productKey:{productnumber:'HAGER123'},description1:'Hager fixture',quantityUnit:'ST',oX_Supplier:'Hager'}});
  }
- if(u.pathname==='/api/products/getnetpricesandstocksbykbnlist')return json({successful:true,obj:{priceArray:[{priceUnit:1,unit:'ST',netPrice:2,grosPrice:4,grosPriceCurrency:'EUR',netPriceCurrency:'EUR'}]}});
+ if(u.pathname==='/api/products/getnetpricesandstocksbykbnlist')return json({successful:true,obj:{stockArray:[{productNumber:body.kbns[0],stockQuantity:2,stockText:'Auf Lager, weitere Menge im Zulauf'}],priceArray:[{priceUnit:1,unit:'ST',netPrice:2,grosPrice:4,grosPriceCurrency:'EUR',netPriceCurrency:'EUR'}]}});
  if(u.pathname==='/api/user/getauthkeylocalapp')return json({successful:true,obj:'SYNTHETIC_TRANSIENT_HANDOFF'});
  throw Error('Unexpected merchant request');
 };
@@ -139,7 +147,13 @@ assert.equal(search[0].online_sku,'HAGER123');assert.equal(search[0].purchase_pr
 const imported=await(await request({action:'article-add',account_id:accountId,sku:search[0].online_sku})).json();
 assert.equal(imported.id,article);
 assert.equal(adds,3,'article search and selection never submit cart positions');
+const stock=await(await request({action:'availability',account_id:accountId,skus:['000123']})).json();
+assert.equal(stock.company,company);assert.equal(stock.account_id,accountId);
+assert.equal(stock.items[0].indicator,'split');assert.equal(stock.items[0].sku,'000123');
+assert.equal(stock.items[0].warehouse.id,stock.warehouse.id);
+assert.equal(adds,3,'availability is read-only');
 granted=false;
+assert.equal((await request({action:'availability',account_id:accountId,skus:['000123']})).status,403);
 assert.equal((await request({action:'material-prices',account_id:accountId,ids:[article]})).status,403);
 assert.equal((await request(delegated)).status,403);
 assert.equal((await request({action:'search',account_id:accountId,query:'000123'})).status,403);

@@ -1,5 +1,5 @@
 ARBEITSZEITERFASSUNG – GEMEINSAME CHECKLISTE
-Stand: 05.11.2026
+Stand: 06.11.2026
 
 Diese Datei ist die zentrale Aufgabenliste des Projekts. Die Desktop-Verknüpfung
 „Arbeitszeiterfassung - Checkliste“ öffnet genau diese Datei, keine zweite Kopie.
@@ -11,6 +11,10 @@ ZEICHEN
 Ein erfolgreicher Test mit Beispieldaten ist kein Live-Test jedes Geschäftskontos.
 
 ALS NÄCHSTES
+[x] Neugart-Warenkorb wurde vom Nutzer nach v986 als wieder funktionsfähig bestätigt.
+[x] Neugart-Verfügbarkeit mit vier Ampelvarianten und Händlertext für sichtbare gemeinsame Artikelkarten ergänzt und mit Testdaten geprüft (v987).
+[ ] Alle Neugart-Portalstatus und Lager-/Lieferterminvarianten mit anonymisierten Echtbeispielen abgleichen. Artikelansichten ohne eindeutigen Neugart-Bezug gesondert prüfen.
+[ ] Gautzsch FiF anbinden. DATANORM-Beispiel, technische IDS-Spezifikation für App-zu-FiF, Warenkorb-Rücklesung und freigegebene Schnittstellen für Suche, Bilder, EK/VK und Bestand prüfen. Danach konten- und händlergetrennte Mitarbeiterfreigaben und durchgängige Tests ergänzen.
 [x] Neugart-Warenkorb: HTTP 401 beim unangemeldeten Sitzungsabruf lässt den Händlerlogin zu. Gefüllten Warenkorb samt Anmeldung und Wiederöffnung im Händler-Fixture geprüft (v986).
 [x] Neugart-Kontotest und Warenkorb bei Händlerfehlern trennen. Temporären Fehler beim Sitzungsabruf einmal wiederholen und Shop-Link im Warenkorb anbieten. Browser- und Händler-Fixtures bestanden (v985).
 [x] Schreibgeschützte Katalogbibliothek ohne Materialvollabruf öffnen; 1.205-Artikel-Analyse, PDF-Auszug, Firmen-/Kataloggrenzen und mobile Breiten geprüft (v984).

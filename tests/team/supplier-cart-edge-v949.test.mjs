@@ -25,7 +25,8 @@ assert.deepEqual(await redirectMerchant.browserLogin({username:'TEST_USER',passw
 for(const change of [{status:1},{layout:'GC'},{redirect:'attacker.invalid'},{redirect:'efgonlineplus.de/private'},{redirect:'efgonlineplus.de?leak=true'},{authenticationToken:'bad\nTOKEN_VALUE'}]){
  const previous=redirectResult;redirectResult={...previous,...change};assert.equal(await redirectMerchant.browserLogin({username:'TEST_USER',password:'TEST_PASSWORD'}),null);redirectResult=previous;
 }
-let hasWarehouse=true, crossLayoutAvailable=true;
+let hasWarehouse=true, crossLayoutAvailable=true, settingsFailures=0;
+const upstream=[];
 const accountId='50000000-0000-4000-8000-000000000001'; let granted=true, onlineFallback=false;
 const jobs=new Map();let adds=0,creates=0,role='administrator',actual=2.5,throwAfterAdd=false;
 const fetch=async(url,options={})=>{const u=new URL(url),body=options.body?JSON.parse(options.body):null,method=options.method||'GET';
@@ -63,6 +64,7 @@ const fetch=async(url,options={})=>{const u=new URL(url),body=options.body?JSON.
  assert.equal(u.origin,'https://efgonlineplus.de');assert.equal(options.redirect,'error');assert.ok(!/checkout|delete|sendOffer/.test(u.pathname),'never order or delete');
  const logged=options.headers.Cookie?.includes('sid=PRIVATE_COOKIE');
  assert.equal(u.searchParams.get('crsfKey'),md5((logged?'CSRF':'null')+u.searchParams.get('rand')));
+ if(u.pathname==='/api/account/getsettingsremaining'&&settingsFailures>0){settingsFailures--;return new Response('unavailable',{status:503});}
  if(u.pathname==='/api/account/getsettingsremaining')return json({jsonWebToken:'synthetic.token.fixture',crsfKey:logged?'CSRF':null,user:logged?{companyNumber:'777',username:'TEST_USER',customerNumber:'000011',customer:{company:{isSap:false}}}:null,warehouses:hasWarehouse?[{mfv:'070',warehouseNumber:'070',name:'Testlager'}]:[]});
  if(u.pathname==='/api/account/login'){assert.equal(body.password,'TEST_PASSWORD');return json({successful:true,mandatoryActions:[],crsfKey:'CSRF'},{'Set-Cookie':'sid=PRIVATE_COOKIE; Path=/; HttpOnly; Secure'});}
  assert.ok(logged);
@@ -77,7 +79,7 @@ const fetch=async(url,options={})=>{const u=new URL(url),body=options.body?JSON.
  if(u.pathname==='/api/user/getauthkeylocalapp')return json({successful:true,obj:'SYNTHETIC_TRANSIENT_HANDOFF'});
  throw Error('Unexpected merchant request');
 };
-const handler=createHandler({fetch,env,md5,crypto:webcrypto}),body={company,supplier:'Neugart',request_id:job,cart_name:'  Baustelle Nord & West  ',customer:'000011',username:'TEST_USER',password:'TEST_PASSWORD',lines:[{material_id:article,quantity:'2.50'}]};
+const handler=createHandler({fetch,env,md5,crypto:webcrypto,report:event=>upstream.push(event)}),body={company,supplier:'Neugart',request_id:job,cart_name:'  Baustelle Nord & West  ',customer:'000011',username:'TEST_USER',password:'TEST_PASSWORD',lines:[{material_id:article,quantity:'2.50'}]};
 const request=(b=body,auth=true)=>handler(new Request('https://edge.invalid',{method:'POST',headers:{'Content-Type':'application/json',...(auth?{Authorization:'Bearer synthetic'}:{})},body:JSON.stringify(b)}));
 assert.equal((await request({},false)).status,401);role='employee';assert.equal((await request()).status,403);role='administrator';assert.equal((await request({...body,company:'20000000-0000-4000-8000-000000000099'})).status,403);assert.equal(adds,0);
 let r=await request(),data=await r.json();assert.equal(r.status,200);assert.equal(data.confirmed,true);assert.equal(data.items[0].actual_quantity,2.5);assert.match(data.cart_url,/SYNTHETIC_CART_REFERENCE\/positions$/);assert.equal(data.handoff.action,data.cart_url+'?login=true');assert.equal(data.handoff.token,'SYNTHETIC_REDIRECT_TOKEN');assert.equal(adds,1);assert.equal(creates,1);
@@ -93,6 +95,16 @@ assert.equal((await request({...delegated,company:'20000000-0000-4000-8000-00000
 assert.equal((await request({...delegated,action:'account-grant',employee_ids:[owner]})).status,403);
 const list=await (await request({action:'accounts'})).json();
 assert.deepEqual(list,[{id:accountId,label:'Test access',employee_ids:[]}]);
+settingsFailures=2;
+const failedLogin=await request({action:'check-login',account_id:accountId});
+assert.equal(failedLogin.status,502);
+assert.match((await failedLogin.json()).message,/Neugart beantwortet die Anmeldung/);
+assert.deepEqual(upstream.slice(-2),Array(2).fill({shop:'efg',endpoint:'session-start',status:503}));
+settingsFailures=2;
+const failedTransfer=await request(delegated);
+assert.equal(failedTransfer.status,502);
+assert.equal(jobs.has(delegated.request_id),false,'failed authentication never starts a cart');
+settingsFailures=1;
 const loginCheck=await(await request({action:'check-login',account_id:accountId})).json();
 hasWarehouse=false;crossLayoutAvailable=false;
 const fallback=await(await request({action:'check-login',account_id:accountId})).json();

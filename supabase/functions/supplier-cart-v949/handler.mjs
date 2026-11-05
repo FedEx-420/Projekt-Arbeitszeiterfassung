@@ -10,8 +10,8 @@ export function checkCart(data,expected){
  const got=new Map();for(const r of rows){const sku=String(r.product?.productNumber??'').trim();if(!sku)continue;const n=Number(r.quantity);if(!Number.isFinite(n)||n<0||Math.abs(n*100-Math.round(n*100))>0.001)return null;const unit=r.product?.quantityUnit||r.quantityUnit||'';if(unit&&expected.some(e=>e.sku===sku)&&!units[String(unit).trim().toLowerCase()])return null;got.set(sku,(got.get(sku)||0)+Math.round(n*100));}
  return expected.map(e=>({material_ids:e.material_ids,sku:e.sku,quantity:e.cents/100,confirmed:got.get(e.sku)===e.cents,actual_quantity:(got.get(e.sku)||0)/100}));
 }
-export function createHandler({fetch=globalThis.fetch,env,md5,crypto=globalThis.crypto,now=Date.now}){
- const merchant=createMerchant({fetch,md5,now}),json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers});
+export function createHandler({fetch=globalThis.fetch,env,md5,crypto=globalThis.crypto,now=Date.now,report=()=>{}}){
+ const merchant=createMerchant({fetch,md5,now,report}),json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers});
  return async req=>{
   if(req.method==='OPTIONS')return new Response('ok',{headers});if(req.method!=='POST')return json({code:'METHOD',message:'Bitte POST verwenden.'},405);
   let secret='';
@@ -41,7 +41,7 @@ export function createHandler({fetch=globalThis.fetch,env,md5,crypto=globalThis.
      const label=typeof body.label==='string'?body.label.trim():'';
      if(!label||label.length>80)throw fail('LABEL','Bitte einen Namen für den Zugang eingeben.');
      const credentials=validCredentials(body);
-     await merchant.connect({shop:'efg',...credentials});
+     await merchant.connect({shop:'efg',...credentials,requireWarehouse:false});
      return json(await account('create',{label,credentials}));
     }
     if(!uuid.test(body.account_id||''))throw fail('ACCOUNT','Bitte einen Zugang auswählen.');

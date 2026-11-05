@@ -2,6 +2,13 @@
 import {createOnlineMerchant,normalizeArticle} from '../supplier-stock-v948/online.mjs';
 const shops={efg:{origin:'https://efgonlineplus.de',layout:'EFG',domain:'efgonlineplus.de'},gc:{origin:'https://www.gconlineplus.de',layout:'GC',domain:'gconlineplus.de'}};
 const fail=(code,message,status=400)=>Object.assign(new Error(message),{code,status});
+const settingsPath='/api/account/getsettingsremaining';
+const cookiePresent=session=>Object.keys(session.cookies||{}).length>0;
+const upstreamMessages={
+ login:'Neugart beantwortet die Anmeldung derzeit nicht. Du kannst den Shop direkt öffnen.',
+ cart:'Neugart beantwortet die Warenkorbanfrage derzeit nicht. Bitte prüfe den Händlerwarenkorb.',
+ stock:'Der Händler antwortet gerade nicht auf die Bestandsabfrage.'
+};
 function clean(value,max=1000){return typeof value==='string'?value.replace(/<[^>]*>/g,'').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g,'').slice(0,max).trim():'';}
 export function normalizeStock(raw,sku,warehouse,checkedAt){
  const unknown={sku,status:'unknown',quantity:null,text:'Der Händler hat für diesen Artikel keinen eindeutigen Bestand geliefert.',warehouse,checked_at:checkedAt};
@@ -15,14 +22,29 @@ export function loginToken(value){
  const candidates=[value,value?.authKey,value?.authenticationToken,value?.obj,value?.obj?.authKey,value?.obj?.authenticationToken];
  return candidates.find(token=>typeof token==='string'&&token.length>8&&token.length<20000&&!/[\u0000-\u001f\u007f]/.test(token))||'';
 }
-export function createMerchant({fetch,md5,now=Date.now}){
+export function createMerchant({fetch,md5,now=Date.now,report=()=>{}}){
  async function call(session,path,data,timeoutMs=15000){
   const shop=shops[session.shop],url=new URL(shop.origin+path);url.searchParams.set('layout',shop.layout);
-  {const rand=String(crypto.getRandomValues(new Uint32Array(1))[0]%10000000);url.searchParams.set('rand',rand);url.searchParams.set('crsfKey',md5(String(session.csrf??'null')+rand));if(session.userHash)url.searchParams.set('u',session.userHash);}
-  const cookie=Object.entries(session.cookies||{}).map(([k,v])=>k+'='+v).join('; '),r=await fetch(url.href,{method:data===undefined?'GET':'POST',redirect:'error',signal:AbortSignal.timeout(timeoutMs),headers:{'Content-Type':'application/json; charset=UTF-8','Accept':'application/json','Accept-Language':'de-DE','Referer':shop.origin+'/',...(cookie?{Cookie:cookie}:{})},...(data===undefined?{}:{body:JSON.stringify(data)})});
-  if(!r.ok)throw fail('SHOP_UNAVAILABLE','Der Händler antwortet gerade nicht auf die Bestandsabfrage.',502);
+  const settings=url.pathname===settingsPath,cart=url.pathname.startsWith('/api/carts/');
+  const endpoint=settings?(session.userHash?'session-refresh':cookiePresent(session)?'session-verify':'session-start'):url.pathname==='/api/account/login'?'login':url.pathname==='/api/user/getauthkeylocalapp'?'handoff':cart?'cart':'product';
+  const purpose=cart?'cart':settings||endpoint==='login'||endpoint==='handoff'?'login':'stock';
+  const unavailable=()=>fail('SHOP_UNAVAILABLE',upstreamMessages[purpose],502);
+  const cookie=Object.entries(session.cookies||{}).map(([k,v])=>k+'='+v).join('; ');
+  const request=()=>{
+   const rand=String(crypto.getRandomValues(new Uint32Array(1))[0]%10000000);
+   url.searchParams.set('rand',rand);url.searchParams.set('crsfKey',md5(String(session.csrf??'null')+rand));if(session.userHash)url.searchParams.set('u',session.userHash);
+   return fetch(url.href,{method:data===undefined?'GET':'POST',redirect:'error',signal:AbortSignal.timeout(timeoutMs),headers:{'Content-Type':'application/json; charset=UTF-8','Accept':'application/json','Accept-Language':'de-DE','Referer':shop.origin+'/',...(cookie?{Cookie:cookie}:{})},...(data===undefined?{}:{body:JSON.stringify(data)})});
+  };
+  let r;
+  for(let attempt=0;attempt<(settings?2:1);attempt++){
+   try{r=await request();}catch{r=null;}
+   if(r?.ok)break;
+   report({shop:session.shop,endpoint,status:r?.status??0});
+   if(!settings||attempt||r&&![500,502,503,504].includes(r.status))throw unavailable();
+   try{await r?.body?.cancel();}catch{/* Continue with the single read retry. */}
+  }
   const set=r.headers.getSetCookie?.()||[];for(const line of set){const part=line.split(';')[0],index=part.indexOf('=');if(index<1)continue;const name=part.slice(0,index),value=part.slice(index+1);if(!/^[A-Za-z0-9_.-]{1,100}$/.test(name)||/[\r\n;]/.test(value)||value.length>12000)continue;if(/(?:^|;)\s*max-age=0(?:;|$)/i.test(line))delete session.cookies[name];else session.cookies[name]=value;}
-  const text=await r.text();if(text.length>2000000)throw fail('SHOP_RESPONSE','Die Händlerantwort ist zu groß.',502);try{return JSON.parse(text);}catch{throw fail('SHOP_RESPONSE','Der Händler hat keine lesbare Bestandsantwort geliefert.',502);}
+  const text=await r.text();if(text.length>2000000)throw fail('SHOP_RESPONSE','Die Händlerantwort ist zu groß.',502);try{return JSON.parse(text);}catch{report({shop:session.shop,endpoint,status:r.status,response:'invalid-json'});throw fail('SHOP_RESPONSE',upstreamMessages[purpose],502);}
  }
  async function browserLogin({username,password}){
   const session={shop:'gc',cookies:{},csrf:null,userHash:''};

@@ -222,3 +222,9 @@ Die isolierten Prüfungen und Grenzen stehen in [Prüfstand v984](docs/Pruefstan
 Der Admin-Einkauf startet in v984 direkt mit dem gespeicherten Neugart-Zugang des ausgewählten Betriebs. Der bisherige allgemeine Einkaufsweg bleibt über den ausdrücklichen Moduswechsel zugänglich; seine Entwürfe bleiben erhalten. „Zum Großhändler übertragen und öffnen“ bezeichnet die Warenkorbübertragung klar und löst keine Bestellung aus. Admin- und Mitarbeiterweg, Firmenwechsel sowie Wiederöffnen mit derselben Vorgangskennung sind mit simulierten Händlerantworten geprüft. „Neugart-Konto öffnen“ prüft den gespeicherten Zugang unabhängig vom Warenkorb. Bei bestätigter Anmeldung ohne Weiterleitungsschlüssel öffnet die App den offiziellen Shop zur manuellen Anmeldung. Die produktive Gegenprobe für Geschäfts-, Mitarbeiter- und Adminkonten bleibt offen.
 
 Die schreibgeschützte Liste „Fachhändler Kataloge“ wartet nicht mehr auf den gesamten Materialdownload. Originaldateien und Katalogprüfung bleiben so bei blockiertem Materialabruf erreichbar; der Importwechsel führt weiterhin in den materialabhängigen Katalogassistenten.
+
+## v985 – Neugart bei Händlerfehlern
+
+„Zugang prüfen“ meldet einen Anmeldefehler, wenn die Händler-Sitzung nicht aufgebaut werden kann. Bei einem vorübergehenden Server- oder Netzfehler wird der lesende Sitzungsabruf einmal wiederholt. Warenkorb-Schreibzugriffe werden nicht automatisch wiederholt. Die Händlerdiagnose protokolliert nur Shop, Anfragestufe und HTTP-Status.
+
+„Neugart-Konto öffnen“ steht auch direkt im App-Warenkorb zur Verfügung und verwendet den gespeicherten Zugang getrennt von der Übertragung. Der direkte Link öffnet bei einer Händlerstörung die offizielle Anmeldeseite. Die App meldet Warenkorberfolg weiterhin erst nach bestätigter Rücklesung. Sitzungsfehler, erneuter Transfer mit derselben Vorgangskennung und unabhängige Browser-Anmeldung sind isoliert geprüft. Der Echtzugang bleibt gegenzuprüfen.

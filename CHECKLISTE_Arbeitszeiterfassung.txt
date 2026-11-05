@@ -11,6 +11,7 @@ ZEICHEN
 Ein erfolgreicher Test mit Beispieldaten ist kein Live-Test jedes Geschäftskontos.
 
 ALS NÄCHSTES
+[x] Neugart-Kontotest und Warenkorb bei Händlerfehlern trennen. Temporären Fehler beim Sitzungsabruf einmal wiederholen und Shop-Link im Warenkorb anbieten. Browser- und Händler-Fixtures bestanden (v985).
 [x] Schreibgeschützte Katalogbibliothek ohne Materialvollabruf öffnen; 1.205-Artikel-Analyse, PDF-Auszug, Firmen-/Kataloggrenzen und mobile Breiten geprüft (v984).
 [x] Admin-Einkauf direkt mit gespeichertem Neugart-Zugang des ausgewählten Betriebs öffnen; Übergabe/Anmelde-POST, Wiederholung, Firmenwechsel und Mitarbeiterweg isoliert geprüft (v984).
 [x] Neugart-Anmeldung und Shopöffnung für Geschäfts-, Mitarbeiter- und Adminkonto robuster machen; Händlerantworten isoliert geprüft (v984).

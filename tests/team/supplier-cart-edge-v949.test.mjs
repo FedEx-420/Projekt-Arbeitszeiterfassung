@@ -25,7 +25,7 @@ assert.deepEqual(await redirectMerchant.browserLogin({username:'TEST_USER',passw
 for(const change of [{status:1},{layout:'GC'},{redirect:'attacker.invalid'},{redirect:'efgonlineplus.de/private'},{redirect:'efgonlineplus.de?leak=true'},{authenticationToken:'bad\nTOKEN_VALUE'}]){
  const previous=redirectResult;redirectResult={...previous,...change};assert.equal(await redirectMerchant.browserLogin({username:'TEST_USER',password:'TEST_PASSWORD'}),null);redirectResult=previous;
 }
-let hasWarehouse=true, crossLayoutAvailable=true, settingsFailures=0;
+let hasWarehouse=true, crossLayoutAvailable=true, settingsFailures=0, requireLoginForSettings=false, denySignedInSettings=false;
 const upstream=[];
 const accountId='50000000-0000-4000-8000-000000000001'; let granted=true, onlineFallback=false;
 const jobs=new Map();let adds=0,creates=0,role='administrator',actual=2.5,throwAfterAdd=false;
@@ -57,7 +57,7 @@ const fetch=async(url,options={})=>{const u=new URL(url),body=options.body?JSON.
   return json({products:[{productNumber:'HAGER123',description:'Hager fixture',gtiNs:[],supplierProductNumber:[]}],hits:1});
  }
  if(u.origin==='https://www.gconlineplus.de'){
-  if(u.pathname==='/api/account/getsettingsremaining')return json({crsfKey:null});
+  if(u.pathname==='/api/account/getsettingsremaining')return requireLoginForSettings?new Response(null,{status:401}):json({crsfKey:null});
   assert.equal(u.pathname,'/api/account/login');assert.equal(body.password,'TEST_PASSWORD');
   return crossLayoutAvailable?json({successful:false,status:11,layout:'EFG',redirect:'https://efgonlineplus.de/',authenticationToken:'SYNTHETIC_REDIRECT_TOKEN'}):new Response(null,{status:503});
  }
@@ -65,6 +65,7 @@ const fetch=async(url,options={})=>{const u=new URL(url),body=options.body?JSON.
  const logged=options.headers.Cookie?.includes('sid=PRIVATE_COOKIE');
  assert.equal(u.searchParams.get('crsfKey'),md5((logged?'CSRF':'null')+u.searchParams.get('rand')));
  if(u.pathname==='/api/account/getsettingsremaining'&&settingsFailures>0){settingsFailures--;return new Response('unavailable',{status:503});}
+ if(u.pathname==='/api/account/getsettingsremaining'&&((!logged&&requireLoginForSettings)||(logged&&denySignedInSettings)))return new Response(null,{status:401});
  if(u.pathname==='/api/account/getsettingsremaining')return json({jsonWebToken:'synthetic.token.fixture',crsfKey:logged?'CSRF':null,user:logged?{companyNumber:'777',username:'TEST_USER',customerNumber:'000011',customer:{company:{isSap:false}}}:null,warehouses:hasWarehouse?[{mfv:'070',warehouseNumber:'070',name:'Testlager'}]:[]});
  if(u.pathname==='/api/account/login'){assert.equal(body.password,'TEST_PASSWORD');return json({successful:true,mandatoryActions:[],crsfKey:'CSRF'},{'Set-Cookie':'sid=PRIVATE_COOKIE; Path=/; HttpOnly; Secure'});}
  assert.ok(logged);
@@ -116,8 +117,21 @@ assert.equal(retry.confirmed,true);assert.equal(retry.handoff?.token,'SYNTHETIC_
 hasWarehouse=true;crossLayoutAvailable=true;
 assert.equal(loginCheck.handoff_available,true);assert.equal(loginCheck.handoff.action,'https://efgonlineplus.de/?login=true');assert.equal(adds,2,'login check does not write cart positions');
 assert.equal((await request({action:'material-prices',account_id:accountId,ids:['invalid']})).status,400);
+requireLoginForSettings=true;
+throwAfterAdd=false;
+denySignedInSettings=true;
+const denied=await request(delegated);
+assert.equal(denied.status,502);
+assert.equal(jobs.has(delegated.request_id),false);
+assert.deepEqual(upstream.at(-1),{shop:'efg',endpoint:'session-verify',status:401});
+denySignedInSettings=false;
 const cart=await (await request(delegated)).json();
 assert.equal(cart.confirmed,true);assert.equal(adds,3);
+assert.equal(cart.handoff.token,'SYNTHETIC_REDIRECT_TOKEN');
+assert.deepEqual(upstream.slice(-2),['efg','gc'].map(shop=>({shop,endpoint:'session-start',status:401})));
+const reopened=await (await request(delegated)).json();
+assert.equal(reopened.cart_url,cart.cart_url);assert.equal(adds,3);
+requireLoginForSettings=false;
 assert.ok(!JSON.stringify(cart).includes('TEST_PASSWORD'));
 onlineFallback=true;
 const search=await(await request({action:'search',account_id:accountId,query:'Hager'})).json();

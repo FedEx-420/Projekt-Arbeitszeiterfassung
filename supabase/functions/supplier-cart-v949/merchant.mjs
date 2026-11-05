@@ -3,7 +3,6 @@ import {createOnlineMerchant,normalizeArticle} from '../supplier-stock-v948/onli
 const shops={efg:{origin:'https://efgonlineplus.de',layout:'EFG',domain:'efgonlineplus.de'},gc:{origin:'https://www.gconlineplus.de',layout:'GC',domain:'gconlineplus.de'}};
 const fail=(code,message,status=400)=>Object.assign(new Error(message),{code,status});
 const settingsPath='/api/account/getsettingsremaining';
-const cookiePresent=session=>Object.keys(session.cookies||{}).length>0;
 const upstreamMessages={
  login:'Neugart beantwortet die Anmeldung derzeit nicht. Du kannst den Shop direkt öffnen.',
  cart:'Neugart beantwortet die Warenkorbanfrage derzeit nicht. Bitte prüfe den Händlerwarenkorb.',
@@ -23,10 +22,10 @@ export function loginToken(value){
  return candidates.find(token=>typeof token==='string'&&token.length>8&&token.length<20000&&!/[\u0000-\u001f\u007f]/.test(token))||'';
 }
 export function createMerchant({fetch,md5,now=Date.now,report=()=>{}}){
- async function call(session,path,data,timeoutMs=15000){
+ async function call(session,path,data,timeoutMs=15000,anonymousSettings=false){
   const shop=shops[session.shop],url=new URL(shop.origin+path);url.searchParams.set('layout',shop.layout);
   const settings=url.pathname===settingsPath,cart=url.pathname.startsWith('/api/carts/');
-  const endpoint=settings?(session.userHash?'session-refresh':cookiePresent(session)?'session-verify':'session-start'):url.pathname==='/api/account/login'?'login':url.pathname==='/api/user/getauthkeylocalapp'?'handoff':cart?'cart':'product';
+  const endpoint=settings?(anonymousSettings?'session-start':session.userHash?'session-refresh':'session-verify'):url.pathname==='/api/account/login'?'login':url.pathname==='/api/user/getauthkeylocalapp'?'handoff':cart?'cart':'product';
   const purpose=cart?'cart':settings||endpoint==='login'||endpoint==='handoff'?'login':'stock';
   const unavailable=()=>fail('SHOP_UNAVAILABLE',upstreamMessages[purpose],502);
   const cookie=Object.entries(session.cookies||{}).map(([k,v])=>k+'='+v).join('; ');
@@ -40,16 +39,24 @@ export function createMerchant({fetch,md5,now=Date.now,report=()=>{}}){
    try{r=await request();}catch{r=null;}
    if(r?.ok)break;
    report({shop:session.shop,endpoint,status:r?.status??0});
+   // A signed-out settings request may require authentication. The login
+   // endpoint is still responsible for creating and authenticating the session.
+   if(settings&&anonymousSettings&&r?.status===401)break;
    if(!settings||attempt||r&&![500,502,503,504].includes(r.status))throw unavailable();
    try{await r?.body?.cancel();}catch{/* Continue with the single read retry. */}
   }
   const set=r.headers.getSetCookie?.()||[];for(const line of set){const part=line.split(';')[0],index=part.indexOf('=');if(index<1)continue;const name=part.slice(0,index),value=part.slice(index+1);if(!/^[A-Za-z0-9_.-]{1,100}$/.test(name)||/[\r\n;]/.test(value)||value.length>12000)continue;if(/(?:^|;)\s*max-age=0(?:;|$)/i.test(line))delete session.cookies[name];else session.cookies[name]=value;}
+  if(r.status===401){await r.body?.cancel().catch(()=>{});return {};}
   const text=await r.text();if(text.length>2000000)throw fail('SHOP_RESPONSE','Die Händlerantwort ist zu groß.',502);try{return JSON.parse(text);}catch{report({shop:session.shop,endpoint,status:r.status,response:'invalid-json'});throw fail('SHOP_RESPONSE',upstreamMessages[purpose],502);}
+ }
+ async function startSettings(session){
+  const path=settingsPath+'?domain='+encodeURIComponent(shops[session.shop].domain);
+  const settings=await call(session,path,undefined,15000,true);
+  session.csrf=settings.crsfKey??null;
  }
  async function browserLogin({username,password}){
   const session={shop:'gc',cookies:{},csrf:null,userHash:''};
-  const settings=await call(session,'/api/account/getsettingsremaining?domain=gconlineplus.de');
-  session.csrf=settings.crsfKey??null;
+  await startSettings(session);
   const result=await call(session,'/api/account/login',{username,password,layout:'GC',language:'DE'});
   let destination;try{destination=new URL(result.redirect.startsWith('https://')?result.redirect:'https://'+result.redirect);}catch{}
   // ONLINE PLUS marks a cross-layout redirect as unsuccessful, status REDIRECT (11).
@@ -61,7 +68,7 @@ export function createMerchant({fetch,md5,now=Date.now,report=()=>{}}){
  async function connect({shop,username,password,customer,requireWarehouse=true}){
   if(!shops[shop])throw fail('SHOP','Bitte GC oder EFG ONLINE PLUS auswählen.');
   const s={shop,cookies:{},csrf:null,userHash:'',expires:now()+12*3600000};
-  const initial=await call(s,'/api/account/getsettingsremaining?domain='+encodeURIComponent(shops[shop].domain));s.csrf=initial.crsfKey??null;
+  await startSettings(s);
   const login=await call(s,'/api/account/login',{username,password,layout:shops[shop].layout,language:'DE'});
   if(login.successful!==true)throw fail('LOGIN','Die Anmeldung beim Fachhändler wurde nicht bestätigt. Bitte Zugangsdaten und Onlinezugang prüfen.',401);
   if(login.mandatoryActions?.length)throw fail('SHOP_ACTION','Bitte zuerst die vom Händler angezeigten Schritte direkt im Shop abschließen.',409);

@@ -461,7 +461,7 @@
     const selected=activeShoppingProvider();
     return `<section class="panel"><label>Einkaufszugang<select data-shopping-provider><option value="neugart" ${selected==='neugart'?'selected':''}>Neugart</option><option value="gautzsch" ${selected==='gautzsch'?'selected':''}>Gautzsch · FiF</option><option value="all" ${selected==='all'?'selected':''}>Weitere Fachhändler</option></select></label></section>`;
   }
-  root.addEventListener('click',event=>{if(event.target.closest('[data-ng-action=mode]'))shoppingProvider='';});
+  root.addEventListener('click',event=>{if(event.target.closest('[data-ng-action=mode]')){shoppingProvider='';supplierCart?.selectProvider('all');}});
   root.addEventListener('change',event=>{
     if(!event.target.matches('[data-shopping-provider]'))return;
     const provider=event.target.value;

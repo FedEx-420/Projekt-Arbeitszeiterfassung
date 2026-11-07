@@ -13,11 +13,11 @@ Ein erfolgreicher Test mit Beispieldaten ist kein Live-Test jedes Geschäftskont
 ALS NÄCHSTES
 [x] Reguläre FiF-Anmeldung und exakte Artikelzuordnung live bestätigt. Abweichende Menge wurde vom Rückvergleich erkannt; kein falscher Erfolg und keine automatische erneute Zugabe.
 [x] FiF-Formularmengen mit Dezimalkomma senden und salesQuantityUnit-/Code-Felder zurücklesen; isolierte Dezimal-/Einheitenprüfungen bestanden.
-[ ] Eigene FiF-Testposition im Händlerportal entfernen und frischen vollständigen Transfer mit korrekter Menge bis zum sichtbaren Warenkorb bestätigen. Keine Bestellung auslösen.
-[ ] FiF-Warenkorbübergabe über reguläre Händleranmeldung statt fehlgeschlagenem IDS-Aufruf live abnehmen (v995). Neuer Dienst, sichere Sitzungsbindung, exakte Rücklesung und Wiederholungsschutz isoliert geprüft; tatsächliche App-Übernahme noch zu bestätigen.
-[ ] FiF-Übergabe mit nativer Händleranmeldung, expliziter IDS-Version und echter Einmal-Rückgabeadresse live abnehmen (v994). Formular- und Mengenprüfung isoliert erfolgreich; automatische App-Annahme weiterhin zu bestätigen.
+[x] Eigene FiF-Testpositionen entfernt und frischen vollständigen automatischen App-Transfer mit korrekter Menge bis zum sichtbaren Händlerwarenkorb bestätigt. Kein erneuter Shoplogin bei vorhandener Sitzung; keine Bestellung (07.11.2026).
+[x] FiF-Warenkorbübergabe über reguläre Händleranmeldung live bestätigt (v995, PR #42): neuer App-Vorgang mit exakter Händlernummer, Menge und Einheit zurückgelesen und direkt im angemeldeten FiF-Warenkorb geöffnet. Testpositionen entfernt, keine Bestellung.
+[x] v994-IDS-Testweg live geprüft und wegen Händlerfehler durch den bestätigten regulären FiF-Warenkorbweg v995 ersetzt. Keine erfolgreiche IDS-Annahme behauptet.
 [x] Regulären FiF-Scannerimport einer einzelnen Testposition mit exakter Artikelnummer und Menge im Händlerwarenkorb bestätigt; anschließend entfernt. Keine Bestellung.
-[ ] FiF-403 bei IDS-Warenkorbübergabe beheben: im Browser mit und ohne vorherige Händlersitzung nachgestellt. Direkte Händleranmeldung anschließend auf frischer Startseite bestätigt. Ursache und erfolgreiche Warenkorbannahme bleiben offen; keine Kontosperre oder fehlende Berechtigung als bewiesen behandeln.
+[x] Fehlgeschlagenen FiF-IDS-403-Weg durch regulären, live bestätigten Warenkorbtransfer ersetzt. Ursache der externen IDS-Ablehnung weiterhin unbekannt; keine fehlende Kontoberechtigung behauptet.
 [x] FiF-Rückkehr über Browser-Zurück entsperrt den Übertragungsbutton sofort, erhält den App-Entwurf und sendet nicht automatisch erneut. Temporäre Anmeldefelder werden beim Verlassen entfernt. Browser-Fixture geprüft (v993).
 [x] Favoriten im Einkauf nach Neugart und Gautzsch · FiF trennen; neue Listen erhalten einen Händlerzusatz. Gleichnamige Listen, Suche, Warenkorbwechsel und Firmen-/Mitarbeitergrenzen isoliert geprüft (v992).
 [ ] Vollständige FiF-Funktionsgleichheit: automatische kontogebundene Verfügbarkeit einschließlich Händlerstatus, Preise/Bilder aus bestätigter Quelle, gespeicherter Zugang und Mitarbeiterfreigaben bleiben offen. Portal-Link ist bereits vorhanden.

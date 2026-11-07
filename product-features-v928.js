@@ -52,9 +52,10 @@ if(/schalt|steck|wippe|rahmen|taster|dimmer/i.test(t)||/Schaltermaterial/i.test(
   const input=String(query||'');if(compiledQueries.has(input))return compiledQueries.get(input);
   let rest=input.trim();const requested=[];
   for(const [rx,label]of seriesPatterns){const hit=rx.exec(rest);if(hit){requested.push(label||'Q.'+hit[1]);rest=rest.replace(new RegExp(rx.source,'ig'),' ');}}
-  const tokens=rest.toLowerCase().split(/\s+/).filter(Boolean),matcher=(m,fields=[],preparedText)=>{
+  const fold=value=>globalThis.WorktimeArticleSearch?.normalize(value)||String(value).toLowerCase().replace(/ä/g,'ae').replace(/ö/g,'oe').replace(/ü/g,'ue').replace(/ß/g,'ss').replace(/[^a-z0-9]+/g,' ').trim();
+  const tokens=fold(rest).split(/\s+/).filter(Boolean),matcher=(m,fields=[],preparedText)=>{
    const text=preparedText??[globalThis.WorktimeProductDisplay?.displayName(m)||m.catalog_product_name||m.name,m.catalog_article_number,...fields].map(v=>String(v||'').toLowerCase()).join('\u001f');
-   if(!tokens.every(token=>text.includes(token)))return false;
+   const searchable=preparedText??fold(text);if(!tokens.every(token=>globalThis.WorktimeArticleSearch?.tokenMatches?globalThis.WorktimeArticleSearch.tokenMatches(searchable,token):searchable.includes(token)))return false;
    const features=requested.length?describe(m):null;return !requested.length||!!features.series&&!features.series.conflict&&requested.every(v=>values('series',features.series.value).some(x=>canonicalSeries(x)===canonicalSeries(v)));
   };
   if(compiledQueries.size>=32)compiledQueries.delete(compiledQueries.keys().next().value);compiledQueries.set(input,matcher);return matcher;

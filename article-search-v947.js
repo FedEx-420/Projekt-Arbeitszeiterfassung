@@ -43,12 +43,16 @@
  function score(m,query){const q=normalize(query),c=compact(query);if(!q)return 0;const p=project(m);if(p.scoreQuery===q)return p.scoreValue;const ids=p.ids;let value;if(ids.includes(c))value=100000;else if(ids.some(v=>v.startsWith(c)))value=60000;else{const name=p.name,i=intent(m,query,p),extras=/\bsteckdose(?:n)?\b/.test(q)?['led','usb','orientier','kontroll','zeitschalt','abschliess','beleucht'].filter(t=>name.includes(t)&&!q.includes(t)).length*2500:0;value=functionBonus(m,query,p)+(i.accept?i.bonus:-20000)-extras+(name===q?4000:name.startsWith(q)?2000:name.includes(q)?1000:0)+q.split(' ').reduce((sum,t)=>sum+(name.split(' ').includes(t)?30:name.includes(t)?10:0),0);}p.scoreQuery=q;p.scoreValue=value;return value;}
 
  function rank(rows,query,get=r=>r){return rows.map((row,index)=>({row,index,score:score(get(row),query)})).sort((a,b)=>b.score-a.score||a.index-b.index).map(x=>x.row);}
+ // Text tolerance never changes identifiers, units, prices or selected product identity.
+ function oneEdit(a,b){if(Math.abs(a.length-b.length)>1)return false;let i=0,j=0,n=0;while(i<a.length&&j<b.length){if(a[i]===b[j]){i++;j++;continue;}if(++n>1)return false;if(a.length>=b.length)i++;if(b.length>=a.length)j++;}return n+(i<a.length||j<b.length?1:0)<=1;}
+ const aliases={schuko:['schutzkontakt'],schutzkontakt:['schuko'],steckdose:['schutzkontakt','schuko'],ls:['leitungsschutzschalter'],rcd:['fehlerstromschutzschalter'],fi:['fehlerstromschutzschalter']};
+ function tokenMatches(text,token){if(text.includes(token))return true;if(aliases[token]?.some(value=>text.includes(value)))return true;if(!/^[a-z]{6,}$/.test(token))return false;return text.split(/[^a-z0-9]+/).some(word=>/^[a-z]{6,}$/.test(word)&&oneEdit(word,token));}
  function matches(m,query,featureAPI,extra=[]){const raw=String(query||'').trim();if(!raw)return true;const q=compact(query);if(raw.length===1)return identifiers(m).some(v=>compact(v)===q);const p=project(m);if(p.ids.includes(q))return true;
   const text=p.text+'\u001f'+extra.filter(Boolean).map(String).map(v=>v.toLowerCase()+'\u001f'+normalize(v)).join('\u001f');
   let found;
   if(featureAPI?.compileQuery)found=featureAPI.compileQuery(String(query).replace(/\bhigh[-\s]+definition(?:[-\s]+multimedia[-\s]+interface)?\b/gi,'HDMI'))(m,[],text);
   else if(featureAPI?.queryMatches){const values=fields(m).concat(extra).filter(Boolean);found=featureAPI.queryMatches(m,String(query).replace(/\bhigh[-\s]+definition(?:[-\s]+multimedia[-\s]+interface)?\b/gi,'HDMI'),values.concat(values.map(normalize)));}
-  else found=normalize(query).split(' ').every(token=>text.includes(token));
+  else found=normalize(query).split(' ').every(token=>tokenMatches(text,token));
   return !!found&&intent(m,query,p).accept;
  }
 
@@ -57,5 +61,5 @@
  async function cooperativeFilter(rows,predicate,valid=()=>true){const found=[];let slice=performance.now();for(let i=0;i<rows.length;i++){if(predicate(rows[i],i))found.push(rows[i]);if(performance.now()-slice>=8){await new Promise(resolve=>setTimeout(resolve,0));if(!valid())return null;slice=performance.now();}}return valid()?found:null;}
  async function rankAsync(rows,query,get=r=>r,valid=()=>true){const values=[];let slice=performance.now();for(let index=0;index<rows.length;index++){values.push({row:rows[index],index,score:score(get(rows[index]),query)});if(performance.now()-slice>=8){await new Promise(resolve=>setTimeout(resolve,0));if(!valid())return null;slice=performance.now();}}if(!valid())return null;values.sort((a,b)=>b.score-a.score||a.index-b.index);return values.map(x=>x.row);}
  const completeRanking=query=>/schalter|taster|steckdose|dimmer|bohrer|schraube|leitung|kabel|sicherung|leuchte/i.test(String(query||""));
- return Object.freeze({completeRanking,normalize,compact,identifiers,intent,score,rank,rankAsync,cooperativeFilter,warm:m=>{project(m);},matches,facets,suggestions});
+ return Object.freeze({completeRanking,normalize,tokenMatches,compact,identifiers,intent,score,rank,rankAsync,cooperativeFilter,warm:m=>{project(m);},matches,facets,suggestions});
 });

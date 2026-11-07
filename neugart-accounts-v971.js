@@ -1,7 +1,7 @@
 /* Saved Neugart credentials are used only by the server. */
 (function () {
   'use strict';
-  window.WorktimeNeugartAccounts = { create({root,state,api,businessId,render,escape:esc}) {
+  window.WorktimeNeugartAccounts = { create({root,state,api,businessId,render,escape:esc,isManager=()=>false,catalogSearch=()=>''}) {
     let scope='', accounts=null, accountId='', results=[], basket=[], status='', pending=false, query='', manufacturer='', category='', cartName='', onlyAvailable=false, attempt=null, shared=false;
     let searchSerial=0, searching=false, searched=false;
     const identity=()=>state.profile?.id&&businessId()?state.profile.id+':'+businessId():'';
@@ -52,6 +52,7 @@
       <section data-neugart-results aria-label="Katalogtreffer"><p role="status">${searching?'Katalog wird durchsucht …':searched?results.length+' Katalogtreffer':'Gib einen Artikelnamen, Hersteller oder eine Artikelnummer ein.'}</p>
       ${results.map(m=>`<article class="row-card">${window.WorktimeArticleTools?.html(m)||''}<span>${esc(window.WorktimeProductDisplay?.displayName(m)||m.catalog_product_name||m.name)} · ${esc(m.catalog_article_number)} ${m.catalog_manufacturer?' · '+esc(m.catalog_manufacturer):''}</span><button type="button" class="secondary" data-ng-action="add" data-id="${esc(m.id)}">Hinzufügen</button></article>`).join('')}
       </section>
+      ${isManager()?'<h3>Katalogdateien auf diesem Gerät durchsuchen</h3><p>Ausgewählte Neugart-Artikel werden dem Warenkorb des gewählten Zugangs hinzugefügt.</p>'+catalogSearch():''}
 `}</section>`;
     }
     function cartView() {
@@ -242,6 +243,7 @@
         }
       });
     });
-    return {shopping,cartView,settings,isPending:()=>pending,setShared:value=>{sync();shared=value;},selectedAccount:()=>{sync();return accountId;},count:()=>{sync();return basket.length;},isShared:()=>{sync();return shared;}};
+    function addMaterial(m){sync();if(pending||!accountId)throw Error('Bitte einen gespeicherten Neugart-Zugang auswählen.');if(m.business_id!==businessId()||!m.id||!/neugart|\bgc\b|\befg\b/i.test(m.catalog_supplier||''))throw Error('Dieser Artikel gehört nicht zu diesem Betrieb und Neugart.');if(basket.length&&basket[0].catalog_supplier!==m.catalog_supplier)throw Error('Bitte zuerst den Warenkorb für den ausgewählten Katalog abschließen.');addToBasket(m);}
+    return {shopping,cartView,settings,addMaterial,isPending:()=>pending,setShared:value=>{sync();shared=value;},selectedAccount:()=>{sync();return accountId;},count:()=>{sync();return basket.length;},isShared:()=>{sync();return shared;}};
   }};
 })();

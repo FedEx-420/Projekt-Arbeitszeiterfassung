@@ -245,4 +245,8 @@ Für Gautzsch dokumentiert der Hersteller DATANORM 4/5 über FiF unter Service �
 
 FiF bestätigt den TXT-Import mit aufeinanderfolgenden Paaren aus HG-Artikelnummer und Menge. Der allgemeine Einkauf erzeugt für Gautzsch daraus eine TXT-Datei und verlinkt auf die FiF-Uploadseite. Die Artikelnummern werden aus dem aktuellen Firmenmaterial abgeglichen. Der Entwurf bleibt beim Export erhalten. Der Browser-Test prüft Dateiinhalte und Download. Ein produktiver Dateiimport wurde nicht ausgeführt.
 
-Unter Service → DATANORM ist im FiF-Konto ein bereits bereitgestellter Export sichtbar. In der Prüfumgebung ging keine Datei ein. Die automatische Übergabe, Warenkorb-Rücklesung und Live-Artikeldaten bleiben offen. Die Anbindung soll ohne persönliche Kontaktaufnahme erfolgen.
+Unter Service → DATANORM ist im FiF-Konto ein bereits bereitgestellter Export sichtbar. Der echte Export wurde vollständig lokal geprüft. Der Parser erkannte DATANORM 5 mit Artikelstamm und getrennter Preispflege. Die automatische Übergabe, Warenkorb-Rücklesung und Live-Artikeldaten bleiben offen. Die Anbindung soll ohne persönliche Kontaktaufnahme erfolgen.
+
+## v989 – FiF-Artikelsuche aus der App
+
+Gemeinsame Artikelkarten öffnen die FiF-Suche anhand der exakten Gautzsch-Händlernummer. Die Suche wurde im angemeldeten Portal am realen Geschäftszugang geprüft. Preise und Bestand erscheinen bei FiF. Der Link verwendet die FiF-Sitzung des Browsers. Automatischer Kontozugang, Artikelabruf in der App und direkte Warenkorbübergabe bleiben offen.

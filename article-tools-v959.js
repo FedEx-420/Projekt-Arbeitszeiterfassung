@@ -14,7 +14,7 @@
  const snapshot=m=>Object.fromEntries(fields.filter(k=>m?.[k]!=null).map(k=>[k,String(m[k]).slice(0,k.includes('image')?2000:500)]));
  function key(m){if(m.catalog_supplier&&m.catalog_article_number)return JSON.stringify(['supplier',m.catalog_supplier,m.catalog_article_number,m.unit||'Stk']);return m.id?JSON.stringify(['material',m.id]):'';}
  const payload=m=>esc(JSON.stringify(snapshot(m)));
- function html(m,{star=true}={}){if(!m)return '';return `<span class="article-tools" data-article-payload="${payload(m)}">${star&&key(m)?'<button type="button" class="article-star" data-article-star aria-label="Zu Favoritenliste hinzufügen" aria-pressed="false">☆</button>':''}${priceHtml(m)}</span>`;}
+ function html(m,{star=true}={}){if(!m)return '';const fif=window.WorktimeSupplierCart?.fifArticleURL?.(m.catalog_supplier,m.catalog_article_number);return `<span class="article-tools" data-article-payload="${payload(m)}">${star&&key(m)?'<button type="button" class="article-star" data-article-star aria-label="Zu Favoritenliste hinzufügen" aria-pressed="false">☆</button>':''}${priceHtml(m)}${fif?`<a class="article-fif-link" href="${esc(fif)}" target="_blank" rel="noopener noreferrer">Bei FiF ansehen</a>`:''}</span>`;}
  function create({root,state,businessId,api,selectedNeugartAccount=()=>''}){
   let scope='',lists=[],items=[],loaded=false,loading=false,error='',serial=0,dialog=null,selectedList='',panelOpen=false,writing=false,favoritePage=0,priceCache=new Map();
   const current=()=>state.profile&&state.session?.user?.id&&businessId()?state.session.user.id+':'+businessId():'';

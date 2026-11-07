@@ -21,11 +21,19 @@
  function shopCSV({lines,supplier}){return normalize(lines,supplier).map(r=>{if(/[;",\r\n]/.test(r.sku)||/^[=+@-]/.test(r.sku))throw Error('Artikelnummer '+r.sku+' kann nicht sicher als GC-Importdatei ausgegeben werden. Bitte die Großhandelsartikelnummer prüfen.');return r.sku+';'+r.quantity.replace('.',',');}).join('\r\n')+'\r\n';}
  const fifUploadURL='https://www.onlinesystem.de/Warenkorb/Scan2FiF';
  const isFifSupplier=value=>/\bgautzsch\b/i.test(String(value||''));
+ const isFifSku=sku=>typeof sku==='string'&&/^[A-Za-z0-9][A-Za-z0-9._/-]{0,119}$/.test(sku);
+ function fifArticleURL(supplier,sku){
+  if(!isFifSupplier(supplier)||!isFifSku(sku))return '';
+  const url=new URL('https://www.onlinesystem.de/Search');
+  url.searchParams.set('SearchOwnPartNumbers','false');
+  url.searchParams.set('q',sku);
+  return url.href;
+ }
  function fifTXT({lines,supplier}){
   if(!isFifSupplier(supplier)||!Array.isArray(lines)||!lines.length||lines.length>1000)throw Error('Bitte einen Gautzsch-Warenkorb mit 1 bis 1000 Positionen auswählen.');
   const skus=new Set();
   return lines.flatMap(row=>{
-   if(row.supplier!==supplier||typeof row.sku!=='string'||row.sku!==row.sku.trim()||!/^[A-Za-z0-9][A-Za-z0-9._/-]{0,119}$/.test(row.sku))throw Error('Bitte die Gautzsch-Artikelnummer im Katalog prüfen.');
+   if(row.supplier!==supplier||!isFifSku(row.sku))throw Error('Bitte die Gautzsch-Artikelnummer im Katalog prüfen.');
    if(skus.has(row.sku))throw Error('Die Gautzsch-Artikelnummer ist doppelt. Bitte die Positionen vor dem Export zusammenfassen.');
    skus.add(row.sku);
    unit(row.unit);
@@ -33,5 +41,5 @@
   }).join(';');
  }
  function parseResponse(text,Parser=globalThis.DOMParser){if(typeof text!=='string'||text.length>1048576||/<!DOCTYPE|<!ENTITY/i.test(text))throw Error('Ungültige oder zu große Warenkorbrückmeldung.');const doc=new Parser().parseFromString(text,'application/xml');if(doc.getElementsByTagName('parsererror').length||doc.documentElement.localName!=='Warenkorb'||![namespace,''].includes(doc.documentElement.namespaceURI||''))throw Error('Die Rückmeldung ist kein lesbarer IDS-Warenkorb.');const child=(node,name)=>[...node.children].find(n=>n.localName===name),get=(node,name)=>child(node,name)?.textContent||'';const order=child(doc.documentElement,'Order');if(!order)throw Error('In der Rückmeldung fehlt der Warenkorb.');const rows=[...order.children].filter(n=>n.localName==='OrderItem');if(rows.length>1000)throw Error('Die Rückmeldung enthält zu viele Positionen.');return rows.map(n=>({ref:get(child(n,'RefItems')||n,'Customer'),sku:get(n,'ArtNo'),quantity:get(n,'Qty'),unit:get(n,'QU'),name:get(n,'Langtext')||get(n,'Kurztext'),error:get(n,'Fehlertext'),errorCode:get(n,'Fehlercode')}));}
- return Object.freeze({endpoint,namespace,xml,quantity,unit,normalize,build,parseResponse,shopCSV,uploadEndpoint,shopFor,fifTXT,fifUploadURL,isFifSupplier});
+ return Object.freeze({endpoint,namespace,xml,quantity,unit,normalize,build,parseResponse,shopCSV,uploadEndpoint,shopFor,fifTXT,fifUploadURL,isFifSupplier,fifArticleURL});
 });

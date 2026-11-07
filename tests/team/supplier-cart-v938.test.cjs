@@ -34,3 +34,6 @@ const portal=C.fifPortalTransfer({lines:[fif],supplier:fif.supplier,shipping:'Li
 assert.equal(portal.version,'2.5');assert.equal(portal.hookurl,callback);assert.equal(portal.action,'WKS');assert.equal(portal.pw_kunde,undefined);assert.equal(portal.name_kunde,undefined);
 assert.match(portal.warenkorb,/<ArtNo>00123<\/ArtNo>/);
 for(const invalid of [callback.replace('https:','http:'),callback.replace('fixture.supabase.co','foreign.invalid'),callback.replace('ids-cart-return-v938','other'),callback+'&extra=1',callback.replace('token=','wrong=')])assert.throws(()=>C.fifPortalTransfer({lines:[fif],supplier:fif.supplier,shipping:'Lieferung',callback:invalid}),/Rückgabeadresse/);
+
+assert.equal(C.fifCartURL('https://www.onlinesystem.de/Warenkorb/91').pathname,'/Warenkorb/91');
+for(const value of ['http://www.onlinesystem.de/Warenkorb/91','https://other.invalid/Warenkorb/91','https://www.onlinesystem.de/IDS','https://www.onlinesystem.de/Warenkorb/91?next=other','https://name:secret@www.onlinesystem.de/Warenkorb/91'])assert.throws(()=>C.fifCartURL(value));

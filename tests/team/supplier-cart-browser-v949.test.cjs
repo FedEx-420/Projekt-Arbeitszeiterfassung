@@ -13,7 +13,11 @@ async function main(){await new Promise(r=>server.listen(0,'127.0.0.1',r));const
  mode='wrong';await credentials();await page.locator('[data-sc-submit]').click();await page.locator('[role="alert"]').filter({hasText:'Menge'}).waitFor();assert.equal(posts.length,0);assert.equal(calls[1].request_id,id,'recheck retains the same idempotency key');assert.equal(await page.locator('[name^="qty:"]').count(),1);
  mode='ok';await credentials();const popupCount=context.pages().length;await page.locator('[data-sc-submit]').click();await page.waitForURL('https://efgonlineplus.de/p/cart/SYNTHETIC_CART_949/positions?login=true');assert.equal(context.pages().length,popupCount,'no about:blank or popup on iPhone');assert.equal(posts[0].method,'POST');assert.equal(new URLSearchParams(posts[0].data).get('TOKEN'),'SYNTHETIC_TRANSIENT_HANDOFF');assert.ok(!posts[0].data.includes('PASSWORD'));assert.equal(calls[2].request_id,id);assert.ok(!('sku'in calls[2].lines[0]),'server reads the authoritative SKU');
  await setup();hold=true;await credentials();await page.locator('[data-sc-submit]').click();await page.waitForFunction(()=>document.querySelector('[data-sc-submit]').disabled);await page.evaluate(()=>{__cartQA.state.profile={id:'10000000-0000-4000-8000-000000000099',role:'administrator',username:'Other'};__cartQA.render();});release();hold=false;await page.waitForTimeout(100);assert.equal(posts.length,1,'late old-account response cannot navigate or clear the new account');assert.deepEqual(errors,[]);
+ assert.equal(await page.getByRole('link',{name:'Bei FiF ansehen'}).count(),0);
  await setup('H. Gautzsch');
+ const articleLink=page.getByRole('link',{name:'Bei FiF ansehen'});
+ assert.equal(await articleLink.getAttribute('href'),'https://www.onlinesystem.de/Search?SearchOwnPartNumbers=false&q=000123');
+ assert.equal(await articleLink.getAttribute('rel'),'noopener noreferrer');
  assert.equal(await page.locator('[data-sc-credentials]').count(),0);
  assert.equal(await page.getByRole('link',{name:'FiF-Upload öffnen'}).getAttribute('href'),'https://www.onlinesystem.de/Warenkorb/Scan2FiF');
  const beforeExport=calls.length,downloadReady=page.waitForEvent('download');

@@ -1,5 +1,5 @@
 ARBEITSZEITERFASSUNG – GEMEINSAME CHECKLISTE
-Stand: 06.11.2026
+Stand: 07.11.2026
 
 Diese Datei ist die zentrale Aufgabenliste des Projekts. Die Desktop-Verknüpfung
 „Arbeitszeiterfassung - Checkliste“ öffnet genau diese Datei, keine zweite Kopie.
@@ -11,6 +11,8 @@ ZEICHEN
 Ein erfolgreicher Test mit Beispieldaten ist kein Live-Test jedes Geschäftskontos.
 
 ALS NÄCHSTES
+[x] Gautzsch-Artikellink aus der gemeinsamen Artikelkarte mit exakter Händlernummer. FiF-Suche live und App-Link isoliert geprüft (v989).
+[x] Originalen Gautzsch-DATANORM-5-Export isoliert mit dem Katalogparser geprüft.
 [x] Gautzsch-TXT-Export aus dem allgemeinen Einkauf samt FiF-Upload-Link mit Testdaten geprüft.
 [ ] Gautzsch-Live-Import und automatische Schnittstellen ohne persönliche Kontaktaufnahme verifizieren.
 [x] Neugart-Warenkorb wurde vom Nutzer nach v986 als wieder funktionsfähig bestätigt.

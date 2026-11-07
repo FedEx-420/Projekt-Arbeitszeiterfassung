@@ -16,3 +16,7 @@ assert.throws(()=>C.fifTXT({lines:[fif,fif],supplier:fif.supplier}),/doppelt/);
 assert.throws(()=>C.fifTXT({lines:[{...fif,sku:'1;999'}],supplier:fif.supplier}),/Artikelnummer/);
 assert.throws(()=>C.fifTXT({lines:[line],supplier:fif.supplier}),/Artikelnummer/);
 assert.throws(()=>C.fifTXT({lines:[fif],supplier:'Neugart'}),/Gautzsch/);
+
+assert.equal(C.fifArticleURL('H. Gautzsch','00123'), 'https://www.onlinesystem.de/Search?SearchOwnPartNumbers=false&q=00123');
+assert.equal(C.fifArticleURL('Neugart','00123'), '');
+assert.equal(C.fifArticleURL('H. Gautzsch','00123&x=1'), '');

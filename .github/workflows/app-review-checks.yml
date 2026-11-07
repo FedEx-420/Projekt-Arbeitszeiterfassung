@@ -64,7 +64,10 @@ jobs:
           node tests/team/supplier-stock-priority-v952.test.cjs
           node tests/team/purchase-catalog-pages-v952.test.cjs
           node tests/team/fif-cart-v995.test.mjs
+          node tests/team/fif-accounts-edge-v997.test.mjs
+          node tests/team/fif-accounts-db-v997.test.cjs
           node tests/team/supplier-cart-browser-v949.test.cjs
+          node tests/team/fif-accounts-browser-v997.test.cjs
           node tests/team/neugart-search-v975.test.cjs
           node tests/team/admin-neugart-v984.test.cjs
       - name: Planning and shared catalog helpers

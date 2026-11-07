@@ -19,7 +19,7 @@ const protocol=createFifMerchant({report:event=>diagnostics.push(event),fetch:as
  if(u.pathname==='/Product/W00793/1')return new Response('<article data-product-id="29" data-product-number="W00793"></article>');
  if(u.pathname==='/Cart/Scan2FiFRead')return Response.json({jsRenderData:[{data:{productNumber:'000123',productId:19}}]});
  if(u.pathname==='/Warenkorb/Create')return Response.json({activeCart:{id:91,products:[]}});
- if(u.pathname==='/Warenkorb/Add'){const f=new URLSearchParams(options.body);assert.equal(f.get('cartId'),'91');assert.equal(f.get('insertProducts[0][productId]'),'19');assert.equal(f.get('insertProducts[0][quantity]'),'2.50');return Response.json({clientMessage:{type:'Success'}});}
+ if(u.pathname==='/Warenkorb/Add'){const f=new URLSearchParams(options.body);assert.equal(f.get('cartId'),'91');assert.equal(f.get('insertProducts[0][productId]'),'19');assert.equal(f.get('insertProducts[0][quantity]'),'2,50');assert.equal(Number(f.get('insertProducts[0][quantity]').replace(/\./g,'').replace(',','.')),2.5);return Response.json({clientMessage:{type:'Success'}});}
  if(u.pathname==='/Warenkorb/91')return Response.json({activeCart:{id:91,products:[{productNumber:'000123',quantity:2.5,quantityUnit:'STCK'}]}});
  throw Error('Unexpected merchant route '+u.pathname);
 }});
@@ -48,3 +48,6 @@ result=await (await handler(request({username:'fixture_user'}))).json();assert.e
 role='employee';assert.equal((await handler(request())).status,403);role='business';assert.equal((await handler(request({company:other}))).status,403);materialCompany=other;result=await (await handler(request())).json();assert.equal(result.code,'LINES');materialCompany=company;
 wrongReadback=true;const nextId='40000000-0000-4000-8000-000000000002';result=await (await handler(request({request_id:nextId}))).json();assert.equal(result.confirmed,false);wrongReadback=false;result=await (await handler(request({request_id:nextId}))).json();assert.equal(result.confirmed,true);assert.equal(actions.filter(a=>a==='add').length,2,'uncertain readback is retried without re-adding');
 console.log('PASS FiF: native login/CSRF/cookie isolation; exact product mapping; explicit fresh cart; SKU/quantity/unit readback; encrypted scoped sessions; no credentials in receipts; stable retries; employee/company boundaries; no real orders');
+
+assert.equal(checkFifCart([{productNumber:"test",quantity:1,salesQuantityUnit:"STCK",salesQuantityUnitCode:"PCE"}],[{material_ids:[],sku:"test",cents:100,qu:"PCE"}])[0].confirmed,true);
+assert.equal(checkFifCart([{productNumber:"test",quantity:1,salesQuantityUnit:"STCK",salesQuantityUnitCode:"MTR"}],[{material_ids:[],sku:"test",cents:100,qu:"PCE"}])[0].confirmed,false);

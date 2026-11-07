@@ -11,6 +11,9 @@ ZEICHEN
 Ein erfolgreicher Test mit Beispieldaten ist kein Live-Test jedes Geschäftskontos.
 
 ALS NÄCHSTES
+[x] Reguläre FiF-Anmeldung und exakte Artikelzuordnung live bestätigt. Abweichende Menge wurde vom Rückvergleich erkannt; kein falscher Erfolg und keine automatische erneute Zugabe.
+[x] FiF-Formularmengen mit Dezimalkomma senden und salesQuantityUnit-/Code-Felder zurücklesen; isolierte Dezimal-/Einheitenprüfungen bestanden.
+[ ] Eigene FiF-Testposition im Händlerportal entfernen und frischen vollständigen Transfer mit korrekter Menge bis zum sichtbaren Warenkorb bestätigen. Keine Bestellung auslösen.
 [ ] FiF-Warenkorbübergabe über reguläre Händleranmeldung statt fehlgeschlagenem IDS-Aufruf live abnehmen (v995). Neuer Dienst, sichere Sitzungsbindung, exakte Rücklesung und Wiederholungsschutz isoliert geprüft; tatsächliche App-Übernahme noch zu bestätigen.
 [ ] FiF-Übergabe mit nativer Händleranmeldung, expliziter IDS-Version und echter Einmal-Rückgabeadresse live abnehmen (v994). Formular- und Mengenprüfung isoliert erfolgreich; automatische App-Annahme weiterhin zu bestätigen.
 [x] Regulären FiF-Scannerimport einer einzelnen Testposition mit exakter Artikelnummer und Menge im Händlerwarenkorb bestätigt; anschließend entfernt. Keine Bestellung.

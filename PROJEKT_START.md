@@ -250,3 +250,11 @@ Unter Service → DATANORM ist im FiF-Konto ein bereits bereitgestellter Export 
 ## v989 – FiF-Artikelsuche aus der App
 
 Gemeinsame Artikelkarten öffnen die FiF-Suche anhand der exakten Gautzsch-Händlernummer. Die Suche wurde im angemeldeten Portal am realen Geschäftszugang geprüft. Preise und Bestand erscheinen bei FiF. Der Link verwendet die FiF-Sitzung des Browsers. Automatischer Kontozugang, Artikelabruf in der App und direkte Warenkorbübergabe bleiben offen.
+
+## v990 – Direkte FiF-IDS-Übergabe als Testweg
+
+Am 07.11.2026 antwortete https://www.onlinesystem.de/IDS auf POST action=SV mit XML und den Versionen 1.3 bis 2.5. POST action=LI bestätigte Benutzername und Passwort als Pflichtfelder, Kundennummer als optional. GET an dieselbe Schnittstelle lieferte eine Fehlerseite.
+
+Der allgemeine Gautzsch-Einkauf bietet deshalb eine ausdrücklich als neu zu prüfende direkte IDS-Übergabe per multipart/form-data im selben Tab. Die Anmeldung wird zusammen mit den geprüften Artikeln und Mengen an FiF gesendet. Zugangsdaten werden dafür vom anwesenden Benutzer eingegeben, nicht gespeichert oder an andere Konten verteilt. Der App-Entwurf bleibt erhalten. Erfolgreiche Warenkorbannahme wird erst im FiF-Portal geprüft. Wiederholtes Senden kann zusätzliche Händlerpositionen anlegen. Gespeicherte serverseitige Konten, Mitarbeiterdelegation und ein automatisches Rücklesen sind noch offen.
+
+Bei der Prüfung wurde im angemeldeten FiF ein zusätzlicher leerer Testwarenkorb angelegt. Der TXT-Test lieferte keine bestätigte Position. Es wurde keine Bestellung abgeschickt.

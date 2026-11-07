@@ -11,6 +11,9 @@ ZEICHEN
 Ein erfolgreicher Test mit Beispieldaten ist kein Live-Test jedes Geschäftskontos.
 
 ALS NÄCHSTES
+[x] FiF-IDS-Endpunkt per POST für Schnittstellenversion und Anmeldefelder live bestätigt.
+[x] Direkte FiF-IDS-Übergabe mit vom Benutzer eingegebenem Zugang als gekennzeichneten Testweg ergänzt und Formularnavigation isoliert geprüft (v990).
+[ ] Direkte FiF-Warenkorbannahme mit Geschäftszugang live prüfen. Gespeicherte Anmeldung, Mitarbeiterfreigaben und Rücklesen weiterhin offen.
 [x] Gautzsch-Artikellink aus der gemeinsamen Artikelkarte mit exakter Händlernummer. FiF-Suche live und App-Link isoliert geprüft (v989).
 [x] Originalen Gautzsch-DATANORM-5-Export isoliert mit dem Katalogparser geprüft.
 [x] Gautzsch-TXT-Export aus dem allgemeinen Einkauf samt FiF-Upload-Link mit Testdaten geprüft.

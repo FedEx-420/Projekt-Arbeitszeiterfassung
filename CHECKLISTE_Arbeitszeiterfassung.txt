@@ -1,3 +1,4 @@
+[x] v998: Admin-Einkauf – lokale Katalogdateien bei gespeicherten Neugart-/FiF-Zugängen durchsuchen und Artikel dem ausgewählten Warenkorb hinzufügen. Allgemeiner Warenkorb-Menüpunkt und Rückkehr zur Suche korrigiert. Vollständige synthetische App-Prüfung mit Import, Händlerwechsel und Firmengrenzen bestanden; Veröffentlichung folgt.
 ARBEITSZEITERFASSUNG – GEMEINSAME CHECKLISTE
 Stand: 07.11.2026
 

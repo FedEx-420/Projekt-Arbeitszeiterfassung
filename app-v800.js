@@ -40,7 +40,7 @@
     datev: ['datev','ledger','legal']
   };
   function viewDataNeeds() {
-    if (state.view === 'shopping-cart') return [];
+    if (state.view === 'shopping-cart') return activeShoppingProvider()==='all'&&isManager()?['materials']:[];
     if(state.view==='shopping'&&activeShoppingProvider()==='gautzsch'&&fifAccounts?.usesSaved())return [];
     if (state.view === 'shopping' && (state.profile?.role === 'employee' || neugartAccounts?.isShared())) return [];
     const needs = startupViewData[state.view] || [];
@@ -430,7 +430,7 @@
   }
 
   function loginView() { return `<main class="login-page"><section class="login-card"><div class="brand-mark">ZE</div><h1>Zeiterfassung</h1><p>Arbeitszeiten einfach und sicher erfassen.</p><form data-form="login"><label>Firma<input name="company" autocomplete="organization" placeholder="Firmenname" required></label><label>Benutzername<input name="username" autocomplete="username" required></label><label>Passwort<input name="password" type="password" autocomplete="current-password" required></label><label class="login-admin"><input name="administrator_login" type="checkbox"> Anmeldung als Administrator (nur dann ohne Firma)</label><label>Beim nächsten Mal auf diesem Gerät angemeldet bleiben?<select name="remember_device" required><option value="">Bitte auswählen</option><option value="yes">Ja, auf diesem Gerät</option><option value="no">Nein, nur für diese Sitzung</option></select></label><p class="device-help">Nur auf einem eigenen, geschützten Gerät wählen. Dein Passwort wird nicht gespeichert. Abmelden beendet die Geräteanmeldung.</p><button class="primary" ${state.busy ? 'disabled' : ''}>Anmelden</button></form><button class="link-button" type="button" data-action="forgot">Passwort vergessen?</button>${noticeHtml()}</section></main>`; }
-  function menuItems() { return [['home','Übersicht',true],['time','Zeiterfassung',canUse('time')],['orders','Arbeitsscheine',canUse('orders')],['calendar','Kalender',canUse('calendar')],['customers','Kunden',canUse('customers')],['mailbox','Postfach',true],['materials','Materialliste',isManager()],['shopping','Einkauf',isManager()||state.profile?.role==='employee'],['shopping-cart','Warenkorb ('+(neugartAccounts?.count()||0)+')',isManager()||state.profile?.role==='employee'],['invoices','Abrechnungen Kunden',isManager()],['invoices-paid','Abgerechnete Arbeitsscheine',isManager()],['settings','Einstellungen',true]].filter(([, , yes]) => yes); }
+  function menuItems() { return [['home','Übersicht',true],['time','Zeiterfassung',canUse('time')],['orders','Arbeitsscheine',canUse('orders')],['calendar','Kalender',canUse('calendar')],['customers','Kunden',canUse('customers')],['mailbox','Postfach',true],['materials','Materialliste',isManager()],['shopping','Einkauf',isManager()||state.profile?.role==='employee'],['shopping-cart','Warenkorb ('+shoppingCartCount()+')',isManager()||state.profile?.role==='employee'],['invoices','Abrechnungen Kunden',isManager()],['invoices-paid','Abgerechnete Arbeitsscheine',isManager()],['settings','Einstellungen',true]].filter(([, , yes]) => yes); }
   function selector() {
     if (!isManager()) return '';
     const businessesHtml = isAdmin() ? `<label>Firma ansehen<select data-select="business"><option value="">Firma auswählen</option>${businesses().map(person => `<option value="${person.id}" ${same(person.id, businessId()) ? 'selected' : ''}>${escape(person.company_name || person.username)}</option>`).join('')}</select></label>` : '';
@@ -456,11 +456,12 @@
     if(scope!==shoppingProviderScope){shoppingProviderScope=scope;shoppingProvider='';}
     return shoppingProvider||(state.profile?.role==='employee'||neugartAccounts?.isShared()?'neugart':'all');
   }
+  function shoppingCartCount(){const provider=activeShoppingProvider();return provider==='gautzsch'?(fifAccounts?.count()||0):provider==='neugart'?(neugartAccounts?.count()||0):(supplierCart?.count()||0);}
   function shoppingProviderView(){
     const selected=activeShoppingProvider();
     return `<section class="panel"><label>Einkaufszugang<select data-shopping-provider><option value="neugart" ${selected==='neugart'?'selected':''}>Neugart</option><option value="gautzsch" ${selected==='gautzsch'?'selected':''}>Gautzsch · FiF</option><option value="all" ${selected==='all'?'selected':''}>Weitere Fachhändler</option></select></label></section>`;
   }
-  root.addEventListener('click',event=>{if(event.target.closest('[data-ng-action=mode]'))shoppingProvider='';});
+  root.addEventListener('click',event=>{if(event.target.closest('[data-ng-action=mode]')){shoppingProvider='';supplierCart?.selectProvider('all');}});
   root.addEventListener('change',event=>{
     if(!event.target.matches('[data-shopping-provider]'))return;
     const provider=event.target.value;
@@ -485,7 +486,7 @@
   function initializeShopping() {
     if(supplierCart)return true;
     if(!window.WorktimeSupplierCart||!window.WorktimeSupplierCartUI)return false;
-    try{supplierCart=window.WorktimeSupplierCartUI.create({root,state,businessId,isManager,render:()=>render(),api,supabaseUrl:base,catalogWizard:shoppingCatalogWizard,escape});return !!supplierCart;}
+    try{supplierCart=window.WorktimeSupplierCartUI.create({root,state,businessId,isManager,render:()=>render(),api,supabaseUrl:base,catalogWizard:shoppingCatalogWizard,escape,getAddContext:()=>JSON.stringify([state.profile?.id,businessId(),activeShoppingProvider(),activeShoppingProvider()==='gautzsch'?fifAccounts?.selectedAccount():activeShoppingProvider()==='neugart'?neugartAccounts?.selectedAccount():'']),onAdd:material=>{if(activeShoppingProvider()==='gautzsch'&&fifAccounts?.selectedAccount()){fifAccounts.addMaterial(material);return true;}if(activeShoppingProvider()==='neugart'&&neugartAccounts?.selectedAccount()){neugartAccounts.addMaterial(material);return true;}return false;},onExternalAdd:()=>{shoppingProvider='all';neugartAccounts?.setShared(false);supplierCart?.selectProvider('all');}});return !!supplierCart;}
     catch{shoppingLoadFailed=true;return false;}
   }
   async function recoverShopping() {
@@ -1453,7 +1454,7 @@
     return `<section class="page-head"><div><span class="eyebrow">Persönliche Nachweise</span><h2>Belege</h2></div></section><section class="panel"><div class="actions">${receiptTabs(section)}</div><h3>${escape(title)}</h3>${body}</section>`;
   }
   function planningView() { return '<section class="page-head"><div><span class="eyebrow">Konzeptvorschau</span><h2>Planungsübersicht</h2></div></section><section class="panel"><h3>Planung wird erst nach Freigabe aktiviert</h3><p>Diese Ansicht ändert keine Aufträge und legt keine Termine an. Die vorgeschlagene Umsetzung steht unten als Konzept bereit.</p></section>'; }
-  function menuItems() { return [['home','Übersicht',true],['time','Zeiterfassung',canUse('time')],['orders','Arbeitsscheine',canUse('orders')],['calendar','Kalender',canUse('calendar')],['customers','Kunden',canUse('customers')],['receipts','Belege',true],['planning','Planungsübersicht',true],['mailbox','Postfach',true],['materials','Materialliste',isManager()],['shopping','Einkauf',isManager()||state.profile?.role==='employee'],['shopping-cart','Warenkorb ('+(neugartAccounts?.count()||0)+')',isManager()||state.profile?.role==='employee'],['invoices','Abrechnungen Kunden',isManager()],['invoices-paid','Abgerechnete Arbeitsscheine',isManager()],['settings','Einstellungen',true]].filter(([, , yes]) => yes); }
+  function menuItems() { return [['home','Übersicht',true],['time','Zeiterfassung',canUse('time')],['orders','Arbeitsscheine',canUse('orders')],['calendar','Kalender',canUse('calendar')],['customers','Kunden',canUse('customers')],['receipts','Belege',true],['planning','Planungsübersicht',true],['mailbox','Postfach',true],['materials','Materialliste',isManager()],['shopping','Einkauf',isManager()||state.profile?.role==='employee'],['shopping-cart','Warenkorb ('+shoppingCartCount()+')',isManager()||state.profile?.role==='employee'],['invoices','Abrechnungen Kunden',isManager()],['invoices-paid','Abgerechnete Arbeitsscheine',isManager()],['settings','Einstellungen',true]].filter(([, , yes]) => yes); }
   function viewHtml() { return ({ home: homeView, time: timeView, orders: ordersView, 'order-detail': orderDetailView, calendar: calendarView, customers: customersView, receipts: receiptsView, planning: planningView, mailbox: mailboxView, materials: materialsView, shopping: shoppingView, invoices: invoicesView, 'invoices-paid': paidInvoicesView, 'billing-detail': billingDetailView, settings: settingsView }[state.view] || homeView)(); }
   function reportDateValid(value) {
     return /^\d{4}-\d{2}-\d{2}$/.test(String(value || '')) && Number.isFinite(Date.parse(value+'T12:00:00Z')) && new Date(value+'T12:00:00Z').toISOString().slice(0,10) === value;
@@ -2467,10 +2468,10 @@
   const selectionPhotos=window.WorktimeProductFeatures?.installSelections({root,state,businessId});
   const flowGuide=window.WorktimeAppFlow?.create({root,state,businessId});if(flowGuide){const renderBeforeFlow=render;render=()=>{renderBeforeFlow();flowGuide.afterRender();selectionPhotos?.afterRender();};flowGuide.afterRender();selectionPhotos?.afterRender();}
   window.WorktimeGermanProducts?.install({root,state,businessId,render:()=>render()});
-  neugartAccounts=window.WorktimeNeugartAccounts?.create({root,state,api,businessId,render:()=>render(),escape});
-  fifAccounts=window.WorktimeFifAccounts?.create({root,state,api,businessId,isManager,render:()=>render(),escape,fallback:()=>supplierCart?.view()||''});
+  neugartAccounts=window.WorktimeNeugartAccounts?.create({root,state,api,businessId,render:()=>render(),escape,isManager,catalogSearch:()=>supplierCart?.searchView('neugart')||''});
+  fifAccounts=window.WorktimeFifAccounts?.create({root,state,api,businessId,isManager,render:()=>render(),escape,catalogSearch:()=>supplierCart?.searchView('gautzsch')||'',fallback:()=>supplierCart?.view()||''});
   const viewBeforeNeugart=viewHtml;
-  viewHtml=()=>(state.view==='shopping-cart'?(activeShoppingProvider()==='gautzsch'?fifAccounts?.shopping()||'':neugartAccounts?.cartView()||''):viewBeforeNeugart())+(state.view==='settings'&&isManager()&&neugartAccounts?neugartAccounts.settings():'')+(state.view==='settings'&&isManager()?fifAccounts?.settings()||'':'');
+  viewHtml=()=>(state.view==='shopping-cart'?(activeShoppingProvider()==='gautzsch'?fifAccounts?.shopping()||'':activeShoppingProvider()==='neugart'?neugartAccounts?.cartView()||'':supplierCart?.view({cartOnly:true})||''):viewBeforeNeugart())+(state.view==='settings'&&isManager()&&neugartAccounts?neugartAccounts.settings():'')+(state.view==='settings'&&isManager()?fifAccounts?.settings()||'':'');
   initializeShopping();
   const supplierStock=window.WorktimeSupplierStock?.create({root,state,businessId,isManager,api,escape});
   if(supplierStock){const beforeStockRender=render;render=()=>{beforeStockRender();supplierStock.afterRender();};}

@@ -11,6 +11,7 @@ ZEICHEN
 Ein erfolgreicher Test mit Beispieldaten ist kein Live-Test jedes Geschäftskontos.
 
 ALS NÄCHSTES
+[ ] FiF-Warenkorb auch ohne vorhandene Browser-Shopanmeldung direkt öffnen, ohne Zugangsdaten erneut einzugeben. Offizielles externes Gautzsch-Anmeldeformular prüfen; vollständige Live-Gegenprobe offen (v996).
 [x] Reguläre FiF-Anmeldung und exakte Artikelzuordnung live bestätigt. Abweichende Menge wurde vom Rückvergleich erkannt; kein falscher Erfolg und keine automatische erneute Zugabe.
 [x] FiF-Formularmengen mit Dezimalkomma senden und salesQuantityUnit-/Code-Felder zurücklesen; isolierte Dezimal-/Einheitenprüfungen bestanden.
 [x] Eigene FiF-Testpositionen entfernt und frischen vollständigen automatischen App-Transfer mit korrekter Menge bis zum sichtbaren Händlerwarenkorb bestätigt. Kein erneuter Shoplogin bei vorhandener Sitzung; keine Bestellung (07.11.2026).

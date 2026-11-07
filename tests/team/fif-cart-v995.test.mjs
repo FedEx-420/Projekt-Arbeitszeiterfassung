@@ -9,13 +9,14 @@ for(const rows of [[{productNumber:'123',quantity:2.5,quantityUnit:'STCK'}],[{pr
 assert.throws(()=>collectProducts({a:{productNumber:'001',id:1},b:{productNumber:'001',id:2}},new Set(['001'])),/widersprüchliche/);
 assert.equal(collectProducts({HtmlData:[{html:'<article data-product-number="001" data-product-id="42"></article>'}]},new Set(['001'])).get('001').id,'42');
 // Native login includes the anti-forgery token and server cookies, never an IDS route.
-const wire=[];let freshToken='LOGIN_CSRF';
-const protocol=createFifMerchant({fetch:async(url,options)=>{const u=new URL(url);wire.push({u,options});assert.equal(u.origin,'https://www.onlinesystem.de');assert.ok(!u.pathname.includes('IDS'));
+const wire=[],diagnostics=[];let freshToken='LOGIN_CSRF';
+const protocol=createFifMerchant({report:event=>diagnostics.push(event),fetch:async(url,options)=>{const u=new URL(url);wire.push({u,options});assert.equal(u.origin,'https://www.onlinesystem.de');assert.ok(!u.pathname.includes('IDS'));
  if(u.pathname==='/Login'&&options.method==='GET')return new Response('<form><input value="LOGIN_CSRF" name="__RequestVerificationToken"></form>',{headers:{'set-cookie':'FiFSession=opaque; HttpOnly; Secure'}});
  if(u.pathname==='/Login'){const f=new URLSearchParams(options.body);assert.equal(f.get('Username'),'FIXTURE_USER');assert.equal(f.get('Password'),'FIXTURE_PASSWORD');assert.equal(f.get('__RequestVerificationToken'),'LOGIN_CSRF');assert.match(options.headers.Cookie,/FiFSession=opaque/);return new Response(null,{status:302,headers:{location:'/Warenkorb','set-cookie':'Auth=secret-fixture-cookie; HttpOnly; Secure'}});}
  if(u.pathname==='/Warenkorb')return new Response('Cart page');
  if(u.pathname==='/Manage')return new Response('<form method="post" action="/Logout"><input name="__RequestVerificationToken" value="SIGNED_CSRF"></form>');
- assert.equal(new URLSearchParams(options.body).get('__RequestVerificationToken'),'SIGNED_CSRF');assert.match(options.headers.Cookie,/Auth=secret-fixture-cookie/);
+ if(options.method==='POST')assert.equal(new URLSearchParams(options.body).get('__RequestVerificationToken'),'SIGNED_CSRF');assert.match(options.headers.Cookie,/Auth=secret-fixture-cookie/);
+ if(u.pathname==='/Product/W00793/1')return new Response('<article data-product-id="29" data-product-number="W00793"></article>');
  if(u.pathname==='/Cart/Scan2FiFRead')return Response.json({jsRenderData:[{data:{productNumber:'000123',productId:19}}]});
  if(u.pathname==='/Warenkorb/Create')return Response.json({activeCart:{id:91,products:[]}});
  if(u.pathname==='/Warenkorb/Add'){const f=new URLSearchParams(options.body);assert.equal(f.get('cartId'),'91');assert.equal(f.get('insertProducts[0][productId]'),'19');assert.equal(f.get('insertProducts[0][quantity]'),'2.50');return Response.json({clientMessage:{type:'Success'}});}
@@ -23,6 +24,7 @@ const protocol=createFifMerchant({fetch:async(url,options)=>{const u=new URL(url
  throw Error('Unexpected merchant route '+u.pathname);
 }});
 const s=await protocol.connect({username:'FIXTURE_USER',password:'FIXTURE_PASSWORD'}),mapped=await protocol.products(s,[line]);assert.equal(mapped[0].productId,'19');assert.equal(await protocol.create(s),'91');await protocol.add(s,'91',mapped);assert.equal(checkFifCart(await protocol.read(s,'91'),[line])[0].confirmed,true);
+assert.equal((await protocol.products(s,[{...line,sku:'W00793'}]))[0].productId,'29');assert.ok(!JSON.stringify(diagnostics).includes('W00793'),'private dealer article numbers are not logged');
 const codec=createCodec(env.serviceKey),context={owner:company,company,supplier},connection=await codec.seal(s,context);assert.ok(!connection.includes('secret-fixture-cookie'));assert.equal((await codec.open(connection,context)).username,'FIXTURE_USER');await assert.rejects(codec.open(connection,{...context,company:other}),/erneut verbinden/);
 // Full handler uses authoritative company/SKU data and writes each cart only once.
 const ledger=new Map(),actions=[];let role='business',materialCompany=company,wrongReadback=false,holdAdd;

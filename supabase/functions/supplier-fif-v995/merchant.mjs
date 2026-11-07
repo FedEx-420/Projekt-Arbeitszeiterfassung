@@ -33,7 +33,7 @@ export function createFifMerchant({fetch=globalThis.fetch,now=Date.now,report=()
     if(data!==undefined&&[307,308].includes(response.status))throw fail('FIF_REDIRECT','FiF hat die Anmeldung nicht eindeutig angenommen.');
     url=next;data=undefined;continue;
    }
-   report({stage:path.split('?')[0].replace(/\/\d+/g,'/:id'),status:response.status});
+   report({stage:path.split('?')[0].replace(/^\/Product\/[^/]+\/1$/,'/Product/:sku/1').replace(/\/\d+/g,'/:id'),status:response.status});
    if(!response.ok)throw fail('FIF_HTTP','FiF hat die Anfrage nicht angenommen (HTTP '+response.status+').',response.status===401?401:502);
    const text=await response.text();if(text.length>3000000)throw fail('FIF_SIZE','Die FiF-Antwort ist zu groß.');
    if(!json)return text;

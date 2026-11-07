@@ -8,7 +8,7 @@
   function browserFifLogin(url){
    if(!fifLogin||fifLogin.scope!==current()||fifLogin.supplier!==supplier||Date.now()>=fifLogin.expires)throw Error('Bitte den FiF-Zugang erneut bestätigen, damit der Shop ohne zweite Eingabe geöffnet werden kann.');
    const cartURL=C.fifCartURL(url.href),post=document.createElement('form');post.method='POST';post.action='https://www.onlinesystem.de/default.aspx';post.enctype='multipart/form-data';post.target='_self';post.hidden=true;post.rel='noreferrer';
-   for(const [name,value]of Object.entries({strLogin:fifLogin.username,strPass:fifLogin.password,ReturnUrl:cartURL.pathname})){const field=document.createElement('input');field.type='hidden';field.name=name;field.value=value;post.append(field);}
+   for(const [name,value]of Object.entries({strLogin:fifLogin.username,strPass:fifLogin.password,BtnLogin:'',ReturnUrl:cartURL.pathname})){const field=document.createElement('input');field.type='hidden';field.name=name;field.value=value;post.append(field);}
    document.body.append(post);fifPost=post;clearFifLogin();HTMLFormElement.prototype.submit.call(post);
    setTimeout(()=>{for(const input of post.elements)input.value='';post.remove();if(fifPost===post)fifPost=null;},30000);
   }

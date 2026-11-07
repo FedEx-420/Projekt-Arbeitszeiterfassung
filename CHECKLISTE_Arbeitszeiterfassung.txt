@@ -11,6 +11,8 @@ ZEICHEN
 Ein erfolgreicher Test mit Beispieldaten ist kein Live-Test jedes Geschäftskontos.
 
 ALS NÄCHSTES
+[ ] FiF-Übergabe mit nativer Händleranmeldung, expliziter IDS-Version und echter Einmal-Rückgabeadresse live abnehmen (v994). Formular- und Mengenprüfung isoliert erfolgreich; automatische App-Annahme weiterhin zu bestätigen.
+[x] Regulären FiF-Scannerimport einer einzelnen Testposition mit exakter Artikelnummer und Menge im Händlerwarenkorb bestätigt; anschließend entfernt. Keine Bestellung.
 [ ] FiF-403 bei IDS-Warenkorbübergabe beheben: im Browser mit und ohne vorherige Händlersitzung nachgestellt. Direkte Händleranmeldung anschließend auf frischer Startseite bestätigt. Ursache und erfolgreiche Warenkorbannahme bleiben offen; keine Kontosperre oder fehlende Berechtigung als bewiesen behandeln.
 [x] FiF-Rückkehr über Browser-Zurück entsperrt den Übertragungsbutton sofort, erhält den App-Entwurf und sendet nicht automatisch erneut. Temporäre Anmeldefelder werden beim Verlassen entfernt. Browser-Fixture geprüft (v993).
 [x] Favoriten im Einkauf nach Neugart und Gautzsch · FiF trennen; neue Listen erhalten einen Händlerzusatz. Gleichnamige Listen, Suche, Warenkorbwechsel und Firmen-/Mitarbeitergrenzen isoliert geprüft (v992).

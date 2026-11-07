@@ -11,6 +11,7 @@ ZEICHEN
 Ein erfolgreicher Test mit Beispieldaten ist kein Live-Test jedes Geschäftskontos.
 
 ALS NÄCHSTES
+[x] Einkaufszugang im Menü Einkauf zwischen Neugart und Gautzsch wählen. Gautzsch-Suche und vorhandene Warenkörbe beim Wechsel im Browser geprüft (v991).
 [x] FiF-IDS-Endpunkt per POST für Schnittstellenversion und Anmeldefelder live bestätigt.
 [x] Direkte FiF-IDS-Übergabe mit vom Benutzer eingegebenem Zugang als gekennzeichneten Testweg ergänzt und Formularnavigation isoliert geprüft (v990).
 [ ] Direkte FiF-Warenkorbannahme mit Geschäftszugang live prüfen. Gespeicherte Anmeldung, Mitarbeiterfreigaben und Rücklesen weiterhin offen.

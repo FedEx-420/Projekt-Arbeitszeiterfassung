@@ -444,14 +444,38 @@
     const headerLogo = companyLogoUrl(managerBusiness()), roleName = isAdmin() ? 'Administrator' : isBusiness() ? 'Geschäftsleitung' : 'Mitarbeiter';
     const current = state.view === 'invoice-draft'?'invoices':state.view === 'order-detail' ? (['invoices','invoices-paid','customers','planning'].includes(state.orderOrigin) ? state.orderOrigin : 'orders') : state.view === 'billing-detail' ? (state.billingMode === 'paid' ? 'invoices-paid' : 'invoices') : state.view;
     const items = menuItems(), navigation = window.WorktimeNavigation?.markup({items,current,open:state.menu}) || `<button type="button" class="menu-toggle" data-action="menu" aria-expanded="${state.menu}">Menü ⌄</button>${state.menu ? `<section class="app-menu-sheet"><header><b>Menü auswählen</b><button type="button" class="secondary small" data-action="menu">Schließen</button></header><nav>${items.map(([id,text])=>`<button type="button" data-action="nav" data-view="${id}" class="${current===id?'active':''}">${text}</button>`).join('')}<hr><button type="button" data-action="logout">Abmelden</button></nav></section>` : ''}`;
-    const savedCheckout = state.view==='shopping'&&isManager()&&!neugartAccounts?.isShared()?'<button type="button" class="secondary" data-ng-action="mode">Mit gespeichertem Neugart-Zugang einkaufen</button>':'';
     const context = `<section class="workspace-context" aria-label="Aktueller Bereich und Arbeitskonto"><div class="workspace-location"><span aria-hidden="true"></span><strong>${escape(window.WorktimeNavigation?.currentLabel(items,current) || 'Übersicht')}</strong></div>${selector()}</section>`;
-    return `<div class="app-shell"><header class="topbar"><div class="brand-identity">${headerLogo ? `<img src="${escape(headerLogo)}" alt="Firmenlogo von ${escape(title)}">` : '<div class="brand-mark" aria-hidden="true">ZE</div>'}<div class="brand-caption"><h1>${escape(title)}</h1><p>${escape(state.profile?.username || '')} · ${roleName}</p></div></div><div class="top-actions">${navigation}</div></header><main class="content">${context}${savedCheckout}${!startupViewReady() ? `<section class="panel" data-startup-view-pending>${(startupStage==='data'||materialLoadState==='loading')&&!viewDataNeeds().some(name=>startupFailed.has(name))?'<p role="status">Daten für diesen Bereich werden geladen …</p>':'<p role="alert">Die Daten für diesen Bereich konnten nicht vollständig geladen werden.</p><button type="button" class="primary" data-action="retry-startup">Erneut versuchen</button>'}</section>` : viewHtml()}${noticeHtml()}</main></div>`;
+    return `<div class="app-shell"><header class="topbar"><div class="brand-identity">${headerLogo ? `<img src="${escape(headerLogo)}" alt="Firmenlogo von ${escape(title)}">` : '<div class="brand-mark" aria-hidden="true">ZE</div>'}<div class="brand-caption"><h1>${escape(title)}</h1><p>${escape(state.profile?.username || '')} · ${roleName}</p></div></div><div class="top-actions">${navigation}</div></header><main class="content">${context}${['shopping','shopping-cart'].includes(state.view)?shoppingProviderView():''}${!startupViewReady() ? `<section class="panel" data-startup-view-pending>${(startupStage==='data'||materialLoadState==='loading')&&!viewDataNeeds().some(name=>startupFailed.has(name))?'<p role="status">Daten für diesen Bereich werden geladen …</p>':'<p role="alert">Die Daten für diesen Bereich konnten nicht vollständig geladen werden.</p><button type="button" class="primary" data-action="retry-startup">Erneut versuchen</button>'}</section>` : viewHtml()}${noticeHtml()}</main></div>`;
   }
   function viewHtml() { return ({ home: homeView, time: timeView, orders: ordersView, 'order-detail': orderDetailView, calendar: calendarView, customers: customersView, mailbox: mailboxView, materials: materialsView, shopping: shoppingView, invoices: invoicesView, 'invoices-paid': paidInvoicesView, 'billing-detail': billingDetailView, settings: settingsView }[state.view] || homeView)(); }
 
+  let shoppingProvider='',shoppingProviderScope='';
+  function activeShoppingProvider(){
+    const scope=(state.profile?.id||'')+':'+(businessId()||'');
+    if(scope!==shoppingProviderScope){shoppingProviderScope=scope;shoppingProvider='';}
+    return shoppingProvider||(state.profile?.role==='employee'||neugartAccounts?.isShared()?'neugart':'all');
+  }
+  function shoppingProviderView(){
+    const selected=activeShoppingProvider();
+    return `<section class="panel"><label>Einkaufszugang<select data-shopping-provider><option value="neugart" ${selected==='neugart'?'selected':''}>Neugart</option><option value="gautzsch" ${selected==='gautzsch'?'selected':''}>Gautzsch · FiF</option><option value="all" ${selected==='all'?'selected':''}>Weitere Fachhändler</option></select></label></section>`;
+  }
+  root.addEventListener('click',event=>{if(event.target.closest('[data-ng-action=mode]'))shoppingProvider='';});
+  root.addEventListener('change',event=>{
+    if(!event.target.matches('[data-shopping-provider]'))return;
+    const provider=event.target.value;
+    if(!['neugart','gautzsch','all'].includes(provider))return;
+    activeShoppingProvider();
+    if(neugartAccounts?.isPending()||supplierCart?.isBusy()){render();return;}
+    shoppingProvider=provider;
+    state.view='shopping';
+    neugartAccounts?.setShared(provider==='neugart');
+    supplierCart?.selectProvider(provider);
+    render();
+  });
   function shoppingView() {
-    if(state.profile?.role==='employee'||neugartAccounts?.isShared())return neugartAccounts?.shopping()||'';
+    const provider=activeShoppingProvider();
+    if(provider==='neugart')return neugartAccounts?.shopping()||'';
+    if(state.profile?.role==='employee')return '<section class="panel"><h2>Gautzsch · FiF</h2><p>Der FiF-Einkauf ist derzeit im Geschäfts- und Adminkonto verfügbar. Die Freigabe gespeicherter FiF-Zugänge für Mitarbeiter ist noch in Vorbereitung.</p></section>';
     if(!isManager())return '<section class="panel"><h2>Einkauf</h2><p>Der Einkauf ist für die Geschäftsleitung und die Administration verfügbar.</p></section>';
     if(supplierCart)return supplierCart.view();
     return `<section class="page-head"><h2>Einkauf</h2></section><section class="panel" data-shopping-unavailable><h3>${shoppingLoading?'Einkauf wird geladen …':'Einkauf nachladen'}</h3><p role="${shoppingLoadFailed?'alert':'status'}">${shoppingLoadFailed?'Der Einkauf konnte noch nicht vollständig geladen werden. Prüfe deine Internetverbindung und versuche es erneut.':'Ein Teil des Einkaufs ist auf diesem Gerät noch nicht verfügbar. Du kannst ihn hier nachladen.'}</p>${shoppingLoading?'<progress aria-label="Einkauf wird geladen"></progress>':''}<button type="button" class="primary" data-action="shopping-load" ${shoppingLoading?'disabled':''}>${shoppingLoading?'Wird geladen …':'Einkauf laden'}</button><p>Deine gespeicherten Artikel und Einkaufsentwürfe bleiben erhalten.</p><button type="button" class="secondary" data-action="nav" data-view="materials">Materialliste öffnen</button></section>`;

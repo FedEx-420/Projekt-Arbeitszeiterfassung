@@ -2,18 +2,18 @@
 (()=>{'use strict';
  const C=window.WorktimeSupplierCart;
  function create({root,state,businessId,isManager,render,api,catalogWizard,escape:esc}){
-  let searchOpen=false,scope='',supplier='',cart=[],cartName='',drafts=new Map(),attempt=null,busy=false,message='',problem=false,receipt=null;
+  let provider='all',searchOpen=false,scope='',supplier='',cart=[],cartName='',drafts=new Map(),attempt=null,busy=false,message='',problem=false,receipt=null;
   const current=()=>state.profile&&isManager()&&businessId()?state.profile.id+':'+businessId():'';
   const materials=()=>(state.rows.materials||[]).filter(m=>String(m.business_id)===String(businessId())&&m.active!==false);
   const supported=s=>/neugart|\bgc\b|efg/i.test(s||'');
   const safeCart=x=>Array.isArray(x)?x.filter(r=>r&&typeof r.material_id==='string').slice(0,1000):[];
   const key=()=> 'worktime-supplier-cart-v938:'+scope;
   function save(){if(!scope)return;drafts.set(supplier,{...(drafts.get(supplier)||{}),cart,cartName,attempt});try{localStorage.setItem(key(),JSON.stringify({supplier,cart,attempt,drafts:[...drafts]}));}catch{throw Error('Der Einkaufsentwurf konnte nicht gesichert werden. Bitte diese Seite geöffnet lassen.');}}
-  function ensure(){const next=current();if(scope!==next){scope=next;searchOpen=false;supplier='';cart=[];cartName='';drafts=new Map();attempt=null;receipt=null;busy=false;message='';problem=false;if(scope)try{const p=JSON.parse(localStorage.getItem(key())||'{}');if(Array.isArray(p.drafts))for(const [s,d]of p.drafts)if(typeof s==='string'&&d)drafts.set(s,{...d,cart:safeCart(d.cart)});supplier=String(p.supplier||'');cart=safeCart(p.cart);cartName=String(drafts.get(supplier)?.cartName||'').slice(0,60);attempt=p.attempt||drafts.get(supplier)?.attempt||null;}catch{message='Der gespeicherte Einkauf konnte nicht gelesen werden.';problem=true;}}return !!scope;}
+  function ensure(){const next=current();if(scope!==next){scope=next;provider='all';searchOpen=false;supplier='';cart=[];cartName='';drafts=new Map();attempt=null;receipt=null;busy=false;message='';problem=false;if(scope)try{const p=JSON.parse(localStorage.getItem(key())||'{}');if(Array.isArray(p.drafts))for(const [s,d]of p.drafts)if(typeof s==='string'&&d)drafts.set(s,{...d,cart:safeCart(d.cart)});supplier=String(p.supplier||'');cart=safeCart(p.cart);cartName=String(drafts.get(supplier)?.cartName||'').slice(0,60);attempt=p.attempt||drafts.get(supplier)?.attempt||null;}catch{message='Der gespeicherte Einkauf konnte nicht gelesen werden.';problem=true;}}return !!scope;}
   function capture(){const f=root.querySelector('[data-sc-form]');if(f?.elements.cart_name)cartName=f.elements.cart_name.value.trim();if(f)for(const r of cart){const el=f.elements.namedItem('qty:'+r.ref);if(el)r.quantity=el.value;}save();}
   function switchSupplier(next){if(next===supplier)return;capture();supplier=next;const d=drafts.get(next);cart=safeCart(d?.cart);cartName=String(d?.cartName||'').slice(0,60);attempt=d?.attempt||null;receipt=null;save();}
   function addMaterial(m){if(busy)throw Error('Die Übertragung wird noch geprüft. Bitte kurz warten.');if(!ensure()||!materials().some(x=>x.id===m.id)||!window.WorktimeGermanProducts?.allowed(m))throw Error('Dieser Artikel ist nicht verfügbar.');if(!m.catalog_supplier||!m.catalog_article_number)throw Error('Bei diesem Artikel fehlen Fachhändler oder Artikelnummer.');C.unit(m.unit);switchSupplier(m.catalog_supplier);if(attempt?.completed){attempt=null;receipt=null;}const r=cart.find(x=>x.material_id===m.id);if(r)r.quantity=C.quantity(Number(r.quantity)+1);else cart.push({material_id:m.id,ref:crypto.randomUUID().replaceAll('-',''),sku:m.catalog_article_number,supplier,name:window.WorktimeProductDisplay?.displayName(m)||m.catalog_product_name||m.name,unit:m.unit,quantity:'1'});save();message='';problem=false;}
-  const purchase=window.WorktimePurchaseSearch?.create({root,state,businessId,isManager,api,render,escape:esc,onAdd:async m=>{addMaterial(m);render();},onFiles:(query,done)=>catalogWizard?.openForShopping?.(query,done)});
+  const purchase=window.WorktimePurchaseSearch?.create({root,state,businessId,isManager,api,render,escape:esc,supplierAllowed:name=>provider!=='gautzsch'||C.isFifSupplier(name),onAdd:async m=>{addMaterial(m);render();},onFiles:(query,done)=>catalogWizard?.openForShopping?.(query,done)});
   function signature(lines){return JSON.stringify(lines.map(r=>[r.material_id,r.sku,r.quantity]).sort((a,b)=>a[0].localeCompare(b[0])));}
   const cartURL=value=>{let u;try{u=new URL(value);}catch{throw Error('Der Händler hat keinen gültigen Warenkorb bestätigt.');}if(!['https://efgonlineplus.de','https://www.gconlineplus.de'].includes(u.origin)||!/^\/p\/cart\/[A-Za-z0-9_-]{10,200}\/positions$/.test(u.pathname)||u.search||u.hash)throw Error('Der Händlerwarenkorb konnte nicht eindeutig zugeordnet werden.');return u;};
   function validLines(){if(!cart.length||cart.length>1000)throw Error('Bitte 1 bis 1000 Artikel auswählen.');return cart.map(input=>{const r={...input,quantity:C.quantity(input.quantity),qu:C.unit(input.unit)};if(typeof r.sku!=='string'||!r.sku.trim()||r.sku.length>120)throw Error('Die Artikelnummer ist unvollständig.');return r;}).map(r=>{const m=materials().find(x=>x.id===r.material_id);if(!m||m.catalog_supplier!==supplier||m.catalog_article_number!==r.sku||m.unit!==r.unit||!window.WorktimeGermanProducts?.allowed(m))throw Error('Ein Artikel hat sich geändert. Bitte den Einkauf aktualisieren.');return r;});}
@@ -63,7 +63,17 @@
   root.addEventListener('change',e=>{if(e.target.matches('[data-sc-supplier]')&&ensure()&&!busy){switchSupplier(e.target.value);render();}});
   root.addEventListener('click',e=>{const b=e.target.closest('[data-sc-add],[data-sc-remove],[data-sc-fif-export]');if(!b||!ensure()||busy)return;e.preventDefault();try{if(b.hasAttribute('data-sc-fif-export')){if(C.isFifSupplier(supplier))exportFif();return;}if(b.hasAttribute('data-sc-add')){const m=materials().find(x=>x.id===b.dataset.scAdd);if(!m)throw Error('Artikel nicht verfügbar.');addMaterial(m);state.view='shopping';}else{capture();cart=cart.filter(r=>r.ref!==b.dataset.scRemove);save();}render();}catch(err){message=err.message;problem=true;render();}});
   function afterRender(){if(!ensure())return;if(state.view==='shopping'&&(!cart.length||searchOpen))purchase?.mount();if(state.view==='materials')for(const b of root.querySelectorAll('[data-action="edit-material"]')){const row=b.closest('.row-card');if(row&&!row.querySelector('[data-sc-add]')){const m=materials().find(m=>m.id===b.dataset.id);if(m){const add=document.createElement('button');add.type='button';add.className='secondary';add.dataset.scAdd=m.id;add.textContent='Zum Einkauf';row.querySelector('.actions')?.append(add)||row.append(add);}}}}
-  return {view,afterRender};
+  function selectProvider(next){
+   if(!ensure()||busy)return;
+   provider=next;
+   if(next==='gautzsch'){
+    const chosen=[supplier,...drafts.keys(),...materials().map(m=>m.catalog_supplier)].find(C.isFifSupplier)||'Gautzsch';
+    switchSupplier(chosen);
+   }
+   searchOpen=!cart.length;
+   purchase?.resetProvider();
+  }
+  return {view,afterRender,selectProvider,isBusy:()=>busy};
  }
  window.WorktimeSupplierCartUI={create};
 })();

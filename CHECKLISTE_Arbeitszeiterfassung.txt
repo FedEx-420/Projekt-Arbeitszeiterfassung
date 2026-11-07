@@ -11,9 +11,11 @@ ZEICHEN
 Ein erfolgreicher Test mit Beispieldaten ist kein Live-Test jedes Geschäftskontos.
 
 ALS NÄCHSTES
-[x] v997: gespeicherte FiF-Konten mit Vault, serverseitigen Firmen-/Mitarbeitergrenzen, ausdrücklicher Freigabe und Widerruf implementiert; SQL-, Dienst- und vollständige App-Fixtures bestanden. Produktive Datenbank-/Dienststruktur aktiviert, noch keine echten Konten oder Mitarbeiter freigegeben.
-[ ] v997: gespeicherte FiF-Zugänge, automatische Kennwortübergabe nach Warenkorbbestätigung und ausdrückliche Mitarbeiterfreigaben veröffentlichen und mit echtem Zugang abnehmen. Datenbank-, Server- und vollständige App-Fixtures bestehen; produktive Oberfläche und native Anmeldung noch offen. Keine Mitarbeiter pauschal freigeben.
-[ ] FiF-Warenkorb auch ohne vorhandene Browser-Shopanmeldung direkt öffnen, ohne Zugangsdaten erneut einzugeben. Offizielles externes Gautzsch-Anmeldeformular prüfen; vollständige Live-Gegenprobe offen (v996).
+[x] v997: gespeicherte FiF-Konten mit Vault, serverseitigen Firmen-/Mitarbeitergrenzen, ausdrücklicher Freigabe und Widerruf implementiert; SQL-, Dienst- und vollständige App-Fixtures bestanden. Veröffentlicht; echter Zugang vom Nutzer gespeichert, noch keine Mitarbeiter freigegeben.
+[x] v997 veröffentlicht (PR #46, erfolgreiche App-Prüfung und Pages-Bereitstellung). Echter gespeicherter Zugang und automatische Browser-Erstanmeldung ohne erneute Kennworteingabe live bestätigt. Eigener Testwarenkorb mit genauer Artikelnummer, Menge und Einheit sichtbar; Testposition entfernt, keine Bestellung.
+[ ] Tatsächliche Mitarbeiter nach ausdrücklicher Nutzerauswahl freigeben und mit einem echten Mitarbeiterlogin prüfen. Isolierte Rechte-/Widerrufsprüfungen bestehen; noch keine produktiven Mitarbeiterfreigaben.
+[x] Automatische FiF-Browser-Erstanmeldung per offiziellem externem Formular live bestätigt (v997). Der zuvor nicht angemeldete Browser öffnet danach den Shop ohne weitere Zugangseingabe.
+[ ] FiF ignoriert im bestätigten externen Login die mitgesendete ReturnUrl und öffnet zunächst die Startseite. Automatische direkte Navigation zum bestätigten Warenkorb nach dem Login verbessern. Aktuell reicht ein Klick auf das Warenkorbsymbol; der neue Warenkorb ist bereits ausgewählt.
 [x] Reguläre FiF-Anmeldung und exakte Artikelzuordnung live bestätigt. Abweichende Menge wurde vom Rückvergleich erkannt; kein falscher Erfolg und keine automatische erneute Zugabe.
 [x] FiF-Formularmengen mit Dezimalkomma senden und salesQuantityUnit-/Code-Felder zurücklesen; isolierte Dezimal-/Einheitenprüfungen bestanden.
 [x] Eigene FiF-Testpositionen entfernt und frischen vollständigen automatischen App-Transfer mit korrekter Menge bis zum sichtbaren Händlerwarenkorb bestätigt. Kein erneuter Shoplogin bei vorhandener Sitzung; keine Bestellung (07.11.2026).

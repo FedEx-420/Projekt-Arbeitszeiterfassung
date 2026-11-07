@@ -28,3 +28,9 @@ assert.equal(fifPost.pw_kunde,'SYNTHETIC_PASSWORD');
 assert.match(fifPost.warenkorb,/<ArtNo>00123<\/ArtNo><Qty>2.50<\/Qty>/);
 assert.ok(!fifPost.warenkorb.includes('SYNTHETIC_PASSWORD'));
 assert.throws(()=>C.fifTransfer({lines:[fif],supplier:fif.supplier,username:'',password:'x',shipping:'Lieferung'}),/Benutzername/);
+
+const callback='https://fixture.supabase.co/functions/v1/ids-cart-return-v938?job=00000000-0000-4000-8000-000000000001&token='+'a'.repeat(64);
+const portal=C.fifPortalTransfer({lines:[fif],supplier:fif.supplier,shipping:'Lieferung',callback});
+assert.equal(portal.version,'2.5');assert.equal(portal.hookurl,callback);assert.equal(portal.action,'WKS');assert.equal(portal.pw_kunde,undefined);assert.equal(portal.name_kunde,undefined);
+assert.match(portal.warenkorb,/<ArtNo>00123<\/ArtNo>/);
+for(const invalid of [callback.replace('https:','http:'),callback.replace('fixture.supabase.co','foreign.invalid'),callback.replace('ids-cart-return-v938','other'),callback+'&extra=1',callback.replace('token=','wrong=')])assert.throws(()=>C.fifPortalTransfer({lines:[fif],supplier:fif.supplier,shipping:'Lieferung',callback:invalid}),/Rückgabeadresse/);

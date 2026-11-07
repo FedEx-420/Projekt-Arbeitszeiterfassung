@@ -9,3 +9,10 @@ assert.throws(()=>C.build({lines:[{...line,sku:'1234567890123456'}],supplier:'Ne
 assert.throws(()=>C.build({lines:[line,line],supplier:'Neugart'}),/doppelt/);
 assert.throws(()=>C.build({lines:[{...line,name:'Text\u0000'}],supplier:'Neugart'}),/ungültige/);
 const output=path.join(os.tmpdir(),'worktime-ids-v938.xml');fs.writeFileSync(output,xml,'utf8');console.log('PASS exact supplier SKU, decimal quantities, supported units, XML escaping, stable references, no selling prices; validation XML: '+output);
+
+const fif={...line,supplier:'H. Gautzsch'};
+assert.equal(C.fifTXT({lines:[fif,{...fif,sku:'00007',quantity:1}],supplier:fif.supplier}),'00123;2.50;00007;1');
+assert.throws(()=>C.fifTXT({lines:[fif,fif],supplier:fif.supplier}),/doppelt/);
+assert.throws(()=>C.fifTXT({lines:[{...fif,sku:'1;999'}],supplier:fif.supplier}),/Artikelnummer/);
+assert.throws(()=>C.fifTXT({lines:[line],supplier:fif.supplier}),/Artikelnummer/);
+assert.throws(()=>C.fifTXT({lines:[fif],supplier:'Neugart'}),/Gautzsch/);

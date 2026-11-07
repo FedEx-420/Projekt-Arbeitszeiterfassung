@@ -240,3 +240,9 @@ Der frühere produktive Transfer und die Rücklesung sind in [Einkauf v949](docs
 Der Nutzer hat den Neugart-Warenkorb nach v986 als wieder funktionsfähig bestätigt. Die gemeinsame Artikelkarte nutzt v987 zusätzlich den freigegebenen Neugart-Zugang. Sie fragt sichtbare Treffer in begrenzten Gruppen ab, zeigt Händlertext und Lager und verwendet Grün, Grün/Gelb, Gelb oder Rot bei eindeutiger Antwort. Unklare Angaben bleiben grau. Der Neugart-Katalog kann bestätigte Nullbestände ausblenden. Die genaue Abdeckung der Portalzustände und nicht mit der gemeinsamen Karte gerenderter Artikelansichten bleibt offen.
 
 Für Gautzsch dokumentiert der Hersteller DATANORM 4/5 über FiF unter Service → Datenservice sowie IDS 1.3 bis 2.3 mit automatischer Anmeldung und Artikel-Deep-Link. Die öffentliche OCI-Beschreibung belegt die Übergabe von FiF an die Handwerkersoftware. Die Gegenrichtung, der Rückleseweg und der maschinenlesbare Zugriff auf Suche, Bilder, Preise und Bestände müssen für den konkreten Zugang verifiziert werden. Zugangsdaten gehören ausschließlich in eine dafür freigegebene Einrichtung.
+
+## v988 – Gautzsch-FiF-Datei aus dem Einkauf
+
+FiF bestätigt den TXT-Import mit aufeinanderfolgenden Paaren aus HG-Artikelnummer und Menge. Der allgemeine Einkauf erzeugt für Gautzsch daraus eine TXT-Datei und verlinkt auf die FiF-Uploadseite. Die Artikelnummern werden aus dem aktuellen Firmenmaterial abgeglichen. Der Entwurf bleibt beim Export erhalten. Der Browser-Test prüft Dateiinhalte und Download. Ein produktiver Dateiimport wurde nicht ausgeführt.
+
+Unter Service → DATANORM ist im FiF-Konto ein bereits bereitgestellter Export sichtbar. In der Prüfumgebung ging keine Datei ein. Die automatische Übergabe, Warenkorb-Rücklesung und Live-Artikeldaten bleiben offen. Die Anbindung soll ohne persönliche Kontaktaufnahme erfolgen.

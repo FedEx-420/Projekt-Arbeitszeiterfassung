@@ -58,6 +58,7 @@ jobs:
           node tests/team/catalog-workflow-browser-v933.test.cjs
           node tests/team/search-online-catalog-race-v957.test.cjs
           python tests/team/jung-image-extractor-v957.test.py
+          node tests/team/article-search-v999.test.cjs
           node tests/team/article-search-browser-v947.test.cjs
           node tests/team/product-series-v935.test.cjs
           node tests/team/product-assistant-browser-v928.test.cjs

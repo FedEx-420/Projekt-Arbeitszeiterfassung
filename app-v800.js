@@ -486,7 +486,7 @@
   function initializeShopping() {
     if(supplierCart)return true;
     if(!window.WorktimeSupplierCart||!window.WorktimeSupplierCartUI)return false;
-    try{supplierCart=window.WorktimeSupplierCartUI.create({root,state,businessId,isManager,render:()=>render(),api,supabaseUrl:base,catalogWizard:shoppingCatalogWizard,escape,getAddContext:()=>JSON.stringify([state.profile?.id,businessId(),activeShoppingProvider(),activeShoppingProvider()==='gautzsch'?fifAccounts?.selectedAccount():activeShoppingProvider()==='neugart'?neugartAccounts?.selectedAccount():'']),onAdd:material=>{if(activeShoppingProvider()==='gautzsch'&&fifAccounts?.selectedAccount()){fifAccounts.addMaterial(material);return true;}if(activeShoppingProvider()==='neugart'&&neugartAccounts?.selectedAccount()){neugartAccounts.addMaterial(material);return true;}return false;},onExternalAdd:()=>{shoppingProvider='all';neugartAccounts?.setShared(false);supplierCart?.selectProvider('all');}});return !!supplierCart;}
+    try{supplierCart=window.WorktimeSupplierCartUI.create({root,state,businessId,isManager,render:()=>render(),api,supabaseUrl:base,catalogWizard:shoppingCatalogWizard,escape,searchMaterials:query=>activeShoppingProvider()==='gautzsch'&&fifAccounts?.selectedAccount()?fifAccounts.searchMaterials(query):Promise.resolve([]),getAddContext:()=>JSON.stringify([state.profile?.id,businessId(),activeShoppingProvider(),activeShoppingProvider()==='gautzsch'?fifAccounts?.selectedAccount():activeShoppingProvider()==='neugart'?neugartAccounts?.selectedAccount():'']),onAdd:material=>{if(activeShoppingProvider()==='gautzsch'&&fifAccounts?.selectedAccount()){fifAccounts.addMaterial(material);return true;}if(activeShoppingProvider()==='neugart'&&neugartAccounts?.selectedAccount()){neugartAccounts.addMaterial(material);return true;}return false;},onExternalAdd:()=>{shoppingProvider='all';neugartAccounts?.setShared(false);supplierCart?.selectProvider('all');}});return !!supplierCart;}
     catch{shoppingLoadFailed=true;return false;}
   }
   async function recoverShopping() {
@@ -2473,6 +2473,6 @@
   const viewBeforeNeugart=viewHtml;
   viewHtml=()=>(state.view==='shopping-cart'?(activeShoppingProvider()==='gautzsch'?fifAccounts?.shopping()||'':activeShoppingProvider()==='neugart'?neugartAccounts?.cartView()||'':supplierCart?.view({cartOnly:true})||''):viewBeforeNeugart())+(state.view==='settings'&&isManager()&&neugartAccounts?neugartAccounts.settings():'')+(state.view==='settings'&&isManager()?fifAccounts?.settings()||'':'');
   initializeShopping();
-  const supplierStock=window.WorktimeSupplierStock?.create({root,state,businessId,isManager,api,escape});
+  const supplierStock=window.WorktimeSupplierStock?.create({root,state,businessId,isManager,api,escape,shoppingProvider:()=>activeShoppingProvider()});
   if(supplierStock){const beforeStockRender=render;render=()=>{beforeStockRender();supplierStock.afterRender();};}
 })();

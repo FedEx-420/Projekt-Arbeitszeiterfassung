@@ -1,0 +1,11 @@
+const assert=require('node:assert/strict');
+const A=global.WorktimeArticleSearch=require('../../article-search-v947.js'),F=require('../../product-features-v928.js');
+const m={name:'BERKER SCHUKO-Steckdose grün S.1',catalog_manufacturer:'Berker',catalog_article_number:'001234',catalog_manufacturer_number:'4711-AB'};
+for(const query of ['berker gruen','BERKER grün','Stekdose','Schutzkontakt','S.1 Steckdose','4711 AB'])assert.ok(A.matches(m,query,F),query);
+assert.ok(A.matches({name:'NYM J Mantelleitung 3x1,5'},'NYM-J',F));
+assert.ok(A.matches({name:'Leitungsschutzschalter B16'},'LS B16',F));
+assert.equal(A.matches({...m,name:'Berker Integro SCHUKO Steckdose'},'Berker S1',F),false);
+assert.equal(A.matches(m,'001235',F),false,'no typo matching for article identifiers');
+assert.equal(A.matches({name:'HDMI Steckdose'},'Steckdose',F),false);
+assert.equal(A.matches({name:'Abdeckung für SCHUKO Steckdose'},'Steckdose',F),false);
+console.log('PASS normalized words, punctuation, one-letter word typo, electrical abbreviations; identifiers, series and product intent remain strict');

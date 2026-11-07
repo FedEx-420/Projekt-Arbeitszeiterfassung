@@ -2,14 +2,14 @@
 (()=>{'use strict';
  const C=window.WorktimeSupplierCart;
  function create({root,state,businessId,isManager,render,api,catalogWizard,escape:esc}){
-  let provider='all',searchOpen=false,scope='',supplier='',cart=[],cartName='',drafts=new Map(),attempt=null,busy=false,message='',problem=false,receipt=null;
+  let fifPending=null,provider='all',searchOpen=false,scope='',supplier='',cart=[],cartName='',drafts=new Map(),attempt=null,busy=false,message='',problem=false,receipt=null;
   const current=()=>state.profile&&isManager()&&businessId()?state.profile.id+':'+businessId():'';
   const materials=()=>(state.rows.materials||[]).filter(m=>String(m.business_id)===String(businessId())&&m.active!==false);
   const supported=s=>/neugart|\bgc\b|efg/i.test(s||'');
   const safeCart=x=>Array.isArray(x)?x.filter(r=>r&&typeof r.material_id==='string').slice(0,1000):[];
   const key=()=> 'worktime-supplier-cart-v938:'+scope;
   function save(){if(!scope)return;drafts.set(supplier,{...(drafts.get(supplier)||{}),cart,cartName,attempt});try{localStorage.setItem(key(),JSON.stringify({supplier,cart,attempt,drafts:[...drafts]}));}catch{throw Error('Der Einkaufsentwurf konnte nicht gesichert werden. Bitte diese Seite geöffnet lassen.');}}
-  function ensure(){const next=current();if(scope!==next){scope=next;provider='all';searchOpen=false;supplier='';cart=[];cartName='';drafts=new Map();attempt=null;receipt=null;busy=false;message='';problem=false;if(scope)try{const p=JSON.parse(localStorage.getItem(key())||'{}');if(Array.isArray(p.drafts))for(const [s,d]of p.drafts)if(typeof s==='string'&&d)drafts.set(s,{...d,cart:safeCart(d.cart)});supplier=String(p.supplier||'');cart=safeCart(p.cart);cartName=String(drafts.get(supplier)?.cartName||'').slice(0,60);attempt=p.attempt||drafts.get(supplier)?.attempt||null;}catch{message='Der gespeicherte Einkauf konnte nicht gelesen werden.';problem=true;}}return !!scope;}
+  function ensure(){const next=current();if(scope!==next){if(fifPending){clearTimeout(fifPending.timer);fifPending.post.remove();fifPending=null;}scope=next;provider='all';searchOpen=false;supplier='';cart=[];cartName='';drafts=new Map();attempt=null;receipt=null;busy=false;message='';problem=false;if(scope)try{const p=JSON.parse(localStorage.getItem(key())||'{}');if(Array.isArray(p.drafts))for(const [s,d]of p.drafts)if(typeof s==='string'&&d)drafts.set(s,{...d,cart:safeCart(d.cart)});supplier=String(p.supplier||'');cart=safeCart(p.cart);cartName=String(drafts.get(supplier)?.cartName||'').slice(0,60);attempt=p.attempt||drafts.get(supplier)?.attempt||null;}catch{message='Der gespeicherte Einkauf konnte nicht gelesen werden.';problem=true;}}return !!scope;}
   function capture(){const f=root.querySelector('[data-sc-form]');if(f?.elements.cart_name)cartName=f.elements.cart_name.value.trim();if(f)for(const r of cart){const el=f.elements.namedItem('qty:'+r.ref);if(el)r.quantity=el.value;}save();}
   function switchSupplier(next){if(next===supplier)return;capture();supplier=next;const d=drafts.get(next);cart=safeCart(d?.cart);cartName=String(d?.cartName||'').slice(0,60);attempt=d?.attempt||null;receipt=null;save();}
   function addMaterial(m){if(busy)throw Error('Die Übertragung wird noch geprüft. Bitte kurz warten.');if(!ensure()||!materials().some(x=>x.id===m.id)||!window.WorktimeGermanProducts?.allowed(m))throw Error('Dieser Artikel ist nicht verfügbar.');if(!m.catalog_supplier||!m.catalog_article_number)throw Error('Bei diesem Artikel fehlen Fachhändler oder Artikelnummer.');C.unit(m.unit);switchSupplier(m.catalog_supplier);if(attempt?.completed){attempt=null;receipt=null;}const r=cart.find(x=>x.material_id===m.id);if(r)r.quantity=C.quantity(Number(r.quantity)+1);else cart.push({material_id:m.id,ref:crypto.randomUUID().replaceAll('-',''),sku:m.catalog_article_number,supplier,name:window.WorktimeProductDisplay?.displayName(m)||m.catalog_product_name||m.name,unit:m.unit,quantity:'1'});save();message='';problem=false;}
@@ -34,6 +34,14 @@
    message='FiF-Datei erstellt. Öffne FiF und lade sie unter „TXT-Datei-Upload“ nach HG-Artikelnummer hoch.';
    problem=false;render();
   }
+  function returnFromFif(){
+   const pending=fifPending;if(!pending)return;
+   fifPending=null;clearTimeout(pending.timer);pending.post.remove();
+   if(current()!==pending.scope)return;
+   busy=false;message='Bitte prüfe die Artikel und Mengen im FiF-Warenkorb vor einem erneuten Senden.';render();
+  }
+  window.addEventListener('pagehide',()=>{if(fifPending){for(const input of fifPending.post.elements)input.value='';fifPending.post.remove();}});
+  window.addEventListener('pageshow',event=>{if(event.persisted)returnFromFif();});
   function transferFif(form){
    if(busy||!ensure()||!C.isFifSupplier(supplier))return;
    let payload,post;
@@ -47,11 +55,11 @@
     for(const [name,value] of Object.entries(payload)){
      const input=document.createElement('input');input.type='hidden';input.name=name;input.value=value;post.append(input);
     }
-    document.body.append(post);busy=true;
+    document.body.append(post);busy=true;fifPending={post,scope:current(),timer:null};
     const button=form.querySelector('[data-sc-fif-transfer]');button.disabled=true;button.textContent='FiF wird geöffnet …';
     HTMLFormElement.prototype.submit.call(post);
-    setTimeout(()=>{post.remove();if(root.isConnected){busy=false;message='Bitte prüfe die Artikel und Mengen im FiF-Warenkorb vor einem erneuten Senden.';render();}},60000);
-   }catch(e){busy=false;post?.remove();message=e.message;problem=true;render();}
+    fifPending.timer=setTimeout(returnFromFif,60000);
+   }catch(e){if(fifPending?.post===post){clearTimeout(fifPending.timer);fifPending=null;}busy=false;post?.remove();message=e.message;problem=true;render();}
    finally{if(payload)payload.pw_kunde='';if(form.elements.fif_password)form.elements.fif_password.value='';}
   }
   function fifCheckout(){return `<h3>Gautzsch FiF</h3><p>FiF unterstützt die direkte IDS-Übergabe. Dieser neue Übertragungsweg wird gerade mit dem Geschäftskonto geprüft. Kontrolliere im FiF-Warenkorb die Artikel und Mengen.</p><div class="entry-form"><label>FiF-Benutzername<input name="fif_username" maxlength="50" autocomplete="username"></label><label>FiF-Kennwort<input name="fif_password" type="password" maxlength="50" autocomplete="current-password"></label><label>Versand<select name="fif_shipping"><option>Lieferung</option><option>Abholung</option></select></label></div><button type="submit" class="primary" data-sc-fif-transfer ${busy?'disabled':''}>Direkt an FiF übertragen und öffnen</button><details><summary>FiF-Datei verwenden</summary><div class="actions"><button type="button" class="secondary" data-sc-fif-export>FiF-Warenkorbdatei herunterladen</button><a class="button secondary" href="${C.fifUploadURL}" target="_blank" rel="noopener noreferrer">FiF-Upload öffnen</a></div></details>`;}

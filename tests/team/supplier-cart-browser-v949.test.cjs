@@ -35,6 +35,17 @@ async function main(){await new Promise(r=>server.listen(0,'127.0.0.1',r));const
  assert.equal(fs.readFileSync(await download.path(),'utf8'),'000123;2.50');
  assert.equal(await page.locator('[name^="qty:"]').inputValue(),'2.50');
  assert.equal(calls.length,beforeExport);
+ // Back/forward cache must release the handoff lock without automatically resending.
+ await page.evaluate(()=>{window.nativeFifSubmit=HTMLFormElement.prototype.submit;HTMLFormElement.prototype.submit=function(){};});
+ await page.locator('[name=fif_username]').fill('FIF_TEST_USER');await page.locator('[name=fif_password]').fill('FIF_TEST_PASSWORD');
+ await page.locator('[data-sc-fif-transfer]').click();assert.equal(await page.locator('[data-sc-fif-transfer]').isDisabled(),true);
+ await page.evaluate(()=>dispatchEvent(new PageTransitionEvent('pagehide',{persisted:true})));
+ assert.equal(await page.locator('input[name=pw_kunde]').count(),0,'handoff credentials removed before cache freeze');
+ await page.evaluate(()=>dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true})));
+ assert.equal(await page.locator('[data-sc-fif-transfer]').isEnabled(),true,'return immediately releases only FiF handoff');
+ assert.equal(await page.locator('[name=fif_password]').inputValue(),'');assert.equal(await page.locator('[name^="qty:"]').inputValue(),'2.50');
+ assert.equal(page.url(),'http://127.0.0.1:'+server.address().port+'/','return never automatically sends cart again');
+ await page.evaluate(()=>{HTMLFormElement.prototype.submit=window.nativeFifSubmit;delete window.nativeFifSubmit;});
  await page.locator('[name=fif_username]').fill('FIF_TEST_USER');
  await page.locator('[name=fif_password]').fill('FIF_TEST_PASSWORD');
  assert.ok(!(await page.evaluate(()=>JSON.stringify(localStorage))).includes('FIF_TEST_PASSWORD'));

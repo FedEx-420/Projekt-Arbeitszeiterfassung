@@ -262,3 +262,9 @@ Bei der Prüfung wurde im angemeldeten FiF ein zusätzlicher leerer Testwarenkor
 ## v991 – Einkaufszugang auswählen
 
 Im Menü Einkauf wählt das Feld Einkaufszugang zwischen Neugart, Gautzsch · FiF und den weiteren bisherigen Fachhändlern. Neugart öffnet die gespeicherten freigegebenen Zugänge. Gautzsch öffnet im Geschäfts-/Adminkonto den FiF-Einkauf und schränkt die Material- und Katalogtreffer auf Gautzsch ein. Eigene Warenkörbe bleiben beim Wechsel erhalten. Konto-/Firmenwechsel verwirft die Auswahl. Mitarbeiter sehen für FiF den Hinweis auf die noch ausstehende Freigabe gespeicherter FiF-Zugänge.
+
+## v992 – Favoriten je Einkaufszugang
+
+Neugart und Gautzsch · FiF zeigen im Einkauf und bei vorhandenen Warenkörben eigene Favoritenansichten. Neue Listen werden mit dem Händlernamen gespeichert, sodass derselbe Listenname für beide Zugänge möglich ist. Bestehende Listen werden unverändert erhalten; in der Händleransicht erscheinen daraus ausschließlich passende Artikel. Die allgemeine Materialansicht behält die bisherige vollständige Favoritenverwaltung. Auch die Eingabevorschläge berücksichtigen den gewählten Händler. Firma, Benutzer und bisherige Datenbankberechtigungen bleiben maßgeblich. Favoriten speichern weiterhin keine Preise oder Bestandszusagen.
+
+Browserprüfung mit synthetischen Daten: gleichnamige Listen beider Händler, getrennte Listenauswahl, Wiederwechsel samt Warenkörben und vorhandene Konto-/Firmen-/Mitarbeiterprüfungen bestanden. Automatische FiF-Verfügbarkeit in der App und weitere gespeicherte FiF-Kontofunktionen bleiben offen. Der vorhandene Artikellink öffnet Preis und Verfügbarkeit beim im FiF-Portal angemeldeten Konto. Ein automatischer Preisvergleich ist als nächster Schritt aufgenommen und noch nicht umgesetzt.

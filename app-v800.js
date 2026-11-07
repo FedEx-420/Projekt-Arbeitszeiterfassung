@@ -2460,7 +2460,7 @@
     },true);
     root.addEventListener('click',event=>{const button=event.target.closest('[data-action="nav"]');if(button?.dataset.view==='invoices-paid')invoiceLedger.load().then(()=>{if(state.view==='invoices-paid')render();});});
   }
-  const articleTools=window.WorktimeArticleTools?.create({root,state,businessId,api,selectedNeugartAccount:()=>neugartAccounts?.selectedAccount()||''});
+  const articleTools=window.WorktimeArticleTools?.create({root,state,businessId,api,selectedNeugartAccount:()=>neugartAccounts?.selectedAccount()||'',shoppingProvider:()=>activeShoppingProvider()});
   const beforeArticleTools=render;render=()=>{beforeArticleTools();articleTools?.afterRender();};
   const selectionPhotos=window.WorktimeProductFeatures?.installSelections({root,state,businessId});
   const flowGuide=window.WorktimeAppFlow?.create({root,state,businessId});if(flowGuide){const renderBeforeFlow=render;render=()=>{renderBeforeFlow();flowGuide.afterRender();selectionPhotos?.afterRender();};flowGuide.afterRender();selectionPhotos?.afterRender();}

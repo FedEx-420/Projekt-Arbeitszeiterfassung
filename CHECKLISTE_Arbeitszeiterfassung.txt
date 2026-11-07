@@ -11,6 +11,8 @@ ZEICHEN
 Ein erfolgreicher Test mit Beispieldaten ist kein Live-Test jedes Geschäftskontos.
 
 ALS NÄCHSTES
+[x] v997: gespeicherte FiF-Konten mit Vault, serverseitigen Firmen-/Mitarbeitergrenzen, ausdrücklicher Freigabe und Widerruf implementiert; SQL-, Dienst- und vollständige App-Fixtures bestanden. Produktive Datenbank-/Dienststruktur aktiviert, noch keine echten Konten oder Mitarbeiter freigegeben.
+[ ] v997: gespeicherte FiF-Zugänge, automatische Kennwortübergabe nach Warenkorbbestätigung und ausdrückliche Mitarbeiterfreigaben veröffentlichen und mit echtem Zugang abnehmen. Datenbank-, Server- und vollständige App-Fixtures bestehen; produktive Oberfläche und native Anmeldung noch offen. Keine Mitarbeiter pauschal freigeben.
 [ ] FiF-Warenkorb auch ohne vorhandene Browser-Shopanmeldung direkt öffnen, ohne Zugangsdaten erneut einzugeben. Offizielles externes Gautzsch-Anmeldeformular prüfen; vollständige Live-Gegenprobe offen (v996).
 [x] Reguläre FiF-Anmeldung und exakte Artikelzuordnung live bestätigt. Abweichende Menge wurde vom Rückvergleich erkannt; kein falscher Erfolg und keine automatische erneute Zugabe.
 [x] FiF-Formularmengen mit Dezimalkomma senden und salesQuantityUnit-/Code-Felder zurücklesen; isolierte Dezimal-/Einheitenprüfungen bestanden.

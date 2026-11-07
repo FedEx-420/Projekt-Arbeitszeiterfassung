@@ -41,6 +41,7 @@
   };
   function viewDataNeeds() {
     if (state.view === 'shopping-cart') return [];
+    if(state.view==='shopping'&&activeShoppingProvider()==='gautzsch'&&fifAccounts?.usesSaved())return [];
     if (state.view === 'shopping' && (state.profile?.role === 'employee' || neugartAccounts?.isShared())) return [];
     const needs = startupViewData[state.view] || [];
     return state.view === 'customers' && state.customerId && state.customerId !== 'new' && isManager()
@@ -55,7 +56,7 @@
     else startupFailed.add(name);
     if (startupViewReady() && root.querySelector('[data-startup-view-pending]')) render();
   }
-  let neugartAccounts=null, supplierCart=null, shoppingCatalogWizard=null, shoppingLoading=false, shoppingLoadFailed=false;
+  let fifAccounts=null, neugartAccounts=null, supplierCart=null, shoppingCatalogWizard=null, shoppingLoading=false, shoppingLoadFailed=false;
   const navigationFeature = window.WorktimeNavigation?.create({root,getOpen:()=>state.menu,setOpen:value=>{state.menu=value;}});
   /* BEGIN SESSION AUTH V859
    * Keep auth in the app bundle so previously cached index pages also work.
@@ -465,7 +466,7 @@
     const provider=event.target.value;
     if(!['neugart','gautzsch','all'].includes(provider))return;
     activeShoppingProvider();
-    if(neugartAccounts?.isPending()||supplierCart?.isBusy()){render();return;}
+    if(neugartAccounts?.isPending()||fifAccounts?.isPending()||supplierCart?.isBusy()){render();return;}
     shoppingProvider=provider;
     state.view='shopping';
     neugartAccounts?.setShared(provider==='neugart');
@@ -475,6 +476,7 @@
   function shoppingView() {
     const provider=activeShoppingProvider();
     if(provider==='neugart')return neugartAccounts?.shopping()||'';
+    if(provider==='gautzsch'&&fifAccounts)return fifAccounts.shopping();
     if(state.profile?.role==='employee')return '<section class="panel"><h2>Gautzsch · FiF</h2><p>Der FiF-Einkauf ist derzeit im Geschäfts- und Adminkonto verfügbar. Die Freigabe gespeicherter FiF-Zugänge für Mitarbeiter ist noch in Vorbereitung.</p></section>';
     if(!isManager())return '<section class="panel"><h2>Einkauf</h2><p>Der Einkauf ist für die Geschäftsleitung und die Administration verfügbar.</p></section>';
     if(supplierCart)return supplierCart.view();
@@ -2466,8 +2468,9 @@
   const flowGuide=window.WorktimeAppFlow?.create({root,state,businessId});if(flowGuide){const renderBeforeFlow=render;render=()=>{renderBeforeFlow();flowGuide.afterRender();selectionPhotos?.afterRender();};flowGuide.afterRender();selectionPhotos?.afterRender();}
   window.WorktimeGermanProducts?.install({root,state,businessId,render:()=>render()});
   neugartAccounts=window.WorktimeNeugartAccounts?.create({root,state,api,businessId,render:()=>render(),escape});
+  fifAccounts=window.WorktimeFifAccounts?.create({root,state,api,businessId,isManager,render:()=>render(),escape,fallback:()=>supplierCart?.view()||''});
   const viewBeforeNeugart=viewHtml;
-  viewHtml=()=>(state.view==='shopping-cart'?neugartAccounts?.cartView()||'':viewBeforeNeugart())+(state.view==='settings'&&isManager()&&neugartAccounts?neugartAccounts.settings():'');
+  viewHtml=()=>(state.view==='shopping-cart'?(activeShoppingProvider()==='gautzsch'?fifAccounts?.shopping()||'':neugartAccounts?.cartView()||''):viewBeforeNeugart())+(state.view==='settings'&&isManager()&&neugartAccounts?neugartAccounts.settings():'')+(state.view==='settings'&&isManager()?fifAccounts?.settings()||'':'');
   initializeShopping();
   const supplierStock=window.WorktimeSupplierStock?.create({root,state,businessId,isManager,api,escape});
   if(supplierStock){const beforeStockRender=render;render=()=>{beforeStockRender();supplierStock.afterRender();};}

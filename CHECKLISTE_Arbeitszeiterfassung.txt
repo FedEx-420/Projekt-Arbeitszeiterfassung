@@ -11,6 +11,9 @@ ZEICHEN
 Ein erfolgreicher Test mit Beispieldaten ist kein Live-Test jedes Geschäftskontos.
 
 ALS NÄCHSTES
+[x] Favoriten im Einkauf nach Neugart und Gautzsch · FiF trennen; neue Listen erhalten einen Händlerzusatz. Gleichnamige Listen, Suche, Warenkorbwechsel und Firmen-/Mitarbeitergrenzen isoliert geprüft (v992).
+[ ] Vollständige FiF-Funktionsgleichheit: automatische kontogebundene Verfügbarkeit einschließlich Händlerstatus, Preise/Bilder aus bestätigter Quelle, gespeicherter Zugang und Mitarbeiterfreigaben bleiben offen. Portal-Link ist bereits vorhanden.
+[ ] Nächster Schritt: Materialpreise zwischen Neugart und Gautzsch vergleichen. Nur eindeutig identische Artikel und vergleichbare aktuelle Netto-Einkaufspreise, Mengen-/Preiseinheiten und Konten vergleichen; fehlende Preise kennzeichnen.
 [x] Einkaufszugang im Menü Einkauf zwischen Neugart und Gautzsch wählen. Gautzsch-Suche und vorhandene Warenkörbe beim Wechsel im Browser geprüft (v991).
 [x] FiF-IDS-Endpunkt per POST für Schnittstellenversion und Anmeldefelder live bestätigt.
 [x] Direkte FiF-IDS-Übergabe mit vom Benutzer eingegebenem Zugang als gekennzeichneten Testweg ergänzt und Formularnavigation isoliert geprüft (v990).

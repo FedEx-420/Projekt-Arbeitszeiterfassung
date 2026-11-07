@@ -258,3 +258,7 @@ Am 07.11.2026 antwortete https://www.onlinesystem.de/IDS auf POST action=SV mit 
 Der allgemeine Gautzsch-Einkauf bietet deshalb eine ausdrücklich als neu zu prüfende direkte IDS-Übergabe per multipart/form-data im selben Tab. Die Anmeldung wird zusammen mit den geprüften Artikeln und Mengen an FiF gesendet. Zugangsdaten werden dafür vom anwesenden Benutzer eingegeben, nicht gespeichert oder an andere Konten verteilt. Der App-Entwurf bleibt erhalten. Erfolgreiche Warenkorbannahme wird erst im FiF-Portal geprüft. Wiederholtes Senden kann zusätzliche Händlerpositionen anlegen. Gespeicherte serverseitige Konten, Mitarbeiterdelegation und ein automatisches Rücklesen sind noch offen.
 
 Bei der Prüfung wurde im angemeldeten FiF ein zusätzlicher leerer Testwarenkorb angelegt. Der TXT-Test lieferte keine bestätigte Position. Es wurde keine Bestellung abgeschickt.
+
+## v991 – Einkaufszugang auswählen
+
+Im Menü Einkauf wählt das Feld Einkaufszugang zwischen Neugart, Gautzsch · FiF und den weiteren bisherigen Fachhändlern. Neugart öffnet die gespeicherten freigegebenen Zugänge. Gautzsch öffnet im Geschäfts-/Adminkonto den FiF-Einkauf und schränkt die Material- und Katalogtreffer auf Gautzsch ein. Eigene Warenkörbe bleiben beim Wechsel erhalten. Konto-/Firmenwechsel verwirft die Auswahl. Mitarbeiter sehen für FiF den Hinweis auf die noch ausstehende Freigabe gespeicherter FiF-Zugänge.

@@ -242,6 +242,6 @@
         }
       });
     });
-    return {shopping,cartView,settings,selectedAccount:()=>{sync();return accountId;},count:()=>{sync();return basket.length;},isShared:()=>{sync();return shared;}};
+    return {shopping,cartView,settings,isPending:()=>pending,setShared:value=>{sync();shared=value;},selectedAccount:()=>{sync();return accountId;},count:()=>{sync();return basket.length;},isShared:()=>{sync();return shared;}};
   }};
 })();

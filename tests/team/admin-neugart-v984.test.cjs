@@ -15,8 +15,21 @@ const server=http.createServer((req,res)=>{const u=new URL(req.url,'http://local
  await page.goto('http://127.0.0.1:'+server.address().port);await page.waitForFunction(()=>!!window.__offerQA);
  await page.evaluate(({A,B,admin,employee})=>{const q=__offerQA,p={id:admin,role:'administrator',username:'Fixture'};Object.assign(q.state,{session:{user:{id:admin},access_token:'synthetic'},profile:p,businessId:A,employeeId:A,view:'shopping'});q.state.rows.people=[p,{id:A,role:'business',company_name:'Firma A'},{id:B,role:'business',company_name:'Firma B'},{id:employee,role:'employee',business_id:A,username:'Fixture employee'}];q.render();},{A,B,admin,employee});
  await page.locator('[data-neugart-search]').waitFor();assert.equal(await page.locator('[data-ng-account]').inputValue(),account(A),'admin starts in saved access of selected company');
+ assert.equal(await page.locator('[data-shopping-provider]').inputValue(),'neugart');
+ await page.evaluate(A=>{__offerQA.state.rows.materials=[{id:'30000000-0000-4000-8000-000000000002',business_id:A,active:true,name:'FIF123 Testartikel',unit:'Stk',catalog_supplier:'H. Gautzsch',catalog_article_number:'FIF123',unit_price:2}];},A);
+ await page.locator('[data-shopping-provider]').selectOption('gautzsch');
+ await page.locator('[data-purchase-search]').waitFor();
+ assert.equal(await page.locator('[data-neugart-search]').count(),0);
+ await page.locator('[data-ps-field=query]').fill('FIF123');
+ await page.locator('[data-ps-search]').click();
+ await page.locator('[data-ps-add]').first().click();
+ await page.locator('[data-sc-fif-transfer]').waitFor();
+ assert.equal(await page.locator('[data-shopping-provider]').inputValue(),'gautzsch');
+ await page.locator('[data-shopping-provider]').selectOption('neugart');
+ await page.locator('[data-neugart-search]').waitFor();
+ assert.equal(await page.locator('[data-sc-fif-transfer]').count(),0);
  async function add(){await page.locator('[data-neugart-search] [name=query]').fill('000123');await page.locator('[data-neugart-search] button.primary').click();await page.locator('[data-neugart-results] [data-article-stock][data-indicator=split]').waitFor();await page.locator('[data-ng-action=add]').click();await page.getByRole('button',{name:'Warenkorb öffnen (1)'}).click();}
- await add();assert.equal(calls.filter(c=>c.action==='transfer').length,0,'adding to app does not falsely claim merchant transfer');await page.locator('[data-ng-form=cart] input[type=number]').fill('2.5');
+ await add();await page.locator('[data-shopping-provider]').selectOption('gautzsch');await page.locator('[data-sc-fif-transfer]').waitFor();await page.locator('[data-shopping-provider]').selectOption('neugart');await page.getByRole('button',{name:'Warenkorb öffnen (1)'}).click();assert.equal(calls.filter(c=>c.action==='transfer').length,0,'adding to app does not falsely claim merchant transfer');await page.locator('[data-ng-form=cart] input[type=number]').fill('2.5');
  await page.getByRole('button',{name:'Zum Großhändler übertragen und öffnen',exact:true}).click();
  await page.getByText(/Neugart beantwortet die Anmeldung derzeit nicht/).waitFor();
  assert.equal(await page.evaluate(()=>__posts.length),0);

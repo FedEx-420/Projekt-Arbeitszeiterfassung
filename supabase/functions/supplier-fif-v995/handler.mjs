@@ -1,0 +1,67 @@
+import {createFifMerchant,origin} from './merchant.mjs';
+import {createCodec} from './session.mjs';
+const uuid=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
+const headers={'Access-Control-Allow-Origin':'https://fedex-420.github.io','Access-Control-Allow-Headers':'authorization,apikey,content-type,x-client-info','Access-Control-Allow-Methods':'POST,OPTIONS','Content-Type':'application/json','Cache-Control':'no-store','Referrer-Policy':'no-referrer'};
+const fail=(code,message,status=400)=>Object.assign(Error(message),{code,status});
+const units={stk:'PCE',stck:'PCE',stück:'PCE',st:'PCE',pce:'PCE',m:'MTR',meter:'MTR',mtr:'MTR',kg:'KGM',kgm:'KGM',paar:'PR',pr:'PR',satz:'SET',set:'SET',l:'LTR',ltr:'LTR',m2:'MTK','m²':'MTK',mtk:'MTK',m3:'MTQ','m³':'MTQ',mtq:'MTQ',cm:'CMT',mm:'MMT',g:'GRM',km:'KTM'};
+const toUnit=v=>{const raw=typeof v==='object'&&v?(v.shortName??v.symbol??v.code??v.name):v;return typeof raw==='string'?units[raw.trim().toLowerCase()]||'':'';};
+const cents=v=>{const text=String(v??'').replace(',','.');if(!/^\d{1,6}(?:\.\d{1,2})?$/.test(text)||Number(text)<=0||Number(text)>999999.99)throw fail('QUANTITY','Bitte eine gültige Menge eingeben.');return Math.round(Number(text)*100);};
+export function checkFifCart(rows,lines){
+ if(!Array.isArray(rows)||rows.length>2000)return null;
+ const got=new Map();for(const r of rows){const sku=r?.productNumber??r?.articleNumber??r?.product?.productNumber,quantity=r?.quantity,unit=[...new Set([r?.quantityUnit,r?.unit,r?.unitSymbol,r?.salesUnit,r?.quantityUnitName,r?.unitName,r?.product?.unit].map(toUnit).filter(Boolean))];if(typeof sku!=='string'||!sku||got.has(sku)||!lines.some(l=>l.sku===sku))return null;let actual;try{actual=cents(quantity);}catch{return null;}got.set(sku,{cents:actual,unit:unit.length===1?unit[0]:''});}
+ return lines.map(l=>({material_ids:l.material_ids,sku:l.sku,quantity:l.cents/100,unit:l.qu,actual_quantity:got.get(l.sku)?.cents/100||0,confirmed:got.get(l.sku)?.cents===l.cents&&got.get(l.sku)?.unit===l.qu}));
+}
+export function createHandler({fetch=globalThis.fetch,env,crypto=globalThis.crypto,now=Date.now,report=()=>{},merchant:createMerchant=createFifMerchant}){
+ const codec=createCodec(env.serviceKey,crypto,now),merchant=createMerchant({fetch,now,report}),json=(body,status=200)=>new Response(JSON.stringify(body),{status,headers});
+ return async request=>{
+  if(request.method==='OPTIONS')return new Response('ok',{headers});if(request.method!=='POST')return json({code:'METHOD',message:'Bitte POST verwenden.'},405);
+  let session,context,body,ref='',writeStarted=false;
+  try{
+   const auth=request.headers.get('authorization')||'';if(!/^Bearer [A-Za-z0-9._-]+$/.test(auth))throw fail('AUTH','Bitte in der App anmelden.',401);
+   const userHeaders={apikey:env.anonKey,Authorization:auth};
+   const read=async path=>{const r=await fetch(env.url+path,{headers:userHeaders,signal:AbortSignal.timeout(15000)});if(!r.ok)throw fail('AUTH','Das Arbeitskonto konnte nicht bestätigt werden.',401);return r.json();};
+   const user=await read('/auth/v1/user');if(!uuid.test(user?.id||''))throw fail('AUTH','Die Anmeldung ist nicht bestätigt.',401);
+   const p=(await read('/rest/v1/profiles?select=id,role,business_id&id=eq.'+user.id)).find(p=>p.id===user.id);
+   if(!p||!['administrator','business'].includes(p.role))throw fail('FORBIDDEN','Der FiF-Zugang ist für dieses Arbeitskonto noch nicht freigegeben.',403);
+   const raw=await request.text();if(raw.length>220000)throw fail('SIZE','Der Warenkorb ist zu groß.');try{body=JSON.parse(raw);}catch{throw fail('JSON','Ungültige Anfrage.');}
+   const company=p.role==='business'?user.id:body.company,supplier=String(body.supplier||'').trim();
+   if(!uuid.test(company||'')||body.company!==company||!['connect','transfer'].includes(body.action)||supplier.length>120||!/\bgautzsch\b/i.test(supplier))throw fail('SCOPE','Bitte die richtige Firma und Gautzsch auswählen.',403);
+   const companies=await read('/rest/v1/profiles?select=id,role&id=eq.'+company+'&role=eq.business');if(!companies.some(c=>c.id===company&&c.role==='business'))throw fail('SCOPE','Diese Firma ist nicht verfügbar.',403);
+   context={owner:user.id,company,supplier};
+   session=body.connection?await codec.open(body.connection,context):await merchant.connect({username:body.username,password:body.password});body.password='';
+   const attach=async data=>({company,supplier,connection:await codec.seal(session,context),...data});
+   if(body.action==='connect')return json(await attach({login_confirmed:true}));
+   const id=body.request_id;if(!uuid.test(id||'')||!Array.isArray(body.lines)||!body.lines.length||body.lines.length>1000)throw fail('LINES','Bitte 1 bis 1000 gültige Positionen auswählen.');
+   const ids=body.lines.map(l=>l.material_id);if(ids.some(x=>!uuid.test(x||''))||new Set(ids).size!==ids.length)throw fail('LINES','Die Artikelauswahl ist ungültig.');
+   const materials=[];for(let offset=0;offset<ids.length;offset+=100){const params=new URLSearchParams({select:'id,business_id,catalog_supplier,catalog_article_number,unit',business_id:'eq.'+company,catalog_supplier:'eq.'+supplier,active:'eq.true',id:'in.('+ids.slice(offset,offset+100).join(',')+')'});materials.push(...await read('/rest/v1/materials?'+params));}
+   if(materials.length!==ids.length||materials.some(m=>m.business_id!==company||m.catalog_supplier!==supplier))throw fail('LINES','Ein Artikel gehört nicht zu dieser Firma und diesem Fachhändler.',403);
+   const grouped=new Map();for(const item of body.lines){const m=materials.find(m=>m.id===item.material_id),sku=m.catalog_article_number,qu=toUnit(m.unit),quantity=cents(item.quantity);if(typeof sku!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._/-]{0,119}$/.test(sku)||!qu)throw fail('ARTICLE','Artikelnummer oder Bestelleinheit fehlt.');const prior=grouped.get(sku);if(prior){if(prior.qu!==qu)throw fail('UNIT','Die Artikelnummer enthält unterschiedliche Einheiten.');prior.cents+=quantity;if(prior.cents>99999999)throw fail('QUANTITY','Die Gesamtmenge ist zu groß.');prior.material_ids.push(m.id);}else grouped.set(sku,{sku,qu,cents:quantity,material_ids:[m.id]});}
+   for(const line of grouped.values())line.material_ids.sort();
+   const lines=[...grouped.values()].sort((a,b)=>a.sku.localeCompare(b.sku));
+   const fingerprint=[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(['fif-v995',company,supplier,session.username.trim().toLowerCase(),lines]))))].map(b=>b.toString(16).padStart(2,'0')).join('');
+   const serviceHeaders={apikey:env.serviceKey,Authorization:'Bearer '+env.serviceKey,'Content-Type':'application/json',Prefer:'resolution=ignore-duplicates,return=representation'};
+   const db=async(method,query,data)=>{const r=await fetch(env.url+'/rest/v1/supplier_cart_transfers_v949'+query,{method,headers:serviceHeaders,...(data?{body:JSON.stringify(data)}:{}),signal:AbortSignal.timeout(15000)});if(!r.ok)throw fail('RECEIPT','Die Übertragung konnte nicht sicher protokolliert werden. Bitte nicht erneut senden.',502);return r.json();};
+   const where='?id=eq.'+id;let job=(await db('GET',where))[0];
+   if(job)writeStarted=true;
+   if(job&&(job.user_id!==user.id||job.company_id!==company||job.fingerprint!==fingerprint))throw fail('CHANGED','Dieser Übertragungsvorgang gehört zu einer anderen Auswahl oder Anmeldung.',409);
+   if(job?.receipt?.confirmed)return json(await attach(job.receipt));
+   if(job&&!job.cart_ref)throw fail('UNCERTAIN','Die vorherige Anfrage ist noch nicht eindeutig abgeschlossen. Es werden keine Artikel erneut gesendet.',409);
+   if(!job){
+    const products=await merchant.products(session,lines);
+    const created=await db('POST','?on_conflict=id',{id,user_id:user.id,company_id:company,fingerprint,state:'started'});if(!created.length)throw fail('UNCERTAIN','Die Anfrage läuft bereits. Bitte den Vorgang prüfen.',409);
+    writeStarted=true;ref=await merchant.create(session);if(!/^[1-9]\d{0,14}$/.test(ref))throw fail('FIF_CART','FiF hat keinen gültigen Warenkorb bestätigt.',502);
+    await db('PATCH',where,{cart_ref:ref,state:'created',updated_at:new Date(now()).toISOString()});
+    try{await merchant.add(session,ref,products);}catch{/* Read back after uncertain/partial writes. Never automatically resend. */}
+    await db('PATCH',where,{state:'sent',updated_at:new Date(now()).toISOString()});
+   }else {if(!/^[1-9]\d{0,14}$/.test(String(job.cart_ref)))throw fail('FIF_CART','Die gespeicherte FiF-Warenkorbkennung ist ungültig.',502);ref=String(job.cart_ref);}
+   let items=null;try{items=checkFifCart(await merchant.read(session,ref),lines);}catch{}
+   const confirmed=!!items&&items.every(x=>x.confirmed),receipt={company,supplier,request_id:id,confirmed,cart_url:origin+'/Warenkorb/'+ref,items:items||[],checked_at:new Date(now()).toISOString(),message:confirmed?'Alle Artikel und Mengen wurden im FiF-Warenkorb bestätigt.':'Der FiF-Warenkorb wurde noch nicht vollständig bestätigt. Bitte beim Händler prüfen; es wird nichts erneut gesendet.'};
+   await db('PATCH',where,{receipt,state:confirmed?'confirmed':'uncertain',updated_at:new Date(now()).toISOString()});return json(await attach(receipt));
+  }catch(error){
+   const code=error.code||'FIF_UNAVAILABLE',message=error.code?error.message:'Die FiF-Verbindung konnte gerade nicht abgeschlossen werden.';
+   report({stage:'result',code});
+   if(session&&context)return json({company:context.company,supplier:context.supplier,request_id:body?.request_id,connection:await codec.seal(session,context),confirmed:false,code,message,write_started:writeStarted,...(ref?{cart_url:origin+'/Warenkorb/'+ref}:{})});
+   return json({code,message},error.status||502);
+  }finally{if(body)body.password='';}
+ };
+}

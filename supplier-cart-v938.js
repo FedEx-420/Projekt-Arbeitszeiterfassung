@@ -41,6 +41,7 @@
    return [row.sku,quantity(row.quantity).replace(/\.00$/,'')];
   }).join(';');
  }
+ function fifCartURL(value){let url;try{url=new URL(value);}catch{throw Error('FiF hat keinen gültigen Warenkorb bestätigt.');}if(url.origin!=='https://www.onlinesystem.de'||url.username||url.password||url.port||url.search||url.hash||!/^\/Warenkorb\/[1-9]\d{0,14}$/.test(url.pathname))throw Error('Die FiF-Warenkorbadresse konnte nicht bestätigt werden.');return url;}
  function fifPortalTransfer({lines,supplier,shipping,callback}){
   if(!isFifSupplier(supplier))throw Error('Bitte einen Gautzsch-Warenkorb auswählen.');
   let url;try{url=new URL(callback);}catch{throw Error('Die FiF-Rückgabeadresse fehlt.');}
@@ -54,5 +55,5 @@
   return {action:'WKS',name_kunde:user,pw_kunde:password,warenkorb:build({lines,supplier,shipping})};
  }
  function parseResponse(text,Parser=globalThis.DOMParser){if(typeof text!=='string'||text.length>1048576||/<!DOCTYPE|<!ENTITY/i.test(text))throw Error('Ungültige oder zu große Warenkorbrückmeldung.');const doc=new Parser().parseFromString(text,'application/xml');if(doc.getElementsByTagName('parsererror').length||doc.documentElement.localName!=='Warenkorb'||![namespace,''].includes(doc.documentElement.namespaceURI||''))throw Error('Die Rückmeldung ist kein lesbarer IDS-Warenkorb.');const child=(node,name)=>[...node.children].find(n=>n.localName===name),get=(node,name)=>child(node,name)?.textContent||'';const order=child(doc.documentElement,'Order');if(!order)throw Error('In der Rückmeldung fehlt der Warenkorb.');const rows=[...order.children].filter(n=>n.localName==='OrderItem');if(rows.length>1000)throw Error('Die Rückmeldung enthält zu viele Positionen.');return rows.map(n=>({ref:get(child(n,'RefItems')||n,'Customer'),sku:get(n,'ArtNo'),quantity:get(n,'Qty'),unit:get(n,'QU'),name:get(n,'Langtext')||get(n,'Kurztext'),error:get(n,'Fehlertext'),errorCode:get(n,'Fehlercode')}));}
- return Object.freeze({endpoint,namespace,xml,quantity,unit,normalize,build,parseResponse,shopCSV,uploadEndpoint,shopFor,fifTXT,fifUploadURL,isFifSupplier,fifArticleURL,fifTransfer,fifPortalTransfer,fifIdsEndpoint});
+ return Object.freeze({endpoint,namespace,xml,quantity,unit,normalize,build,parseResponse,shopCSV,uploadEndpoint,shopFor,fifTXT,fifUploadURL,isFifSupplier,fifArticleURL,fifTransfer,fifPortalTransfer,fifCartURL,fifIdsEndpoint});
 });

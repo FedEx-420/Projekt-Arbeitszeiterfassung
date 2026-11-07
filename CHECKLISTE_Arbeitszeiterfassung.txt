@@ -11,6 +11,7 @@ ZEICHEN
 Ein erfolgreicher Test mit Beispieldaten ist kein Live-Test jedes Geschäftskontos.
 
 ALS NÄCHSTES
+[ ] FiF-Warenkorbübergabe über reguläre Händleranmeldung statt fehlgeschlagenem IDS-Aufruf live abnehmen (v995). Neuer Dienst, sichere Sitzungsbindung, exakte Rücklesung und Wiederholungsschutz isoliert geprüft; tatsächliche App-Übernahme noch zu bestätigen.
 [ ] FiF-Übergabe mit nativer Händleranmeldung, expliziter IDS-Version und echter Einmal-Rückgabeadresse live abnehmen (v994). Formular- und Mengenprüfung isoliert erfolgreich; automatische App-Annahme weiterhin zu bestätigen.
 [x] Regulären FiF-Scannerimport einer einzelnen Testposition mit exakter Artikelnummer und Menge im Händlerwarenkorb bestätigt; anschließend entfernt. Keine Bestellung.
 [ ] FiF-403 bei IDS-Warenkorbübergabe beheben: im Browser mit und ohne vorherige Händlersitzung nachgestellt. Direkte Händleranmeldung anschließend auf frischer Startseite bestätigt. Ursache und erfolgreiche Warenkorbannahme bleiben offen; keine Kontosperre oder fehlende Berechtigung als bewiesen behandeln.

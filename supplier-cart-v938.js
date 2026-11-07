@@ -19,6 +19,7 @@
  // GC's own upload screen documents CSV as Artikelnummer;Menge.
  // No header, prices, customer data or spreadsheet formulas are emitted.
  function shopCSV({lines,supplier}){return normalize(lines,supplier).map(r=>{if(/[;",\r\n]/.test(r.sku)||/^[=+@-]/.test(r.sku))throw Error('Artikelnummer '+r.sku+' kann nicht sicher als GC-Importdatei ausgegeben werden. Bitte die Großhandelsartikelnummer prüfen.');return r.sku+';'+r.quantity.replace('.',',');}).join('\r\n')+'\r\n';}
+ const fifIdsEndpoint='https://www.onlinesystem.de/IDS';
  const fifUploadURL='https://www.onlinesystem.de/Warenkorb/Scan2FiF';
  const isFifSupplier=value=>/\bgautzsch\b/i.test(String(value||''));
  const isFifSku=sku=>typeof sku==='string'&&/^[A-Za-z0-9][A-Za-z0-9._/-]{0,119}$/.test(sku);
@@ -40,6 +41,12 @@
    return [row.sku,quantity(row.quantity).replace(/\.00$/,'')];
   }).join(';');
  }
+ function fifTransfer({lines,supplier,username,password,shipping}){
+  if(!isFifSupplier(supplier))throw Error('Bitte einen Gautzsch-Warenkorb auswählen.');
+  const user=clean(username,50,'FiF-Benutzername',true);
+  if(typeof password!=='string'||!password||password.length>50||/[\u0000-\u001f\u007f]/.test(password))throw Error('Bitte das FiF-Kennwort mit höchstens 50 Zeichen eingeben.');
+  return {action:'WKS',name_kunde:user,pw_kunde:password,warenkorb:build({lines,supplier,shipping})};
+ }
  function parseResponse(text,Parser=globalThis.DOMParser){if(typeof text!=='string'||text.length>1048576||/<!DOCTYPE|<!ENTITY/i.test(text))throw Error('Ungültige oder zu große Warenkorbrückmeldung.');const doc=new Parser().parseFromString(text,'application/xml');if(doc.getElementsByTagName('parsererror').length||doc.documentElement.localName!=='Warenkorb'||![namespace,''].includes(doc.documentElement.namespaceURI||''))throw Error('Die Rückmeldung ist kein lesbarer IDS-Warenkorb.');const child=(node,name)=>[...node.children].find(n=>n.localName===name),get=(node,name)=>child(node,name)?.textContent||'';const order=child(doc.documentElement,'Order');if(!order)throw Error('In der Rückmeldung fehlt der Warenkorb.');const rows=[...order.children].filter(n=>n.localName==='OrderItem');if(rows.length>1000)throw Error('Die Rückmeldung enthält zu viele Positionen.');return rows.map(n=>({ref:get(child(n,'RefItems')||n,'Customer'),sku:get(n,'ArtNo'),quantity:get(n,'Qty'),unit:get(n,'QU'),name:get(n,'Langtext')||get(n,'Kurztext'),error:get(n,'Fehlertext'),errorCode:get(n,'Fehlercode')}));}
- return Object.freeze({endpoint,namespace,xml,quantity,unit,normalize,build,parseResponse,shopCSV,uploadEndpoint,shopFor,fifTXT,fifUploadURL,isFifSupplier,fifArticleURL});
+ return Object.freeze({endpoint,namespace,xml,quantity,unit,normalize,build,parseResponse,shopCSV,uploadEndpoint,shopFor,fifTXT,fifUploadURL,isFifSupplier,fifArticleURL,fifTransfer,fifIdsEndpoint});
 });

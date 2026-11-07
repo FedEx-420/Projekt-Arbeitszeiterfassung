@@ -20,3 +20,11 @@ assert.throws(()=>C.fifTXT({lines:[fif],supplier:'Neugart'}),/Gautzsch/);
 assert.equal(C.fifArticleURL('H. Gautzsch','00123'), 'https://www.onlinesystem.de/Search?SearchOwnPartNumbers=false&q=00123');
 assert.equal(C.fifArticleURL('Neugart','00123'), '');
 assert.equal(C.fifArticleURL('H. Gautzsch','00123&x=1'), '');
+
+const fifPost=C.fifTransfer({lines:[fif],supplier:fif.supplier,username:'TEST_USER',password:'SYNTHETIC_PASSWORD',shipping:'Lieferung'});
+assert.equal(fifPost.action,'WKS');
+assert.equal(fifPost.name_kunde,'TEST_USER');
+assert.equal(fifPost.pw_kunde,'SYNTHETIC_PASSWORD');
+assert.match(fifPost.warenkorb,/<ArtNo>00123<\/ArtNo><Qty>2.50<\/Qty>/);
+assert.ok(!fifPost.warenkorb.includes('SYNTHETIC_PASSWORD'));
+assert.throws(()=>C.fifTransfer({lines:[fif],supplier:fif.supplier,username:'',password:'x',shipping:'Lieferung'}),/Benutzername/);

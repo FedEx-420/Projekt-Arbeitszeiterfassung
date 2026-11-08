@@ -1,3 +1,4 @@
+const goMenu=require('./menu-navigation.cjs');
 /* Full offer editor, synthetic data, no remote writes. Optional pinned baseline comparison. */
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),http=require('node:http'),cp=require('node:child_process'),{chromium}=require('playwright');
 const dir=path.resolve(__dirname,'../..'),baseline=process.env.OFFER_BASELINE_REF;
@@ -27,19 +28,20 @@ const server=http.createServer((req,res)=>{const u=new URL(req.url,'http://local
  await page.locator('dialog input[name=new_name]').fill('Standard');await page.locator('dialog button[type=submit]').click();await page.waitForFunction(()=>!document.querySelector('dialog[open]'));
  assert.equal(lists[0].name,'Gautzsch · Standard');assert.equal(items[0].snapshot.catalog_supplier,'H. Gautzsch');
  await page.locator('[data-article-favorites] summary').click();assert.match(await page.locator('[data-favorites-content]').innerText(),/Gautzsch · Standard/);
- await page.locator('[data-ps-add]').first().click();await page.locator('[data-sc-cart-view]').click();
+ await page.locator('[data-ps-add]').first().click();await goMenu(page,'shopping-cart');
  await page.locator('[data-sc-fif-transfer]').waitFor();
  assert.equal(await page.locator('[data-shopping-provider]').inputValue(),'gautzsch');
  await page.locator('[data-shopping-provider]').selectOption('neugart');
+ await goMenu(page,'shopping');
  await page.locator('[data-neugart-search]').waitFor();
  assert.equal(await page.locator('[data-sc-fif-transfer]').count(),0);
- async function add(){await page.locator('[data-neugart-search] [name=query]').fill('000123');await page.locator('[data-neugart-search] button.primary').click();await page.locator('[data-neugart-results] [data-article-stock][data-indicator=split]').waitFor();await page.locator('[data-ng-action=add]').click();await page.getByRole('button',{name:'Warenkorb öffnen (1)'}).click();}
+ async function add(){await page.locator('[data-neugart-search] [name=query]').fill('000123');await page.locator('[data-neugart-search] button.primary').click();await page.locator('[data-neugart-results] [data-article-stock][data-indicator=split]').waitFor();await page.locator('[data-ng-action=add]').click();await goMenu(page,'shopping-cart');}
  await page.locator('[data-neugart-search] [name=query]').fill('000123');await page.locator('[data-neugart-search] button.primary').click();await page.locator('[data-neugart-results] [data-article-star]').first().click();
  assert.equal(await page.locator('dialog select[name=list] option').count(),1,'FiF list unavailable from Neugart');
  await page.locator('dialog input[name=new_name]').fill('Standard');await page.locator('dialog button[type=submit]').click();await page.waitForFunction(()=>!document.querySelector('dialog[open]'));
  assert.equal(lists[1].name,'Neugart · Standard');assert.equal(items[1].snapshot.catalog_supplier,'Neugart');
  assert.doesNotMatch(await page.locator('[data-favorites-content]').innerText(),/Gautzsch|FIF123/);
- await add();await page.locator('[data-shopping-provider]').selectOption('gautzsch');await page.locator('[data-purchase-search]').waitFor();assert.match(await page.locator('[data-favorites-content]').innerText(),/Gautzsch · Standard/);assert.doesNotMatch(await page.locator('[data-favorites-content]').innerText(),/Neugart · Standard/);await page.locator('[data-sc-cart-view]').click();await page.locator('[data-sc-fif-transfer]').waitFor();await page.locator('[data-shopping-provider]').selectOption('neugart');await page.getByRole('button',{name:'Warenkorb öffnen (1)'}).click();assert.equal(calls.filter(c=>c.action==='transfer').length,0,'adding to app does not falsely claim merchant transfer');await page.locator('[data-ng-form=cart] input[type=number]').fill('2.5');
+ await add();await page.locator('[data-shopping-provider]').selectOption('gautzsch');await goMenu(page,'shopping');await page.locator('[data-purchase-search]').waitFor();assert.match(await page.locator('[data-favorites-content]').innerText(),/Gautzsch · Standard/);assert.doesNotMatch(await page.locator('[data-favorites-content]').innerText(),/Neugart · Standard/);await goMenu(page,'shopping-cart');await page.locator('[data-sc-fif-transfer]').waitFor();await page.locator('[data-shopping-provider]').selectOption('neugart');await goMenu(page,'shopping-cart');assert.equal(calls.filter(c=>c.action==='transfer').length,0,'adding to app does not falsely claim merchant transfer');await page.locator('[data-ng-form=cart] input[type=number]').fill('2.5');
  await page.getByRole('button',{name:'Zum Großhändler übertragen und öffnen',exact:true}).click();
  await page.getByText(/Neugart beantwortet die Anmeldung derzeit nicht/).waitFor();
  assert.equal(await page.evaluate(()=>__posts.length),0);

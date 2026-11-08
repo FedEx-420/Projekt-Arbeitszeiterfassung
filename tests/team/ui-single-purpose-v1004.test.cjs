@@ -27,6 +27,33 @@ const server=http.createServer((req,res)=>{const u=new URL(req.url,'http://local
  await page.evaluate(B=>{__offerQA.state.businessId=B;__offerQA.state.employeeId=B;__offerQA.render();},B);assert.equal(await page.locator('[name=taxId]').inputValue(),'TAX-B');await menu('datev');await page.locator('[data-datev-action=section][data-section=procedure]').click();assert.equal(await page.locator('[data-document-kind=accounting] textarea[name=content]').inputValue(),'ACCOUNTING-B');
  await page.evaluate(({A,employee})=>{__offerQA.state.profile={id:employee,role:'employee',business_id:A};__offerQA.state.businessId=A;__offerQA.state.employeeId=employee;__offerQA.state.view='legal';__offerQA.render();},{A,employee});assert.equal(await page.locator('[data-form=legal-info],[data-form=datev-settings],[data-accounting-document]').count(),0);assert.deepEqual(errors,[]);
  await page.evaluate(({A,admin})=>{const q=__offerQA;q.state.profile={id:admin,role:'administrator',username:'Fixture'};q.state.businessId=A;q.state.employeeId=A;},{A,admin});
+ // Exercise real provider changes, not just direct rendering of each view.
+ for(const width of [320,390,1366]){
+  await page.setViewportSize({width,height:900});
+  for(const role of ['administrator','business','employee']){
+   await page.evaluate(({role,A,admin,employee})=>{const q=__offerQA;q.state.profile={id:role==='employee'?employee:role==='business'?A:admin,role,business_id:A};q.state.businessId=A;q.state.employeeId=role==='employee'?employee:A;q.state.view='shopping';q.render();},{role,A,admin,employee});
+   for(const view of ['shopping-cart','shopping']){
+    await page.evaluate(view=>{__offerQA.state.view=view;__offerQA.render();},view);
+    for(const provider of ['gautzsch','neugart','all','gautzsch']){
+     await page.waitForFunction(()=>![...document.querySelectorAll('[data-ff=load],[data-ng-action=load]')].some(e=>e.disabled));
+     await page.locator('[data-shopping-provider]').selectOption(provider);
+     await page.waitForFunction(()=>![...document.querySelectorAll('[data-ff=load],[data-ng-action=load]')].some(e=>e.disabled));
+     assert.equal(await page.evaluate(()=>__offerQA.state.view),view,role+' provider switch preserves '+view);
+     assert.equal(await page.locator('main.content [data-ff=cart-view],main.content [data-ff=search-view],main.content [data-sc-cart-view],main.content [data-sc-search-return],main.content [data-ng-action=cart],main.content [data-ng-action=search],main.content [data-ng-action=mode]').count(),0,'navigation belongs to the main menu, with no repeated page buttons');
+     assert.equal(await page.locator('[data-action=nav][data-view="'+view+'"]:not(#app-menu-toggle)').count(),1,'each main menu destination occurs once');
+     if(view==='shopping-cart')assert.equal(await page.locator('main.content [data-purchase-search],main.content [data-fif-search],main.content [data-neugart-search]').count(),0,'cart never contains article search');
+     else assert.equal(await page.locator('main.content [data-sc-cart],main.content [data-ff-form=cart],main.content [data-ng-form=cart]').count(),0,'shopping never contains checkout');
+     if(view==='shopping-cart'&&provider==='gautzsch'&&role!=='employee'){
+      await page.locator('[data-ff-account]').selectOption('');
+      assert.equal(await page.locator('main.content [data-purchase-search],main.content [data-fif-search]').count(),0,'manual FiF fallback also stays cart only');
+      assert.equal(await page.getByRole('heading',{name:'Warenkorb',exact:true}).count(),1,'manual cart has an unambiguous heading');
+      await page.locator('[data-ff-account]').selectOption(account(A));
+     }
+    }
+   }
+  }
+ }
+ await page.evaluate(({A,admin})=>{__offerQA.state.profile={id:admin,role:'administrator'};__offerQA.state.businessId=A;__offerQA.render();},{A,admin});
  const owners={'platform-price':'platform','legal-info':'legal','datev-settings':'datev','datev-booking':'datev','datev-export':'datev','self':'settings','company-logo':'settings','employee-new':'settings','employee-credentials':'settings','employee-labor-type':'settings','employee-vacation':'settings','employee-permissions':'settings','material':'materials','material-edit':'materials','hourly-price':'materials','catalog-prices-v908':'materials'};
  for(const view of ['home','orders','customers','calendar','planning','offers','materials','shopping','shopping-cart','invoices','invoices-paid','datev','legal','settings','catalogs','supplier-catalogs','mailbox','platform']){await page.evaluate(view=>{__offerQA.state.view=view;__offerQA.render();},view);const forms=await page.locator('main.content form[data-form]').evaluateAll(nodes=>nodes.map(n=>n.dataset.form));for(const form of forms)if(owners[form])assert.equal(view,owners[form],form+' only in owning menu');if(view!=='datev')assert.equal(await page.locator('main.content [data-accounting-document],main.content .business-readiness').count(),0);if(view==='settings')assert.equal(await page.locator('main.content [data-view=platform]').count(),0);if(view!=='shopping')assert.equal(await page.locator('main.content [data-purchase-search],main.content [data-fif-search],main.content [data-neugart-search]').count(),0);assert.equal(await page.locator('main.content [data-ps-files],main.content [data-sc-add]').count(),0);}
  console.log('PASS 18 menu ownership views; accounting document only in DATEV, no cross-menu shortcuts/editors; stored versions, company isolation and employee restrictions preserved; no writes');

@@ -31,3 +31,6 @@ Der allgemeine Warenkorb heißt auch in der Seitenüberschrift Warenkorb.
 | Anbieteradministration | Geschäftskonten und Anbieter-Konfiguration |
 
 Belegbezogene Rechnungsangaben, Kunden-/Materialauswahl und Rückwege innerhalb eines Arbeitsablaufs sind keine zweite Stammdatenverwaltung. Bereits ausgestellte Dokumente, exakte Preise, Login-Firmennamen und rechtliche Firmennamen bleiben geschützt. Historische Dokumente werden bei einer Menübereinigung weder gelöscht noch automatisch neu gespeichert.
+
+Ab v1007: Einstellungen enthält ausschließlich die Betriebsfreigabe für die getrennte Klarwerk-App. Belege enthält Original-Eingangsrechnungen des Betriebs und der eigenen Mitarbeiter. Abrechnung/Kundenabgleich/Buchhaltung erfolgen in Klarwerk; kein zweiter Finanzbereich in Arbeitszeiterfassung.
+

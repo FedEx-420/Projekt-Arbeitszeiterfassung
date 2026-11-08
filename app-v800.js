@@ -2474,6 +2474,8 @@
   const viewBeforeNeugart=viewHtml;
   viewHtml=()=>(state.view==='shopping-cart'?(activeShoppingProvider()==='gautzsch'?fifAccounts?.shopping({cartOnly:true})||'':activeShoppingProvider()==='neugart'?neugartAccounts?.cartView()||'':supplierCart?.view({cartOnly:true})||''):viewBeforeNeugart())+(state.view==='settings'&&isManager()&&neugartAccounts?neugartAccounts.settings():'')+(state.view==='settings'&&isManager()?fifAccounts?.settings()||'':'');
   initializeShopping();
+  const klarwerkConnection=window.WorktimeKlarwerkConnection?.create({root,state,businessId,isManager,api,upload,download,escape});
+  if(klarwerkConnection){const baseSettings=settingsView,baseView=viewHtml,baseRender=render;settingsView=()=>baseSettings()+klarwerkConnection.settings();viewHtml=()=>baseView()+(state.view==='receipts'?klarwerkConnection.receiptView():'');render=()=>{baseRender();klarwerkConnection.afterRender();};}
   const themeRender=render;render=()=>{themeRender();window.WorktimeKlarwerkTheme?.afterRender(root);};window.WorktimeKlarwerkTheme?.afterRender(root);
   const supplierStock=window.WorktimeSupplierStock?.create({root,state,businessId,isManager,api,escape,shoppingProvider:()=>activeShoppingProvider()});
   if(supplierStock){const beforeStockRender=render;render=()=>{beforeStockRender();supplierStock.afterRender();};}

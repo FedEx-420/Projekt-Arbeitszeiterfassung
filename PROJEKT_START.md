@@ -343,3 +343,6 @@ Veröffentlichung v999: PR #48 zusammengeführt; App review checks und Pages-Ber
 
 ## v1000 – Klarwerk-Gestaltung und Finanzbereich
 Die Arbeitszeiterfassung bleibt eine eigenständige App. Neues helles Layout mit linker Desktop-Navigation, Eingabehilfen und zusätzlichem Menüpunkt Buchhaltung & Finanzen. Firmen-/Mitarbeiterrechte, bestehende Rechnungen und Originalpreise bleiben autoritativ. Kein gemeinsamer Datenbestand oder Kontoimport aus Klarwerk. Details und Prüfumfang: docs/Pruefstand_v1000.md. Neue Konten werden ausschließlich vom Administrator angelegt.
+
+## v1001 – Durchgängige Accountable-inspirierte Oberfläche
+Die Arbeitszeiterfassung verwendet in allen Bereichen accountable-theme-v1001.css. Das gemeinsame Stylesheet wird zuletzt in Haupt-App und Finanzansicht geladen. Navigation, Untermenüs, Formulare, Tabellen, Dokumentregister, Planung, Kalender, Dialoge und Anmeldung folgen derselben Lavendel-/Violett-Gestaltung. Bestehende Eingabehilfen und semantische Warn-/Fehlerfarben bleiben erhalten. Klarwerk bleibt eine getrennte App und wird nicht geändert. Keine Änderungen an Anmeldung, Finanzlogik oder Datenbank. Referenz und Prüfung: docs/Pruefstand_v1001.md.

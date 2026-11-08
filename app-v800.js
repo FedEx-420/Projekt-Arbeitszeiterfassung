@@ -2473,8 +2473,6 @@
   const viewBeforeNeugart=viewHtml;
   viewHtml=()=>(state.view==='shopping-cart'?(activeShoppingProvider()==='gautzsch'?fifAccounts?.shopping()||'':activeShoppingProvider()==='neugart'?neugartAccounts?.cartView()||'':supplierCart?.view({cartOnly:true})||''):viewBeforeNeugart())+(state.view==='settings'&&isManager()&&neugartAccounts?neugartAccounts.settings():'')+(state.view==='settings'&&isManager()?fifAccounts?.settings()||'':'');
   initializeShopping();
-  const financeFeature=window.WorktimeFinance?.create({root,state,api,request:(path,options)=>auth.request(path,options),businessId,isManager,escape,render:()=>render()});
-  if(financeFeature){const financeMenus=menuItems,financeView=viewHtml,financeRender=render;menuItems=()=>{const items=financeMenus();return isManager()?[...items,['finance','Buchhaltung & Finanzen']]:items;};viewHtml=()=>state.view==='finance'&&isManager()?financeFeature.view():financeView();render=()=>{financeRender();financeFeature.mount();};}
   const themeRender=render;render=()=>{themeRender();window.WorktimeKlarwerkTheme?.afterRender(root);};window.WorktimeKlarwerkTheme?.afterRender(root);
   const supplierStock=window.WorktimeSupplierStock?.create({root,state,businessId,isManager,api,escape,shoppingProvider:()=>activeShoppingProvider()});
   if(supplierStock){const beforeStockRender=render;render=()=>{beforeStockRender();supplierStock.afterRender();};}

@@ -1,4 +1,4 @@
-const CACHE = 'worktime-v1002';
+const CACHE = 'worktime-v1003';
 const FILES = ['./','./index.html','./styles-v700.css','./responsive-v701.css','./navigation-v710.css','./menu-v720.css','./calendar-v800.css?v=2','./home-v827.css?v=3','./signature-v828.css?v=2','./planned-orders-v855.css','./offers-v857.css?v=908','./material-units-v860.css','./vendor/pdf-lib-1.17.1.min.js','./planning-pdf.js?v=854','./documents-pdf-v857.js?v=908','./offers-v857.js?v=908','./app-v800.js?v=908','./receipt-pdf-v863-1.js','./arrival-timer-v865.js?v=875','./iphone-shortcuts-v870.js','./iphone-shortcuts-v870.css','./owntracks-v871.js?v=908','./owntracks-v871.css?v=906','./device-features-v863.js?v=964','./device-features-v863.css?v=873','./config.js?v=875','./manifest.webmanifest','./icon.svg'];
 FILES.push('./presentation-v900.css','./platform-v900.js','./guidance-v900.js?v=907','./help-topics-v900.js','./navigation-v901.js?v=908','./navigation-v901.css');
 FILES.push('./legal-templates-v900.js','./legal-v900.js');
@@ -75,11 +75,10 @@ for(let i=0;i<FILES.length;i++)if(/^\.\/(catalog-import-v909|catalog-workflow-v9
 for(let i=0;i<FILES.length;i++)if(/^\.\/(purchase-search-v939|supplier-stock-v948)\.js(?:\?.*)?$/.test(FILES[i]))FILES[i]=FILES[i].replace(/\?.*$/,'')+'?v=955';
 for(let i=0;i<FILES.length;i++)if(/^\.\/(purchase-search-v939|material-browser-v926|catalog-store-v933|product-display-v930)\.js(?:\?.*)?$/.test(FILES[i]))FILES[i]=FILES[i].replace(/\?.*$/,'')+'?v=957';
 for(let i=0;i<FILES.length;i++)if(/^\.\/(article-search-v947|product-display-v930|material-browser-v926|purchase-search-v939)\.js(?:\?.*)?$/.test(FILES[i]))FILES[i]=FILES[i].replace(/\?.*$/,'')+'?v=958';
-FILES.push('./finance-v1000.js?v=1000','./klarwerk-theme-v1000.js?v=1000','./klarwerk-theme-v1000.css?v=1000');
-FILES.push(...['index.html','app.js','workspace.js','style.css','workspace.css','bridge-v1000.js','sync-v1000.js'].map(n=>'./finance/'+n));
+FILES.push('./klarwerk-theme-v1000.js?v=1000','./klarwerk-theme-v1000.css?v=1000');
 for(let i=0;i<FILES.length;i++)if(/^\.\/app-v800\.js(?:\?.*)?$/.test(FILES[i]))FILES[i]='./app-v800.js?v=1000';
 self.addEventListener('install', event => { event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(FILES))); self.skipWaiting(); });
-self.addEventListener('activate', event => { event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key.startsWith('arbeitszeit-neu-') && key !== CACHE).map(key => caches.delete(key))))); self.clients.claim(); });
+self.addEventListener('activate', event => { event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => (key.startsWith('arbeitszeit-neu-') || key.startsWith('worktime-v')) && key !== CACHE).map(key => caches.delete(key))))); self.clients.claim(); });
 // Never persist authenticated API responses, uploaded receipts or other firms'
 // private data in a shared browser cache. Only same-origin public assets.
 self.addEventListener('fetch', event => {
@@ -163,3 +162,5 @@ for(let i=0;i<FILES.length;i++)if(['./app-v800.js','./material-browser-v926.js']
 FILES.push('./neutral-theme-v1002.css?v=1002');
 
 for(let i=0;i<FILES.length;i++)if(FILES[i].startsWith('./navigation-v901.js'))FILES[i]='./navigation-v901.js?v=1002';
+
+for(let i=0;i<FILES.length;i++)if(FILES[i].startsWith('./app-v800.js?'))FILES[i]='./app-v800.js?v=1003';

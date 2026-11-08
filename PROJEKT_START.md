@@ -349,3 +349,6 @@ Die Arbeitszeiterfassung verwendet in allen Bereichen accountable-theme-v1001.cs
 
 ## v1002 – Neutral und einfach; Nutzer lehnt Lila ausdrücklich ab
 Mit Accountable war der übersichtliche Aufbau gemeint, keine violette Farbgestaltung. Ab jetzt Weiß/Hellgrau, dunkle Schrift und dezentes Grün verwenden. neutral-theme-v1002.css ersetzt die aktive v1001-Gestaltung in Haupt-App und Finanzbereich. Alle freigegebenen Menüpunkte sind direkt erreichbar, Gruppen sind nur noch Abschnittstitel. Desktop-Menü bleibt links; kleine Bildschirme behalten ein öffnbares Menü. Anmeldung als einfache weiße Karte ohne Werbefläche. Konten, Berechtigungen, Daten und Abläufe unverändert.
+
+## v1003 – Zusätzlichen Klarwerk-Finanzbereich entfernen
+Nutzer wünscht weniger Umfang und Übersichtlichkeit. Der ab v1000 ergänzte Menüpunkt Buchhaltung & Finanzen, die iframe-Ansicht, die Datenbrücke und die zugehörigen Frontenddateien sind entfernt. Ursprüngliche Angebote, Rechnungsregister, Arbeitsdaten, Anmeldung, Kontenrechte und neutrales linkes Menü bleiben erhalten. Klarwerk wird nicht verändert. Historische Datenbankmigration und bestehende Finanzdaten bleiben unberührt; keine Datenlöschung und keine automatische Übertragung. Service-Worker v1003 entfernt frühere eigene App-Caches, damit die alte Einbettung nicht offline zurückkehrt.

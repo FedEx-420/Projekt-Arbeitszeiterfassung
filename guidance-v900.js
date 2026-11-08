@@ -14,7 +14,7 @@ function show(button){
 root?.addEventListener('click',event=>{const button=event.target.closest('.field-help-button');if(!button)return;event.preventDefault();event.stopPropagation();show(button);});
 function scan(){
  for(const label of root?.querySelectorAll('label')||[]){
-  if(label.querySelector('.field-help-button'))continue;
+  if(label.querySelector('.field-help-button,.kw-help-button'))continue;
   const input=label.htmlFor?document.getElementById(label.htmlFor):label.querySelector('input,select,textarea');
   if(!input||!input.name||['hidden','checkbox','radio'].includes(input.type)||input.disabled)continue;
   const caption=[...label.childNodes].filter(node=>node.nodeType===Node.TEXT_NODE).map(node=>node.textContent).join('').trim()||input.getAttribute('aria-label')||input.name;

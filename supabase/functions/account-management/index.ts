@@ -316,7 +316,7 @@ Deno.serve(async (request: Request) => {
     }
 
     if (action === 'employee-create') {
-      if (!['administrator', 'business'].includes(actor.role)) return response(request, { error: 'Nur Administrator oder Geschäftskonto können Mitarbeiter anlegen.' }, 403)
+      if (actor.role !== 'administrator') return response(request, { error: 'Nur der Administrator kann weitere Konten anlegen.' }, 403)
       const business = await requestedBusiness()
       const username = cleanUsername(payload.username)
       const user = await createEmployeeAuthUser(business, username, cleanPassword(payload.password))

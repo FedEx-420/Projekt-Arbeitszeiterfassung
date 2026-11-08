@@ -52,6 +52,8 @@ async function main() {
     });
     const url = 'http://127.0.0.1:' + server.address().port;
     const form = page.locator('form[data-form="login"]');
+    const openMenu = async () => { const button=page.locator('#app-menu-toggle'); if(await button.isVisible())await button.click(); };
+
     const enter = async () => {
       await form.locator('[name="administrator_login"]').check();
       await form.locator('[name="username"]').fill('admin-fixture');
@@ -61,7 +63,7 @@ async function main() {
     };
     await page.goto(url);
     await enter();
-    await page.locator('#app-menu-toggle').waitFor({timeout: 5000});
+    await page.locator('.app-shell').waitFor({timeout: 5000});
     assert.equal(await form.count(), 0);
     assert.equal(profileReads, 1);
     assert.equal(tokenRequests, 1);
@@ -69,25 +71,25 @@ async function main() {
     await page.locator('[data-action="shift-day"][data-days="-1"]').click();
     const selectedDate = await page.locator('[data-date]').inputValue();
     assert.equal(materialReads,0,'login does not download the material catalog');
-    await page.locator('#app-menu-toggle').click();
+    await openMenu();
     await page.locator('#app-menu-panel summary').filter({hasText:/B.ro/}).click();
     await page.locator('[data-view=materials]').click();
     await page.waitForFunction(()=>document.querySelector('[data-startup-view-pending]'));
     await page.waitForTimeout(30);
     assert.ok(releaseMaterials);
-    await page.locator('#app-menu-toggle').click();
+    await openMenu();
     await page.locator('[data-view=customers]').click();
     await page.getByRole('heading', {name:'Kundenliste',exact:true}).waitFor({timeout:5000});
     await page.locator('[data-action="new-customer"]').click();
     await page.locator('form[data-form="customer"]').waitFor({timeout:5000});
     const backgroundFinished = page.waitForResponse(r => new URL(r.url()).pathname === '/rest/v1/materials');
-    await page.locator('#app-menu-toggle').click();
+    await openMenu();
     await page.locator('[data-view=home]').click();
     holdMaterials = false;
     releaseMaterials();
     await backgroundFinished;
     assert.equal(await page.locator('[data-date]').inputValue(), selectedDate);
-    await page.locator('#app-menu-toggle').waitFor();
+    await page.locator('.app-shell').waitFor();
     assert.equal(materialReads, 1, 'login must not trigger a second catalog download');
     assert.ok(await page.evaluate(key => localStorage.getItem(key), storage));
     profileUnavailable = true;
@@ -97,9 +99,9 @@ async function main() {
     assert.ok(await page.evaluate(key => localStorage.getItem(key), storage));
     profileUnavailable = false;
     await page.getByRole('button', {name:'Erneut versuchen'}).click();
-    await page.locator('#app-menu-toggle').waitFor();
+    await page.locator('.app-shell').waitFor();
     assert.equal(tokenRequests, 1, 'restore does not request a password');
-    await page.locator('#app-menu-toggle').click();
+    await openMenu();
     await page.getByRole('button', {name:'Abmelden'}).click();
     await form.waitFor();
     assert.equal(await page.evaluate(key => localStorage.getItem(key), storage), null);

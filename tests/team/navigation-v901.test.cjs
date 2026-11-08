@@ -53,7 +53,7 @@ test('Old cached HTML without navigation bundle keeps a functional fallback menu
 test('New assets precede app startup and are included in the current offline release',()=>{
  const index=fs.readFileSync(path.join(dir,'index.html'),'utf8'),worker=fs.readFileSync(path.join(dir,'service-worker.js'),'utf8'),css=fs.readFileSync(path.join(dir,'navigation-v901.css'),'utf8');
  const version=/worktime-version" content="(\d+)"/.exec(index)?.[1];assert.ok(Number(version)>=901);assert.ok(worker.includes('worktime-v'+version));
- const appAsset=/src="(app-v800\.js\?v=\d+)"/.exec(index)?.[1];assert.ok(appAsset);assert.ok(index.indexOf('navigation-v901.js')<index.indexOf(appAsset));for(const file of ['navigation-v901.js','navigation-v901.css',appAsset])assert.ok(worker.includes(file));
+ const appAsset=/src="(app-v800\.js\?v=\d+)"/.exec(index)?.[1];assert.ok(appAsset);assert.ok(index.indexOf('navigation-v901.js')<index.indexOf(appAsset));const workerScope={self:{addEventListener(){}}};vm.runInNewContext(worker+';globalThis.__files=FILES;',workerScope);for(const file of ['navigation-v901.js','navigation-v901.css',appAsset])assert.ok(workerScope.__files.some(url=>file===appAsset?url==='./'+file:url.split('?')[0]==='./'+file),'offline asset '+file);
  assert.match(css,/position:absolute;top:calc\(100% \+ 12px\);right:0;left:auto/);assert.match(css,/width:min\(340px,calc\(100vw - 32px\)\)/);assert.match(css,/overscroll-behavior:contain/);assert.match(css,/\[hidden\]\{display:none!important\}/);
 });
 console.log(JSON.stringify({passed,productionRequests:0,browserLayoutVerified:false}));

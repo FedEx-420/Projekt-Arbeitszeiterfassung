@@ -486,7 +486,7 @@
   function initializeShopping() {
     if(supplierCart)return true;
     if(!window.WorktimeSupplierCart||!window.WorktimeSupplierCartUI)return false;
-    try{supplierCart=window.WorktimeSupplierCartUI.create({root,state,businessId,isManager,render:()=>render(),api,supabaseUrl:base,catalogWizard:shoppingCatalogWizard,escape,searchMaterials:query=>activeShoppingProvider()==='gautzsch'&&fifAccounts?.selectedAccount()?fifAccounts.searchMaterials(query):Promise.resolve([]),getAddContext:()=>JSON.stringify([state.profile?.id,businessId(),activeShoppingProvider(),activeShoppingProvider()==='gautzsch'?fifAccounts?.selectedAccount():activeShoppingProvider()==='neugart'?neugartAccounts?.selectedAccount():'']),onAdd:material=>{if(activeShoppingProvider()==='gautzsch'&&fifAccounts?.selectedAccount()){fifAccounts.addMaterial(material);return true;}if(activeShoppingProvider()==='neugart'&&neugartAccounts?.selectedAccount()){neugartAccounts.addMaterial(material);return true;}return false;},onExternalAdd:()=>{shoppingProvider='all';neugartAccounts?.setShared(false);supplierCart?.selectProvider('all');}});return !!supplierCart;}
+    try{supplierCart=window.WorktimeSupplierCartUI.create({root,state,businessId,isManager,render:()=>render(),api,supabaseUrl:base,catalogWizard:shoppingCatalogWizard,escape,searchMaterials:(query,options)=>activeShoppingProvider()==='gautzsch'&&fifAccounts?.selectedAccount()?fifAccounts.searchMaterials(query,options):Promise.resolve([]),getAddContext:()=>JSON.stringify([state.profile?.id,businessId(),activeShoppingProvider(),activeShoppingProvider()==='gautzsch'?fifAccounts?.selectedAccount():activeShoppingProvider()==='neugart'?neugartAccounts?.selectedAccount():'']),onAdd:material=>{if(activeShoppingProvider()==='gautzsch'&&fifAccounts?.selectedAccount()){fifAccounts.addMaterial(material);return true;}if(activeShoppingProvider()==='neugart'&&neugartAccounts?.selectedAccount()){neugartAccounts.addMaterial(material);return true;}return false;},onExternalAdd:()=>{shoppingProvider='all';neugartAccounts?.setShared(false);supplierCart?.selectProvider('all');}});return !!supplierCart;}
     catch{shoppingLoadFailed=true;return false;}
   }
   async function recoverShopping() {
@@ -2339,7 +2339,7 @@
   const legalFeature=window.WorktimeLegal?.create({root,state,api,allRows,render:()=>render(),escape,isManager,businessId,managerBusiness});
   if(legalFeature){
     const menuBeforeLegalV900=menuItems,viewBeforeLegalV900=viewHtml,reloadBeforeLegalV900=reload,homeBeforeLegalV900=homeView;
-    menuItems=()=>{const items=menuBeforeLegalV900();items.splice(items.findIndex(row=>row[0]==='settings'),0,['legal','Unterlagen & Freigaben',true]);return items;};
+    menuItems=()=>{const items=menuBeforeLegalV900();items.splice(items.findIndex(row=>row[0]==='settings'),0,['legal','Firmendaten & Unterlagen',true]);return items;};
     viewHtml=()=>state.view==='legal'?legalFeature.view():viewBeforeLegalV900();
     reload=(current, ready)=>loadFeature(reloadBeforeLegalV900,legalFeature,'legal',current,ready);
     homeView=()=>homeBeforeLegalV900()+legalFeature.setupPanel();
@@ -2347,7 +2347,7 @@
   const datevFeature=window.WorktimeDatev?.create({root,state,api,allRows,render:()=>render(),escape,isManager,businessId,managerBusiness,today});
   if(datevFeature){
     const menuBeforeDatev=menuItems,viewBeforeDatev=viewHtml,reloadBeforeDatev=reload,renderBeforeDatev=render;
-    menuItems=()=>{const items=menuBeforeDatev();if(isManager())items.splice(items.findIndex(row=>row[0]==='settings'),0,['datev','Steuer & DATEV',true]);return items;};
+    menuItems=()=>{const items=menuBeforeDatev();if(isManager())items.splice(items.findIndex(row=>row[0]==='settings'),0,['datev','DATEV-Export',true]);return items;};
     viewHtml=()=>state.view==='datev'?datevFeature.view():viewBeforeDatev();
     reload=(current, ready)=>loadFeature(reloadBeforeDatev,datevFeature,'datev',current,ready);
     render=()=>{datevFeature.afterRender();renderBeforeDatev();};
@@ -2469,9 +2469,9 @@
   const flowGuide=window.WorktimeAppFlow?.create({root,state,businessId});if(flowGuide){const renderBeforeFlow=render;render=()=>{renderBeforeFlow();flowGuide.afterRender();selectionPhotos?.afterRender();};flowGuide.afterRender();selectionPhotos?.afterRender();}
   window.WorktimeGermanProducts?.install({root,state,businessId,render:()=>render()});
   neugartAccounts=window.WorktimeNeugartAccounts?.create({root,state,api,businessId,render:()=>render(),escape,isManager,catalogSearch:()=>supplierCart?.searchView('neugart')||''});
-  fifAccounts=window.WorktimeFifAccounts?.create({root,state,api,businessId,isManager,render:()=>render(),escape,catalogSearch:()=>supplierCart?.searchView('gautzsch')||'',fallback:()=>supplierCart?.view()||''});
+  fifAccounts=window.WorktimeFifAccounts?.create({root,state,api,businessId,isManager,render:()=>render(),escape,catalogSearch:()=>supplierCart?.searchView('gautzsch')||'',fallback:options=>supplierCart?.view(options)||''});
   const viewBeforeNeugart=viewHtml;
-  viewHtml=()=>(state.view==='shopping-cart'?(activeShoppingProvider()==='gautzsch'?fifAccounts?.shopping()||'':activeShoppingProvider()==='neugart'?neugartAccounts?.cartView()||'':supplierCart?.view({cartOnly:true})||''):viewBeforeNeugart())+(state.view==='settings'&&isManager()&&neugartAccounts?neugartAccounts.settings():'')+(state.view==='settings'&&isManager()?fifAccounts?.settings()||'':'');
+  viewHtml=()=>(state.view==='shopping-cart'?(activeShoppingProvider()==='gautzsch'?fifAccounts?.shopping({cartOnly:true})||'':activeShoppingProvider()==='neugart'?neugartAccounts?.cartView()||'':supplierCart?.view({cartOnly:true})||''):viewBeforeNeugart())+(state.view==='settings'&&isManager()&&neugartAccounts?neugartAccounts.settings():'')+(state.view==='settings'&&isManager()?fifAccounts?.settings()||'':'');
   initializeShopping();
   const themeRender=render;render=()=>{themeRender();window.WorktimeKlarwerkTheme?.afterRender(root);};window.WorktimeKlarwerkTheme?.afterRender(root);
   const supplierStock=window.WorktimeSupplierStock?.create({root,state,businessId,isManager,api,escape,shoppingProvider:()=>activeShoppingProvider()});

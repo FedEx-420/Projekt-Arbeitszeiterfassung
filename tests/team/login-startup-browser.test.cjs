@@ -72,7 +72,6 @@ async function main() {
     const selectedDate = await page.locator('[data-date]').inputValue();
     assert.equal(materialReads,0,'login does not download the material catalog');
     await openMenu();
-    await page.locator('#app-menu-panel summary').filter({hasText:/B.ro/}).click();
     await page.locator('[data-view=materials]').click();
     await page.waitForFunction(()=>document.querySelector('[data-startup-view-pending]'));
     await page.waitForTimeout(30);

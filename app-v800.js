@@ -2342,13 +2342,13 @@
     menuItems=()=>{const items=menuBeforeLegalV900();items.splice(items.findIndex(row=>row[0]==='settings'),0,['legal','Firmendaten & Unterlagen',true]);return items;};
     viewHtml=()=>state.view==='legal'?legalFeature.view():viewBeforeLegalV900();
     reload=(current, ready)=>loadFeature(reloadBeforeLegalV900,legalFeature,'legal',current,ready);
-    homeView=()=>homeBeforeLegalV900()+legalFeature.setupPanel();
+    homeView=()=>homeBeforeLegalV900();
   }
   const datevFeature=window.WorktimeDatev?.create({root,state,api,allRows,render:()=>render(),escape,isManager,businessId,managerBusiness,today});
   if(datevFeature){
     const menuBeforeDatev=menuItems,viewBeforeDatev=viewHtml,reloadBeforeDatev=reload,renderBeforeDatev=render;
     menuItems=()=>{const items=menuBeforeDatev();if(isManager())items.splice(items.findIndex(row=>row[0]==='settings'),0,['datev','DATEV-Export',true]);return items;};
-    viewHtml=()=>state.view==='datev'?datevFeature.view():viewBeforeDatev();
+    viewHtml=()=>state.view==='datev'?datevFeature.view()+(datevFeature.section()==='procedure'?(legalFeature?.accountingView()||''):''):viewBeforeDatev();
     reload=(current, ready)=>loadFeature(reloadBeforeDatev,datevFeature,'datev',current,ready);
     render=()=>{datevFeature.afterRender();renderBeforeDatev();};
   }

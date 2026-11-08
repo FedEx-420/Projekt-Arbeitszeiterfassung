@@ -23,7 +23,7 @@
     <section class="list-section"><h3>Bestehende und neue Firmen</h3>${plans.map(plan=>{const company=state.rows.people.find(p=>p.id===plan.company_id);return `<article class="row-card"><div><b>${escape(company?.company_name||company?.username||'Geschäftskonto')}</b><span>${plan.account_policy==='existing_free'?'Kostenloser Bestandsschutz':'Fester Preis bei Kontoerstellung · '+escape(plan.plan_name)}</span></div><strong>${money(plan.monthly_cents)} / Monat</strong></article>`;}).join('')||'<p>Keine Geschäftskonten vorhanden.</p>'}</section>`;
   }
   function settingsPanel(){
-   if(creator())return `<section class="panel"><h3>Erfinderkonto · dauerhaft kostenlos</h3><p>Vollständige Verwaltung aller Geschäftskonten und Mitarbeiter. Bestehende Firmen bleiben kostenlos.</p><button type="button" data-action="nav" data-view="platform">Preise & Konten öffnen</button></section>`;
+   if(creator())return `<section class="panel"><h3>Erfinderkonto · dauerhaft kostenlos</h3><p>Vollständige Verwaltung aller Geschäftskonten und Mitarbeiter. Bestehende Firmen bleiben kostenlos.</p></section>`;
    const plan=identity===state.profile?.id&&plans.find(p=>p.company_id===businessId());
    return plan?`<section class="panel"><h3>Kontostatus</h3><p>${plan.account_policy==='existing_free'?'Diese Firma und ihre Mitarbeiter behalten den kostenlosen Bestandszugang.':'Bei Kontoerstellung festgehaltener Tarif: '+escape(plan.plan_name)}</p><strong>${money(plan.monthly_cents)} / Monat</strong></section>`:'';
   }

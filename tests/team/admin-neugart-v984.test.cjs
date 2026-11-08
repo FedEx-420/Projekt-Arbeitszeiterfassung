@@ -27,7 +27,7 @@ const server=http.createServer((req,res)=>{const u=new URL(req.url,'http://local
  await page.locator('dialog input[name=new_name]').fill('Standard');await page.locator('dialog button[type=submit]').click();await page.waitForFunction(()=>!document.querySelector('dialog[open]'));
  assert.equal(lists[0].name,'Gautzsch · Standard');assert.equal(items[0].snapshot.catalog_supplier,'H. Gautzsch');
  await page.locator('[data-article-favorites] summary').click();assert.match(await page.locator('[data-favorites-content]').innerText(),/Gautzsch · Standard/);
- await page.locator('[data-ps-add]').first().click();
+ await page.locator('[data-ps-add]').first().click();await page.locator('[data-sc-cart-view]').click();
  await page.locator('[data-sc-fif-transfer]').waitFor();
  assert.equal(await page.locator('[data-shopping-provider]').inputValue(),'gautzsch');
  await page.locator('[data-shopping-provider]').selectOption('neugart');
@@ -39,7 +39,7 @@ const server=http.createServer((req,res)=>{const u=new URL(req.url,'http://local
  await page.locator('dialog input[name=new_name]').fill('Standard');await page.locator('dialog button[type=submit]').click();await page.waitForFunction(()=>!document.querySelector('dialog[open]'));
  assert.equal(lists[1].name,'Neugart · Standard');assert.equal(items[1].snapshot.catalog_supplier,'Neugart');
  assert.doesNotMatch(await page.locator('[data-favorites-content]').innerText(),/Gautzsch|FIF123/);
- await add();await page.locator('[data-shopping-provider]').selectOption('gautzsch');await page.locator('[data-sc-fif-transfer]').waitFor();assert.match(await page.locator('[data-favorites-content]').innerText(),/Gautzsch · Standard/);assert.doesNotMatch(await page.locator('[data-favorites-content]').innerText(),/Neugart · Standard/);await page.locator('[data-shopping-provider]').selectOption('neugart');await page.getByRole('button',{name:'Warenkorb öffnen (1)'}).click();assert.equal(calls.filter(c=>c.action==='transfer').length,0,'adding to app does not falsely claim merchant transfer');await page.locator('[data-ng-form=cart] input[type=number]').fill('2.5');
+ await add();await page.locator('[data-shopping-provider]').selectOption('gautzsch');await page.locator('[data-purchase-search]').waitFor();assert.match(await page.locator('[data-favorites-content]').innerText(),/Gautzsch · Standard/);assert.doesNotMatch(await page.locator('[data-favorites-content]').innerText(),/Neugart · Standard/);await page.locator('[data-sc-cart-view]').click();await page.locator('[data-sc-fif-transfer]').waitFor();await page.locator('[data-shopping-provider]').selectOption('neugart');await page.getByRole('button',{name:'Warenkorb öffnen (1)'}).click();assert.equal(calls.filter(c=>c.action==='transfer').length,0,'adding to app does not falsely claim merchant transfer');await page.locator('[data-ng-form=cart] input[type=number]').fill('2.5');
  await page.getByRole('button',{name:'Zum Großhändler übertragen und öffnen',exact:true}).click();
  await page.getByText(/Neugart beantwortet die Anmeldung derzeit nicht/).waitFor();
  assert.equal(await page.evaluate(()=>__posts.length),0);

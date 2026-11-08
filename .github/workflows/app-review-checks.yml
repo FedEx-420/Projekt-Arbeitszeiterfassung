@@ -23,6 +23,10 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm exec playwright install --with-deps chromium firefox
+      - name: Finance workspace, company isolation and Klarwerk presentation
+        run: |
+          node tests/team/finance-v1000.test.cjs
+          node tests/team/finance-browser-v1000.test.cjs
       - name: Invoice and work-order rules in disposable databases
         run: |
           node tests/team/work-order-overlaps-v918.test.cjs

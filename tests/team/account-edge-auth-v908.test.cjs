@@ -78,6 +78,13 @@ async function main() {
       assert.equal(r.status, role === 'business' && action === 'employee-delete' ? 409 : 403); assert.equal(h.calls.mutations.length, 0); assert.equal(h.calls.creates, 0);
     }
   });
+  await test('Only the administrator can create employee accounts', async () => {
+    for (const role of ['employee','business']) {
+      const h=harness({actor:{id:actorId,role,username:'Fixture',business_id:businessId}});
+      const r=await h.request({action:'employee-create',businessId,username:'Synthetic Worker',password:'synthetic-new-password'});
+      assert.equal(r.status,403);assert.equal(h.calls.creates,0);assert.equal(h.calls.mutations.length,0);
+    }
+  });
   await test('Duplicate worker creation never deletes an older identity or retries account creation', async () => {
     const h = harness({ profiles: { [businessId]: { id: businessId, role: 'business', company_name: 'Synthetic Company' } }, createError: new Error('User already registered') });
     const r = await h.request({ action: 'employee-create', businessId, username: 'Synthetic Worker', password: 'synthetic-new-password' });

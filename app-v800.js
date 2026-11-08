@@ -469,7 +469,8 @@
     activeShoppingProvider();
     if(neugartAccounts?.isPending()||fifAccounts?.isPending()||supplierCart?.isBusy()){render();return;}
     shoppingProvider=provider;
-    state.view='shopping';
+    // Changing the wholesaler must keep the current menu (search or cart).
+    if(state.view!=='shopping-cart')state.view='shopping';
     neugartAccounts?.setShared(provider==='neugart');
     supplierCart?.selectProvider(provider);
     render();

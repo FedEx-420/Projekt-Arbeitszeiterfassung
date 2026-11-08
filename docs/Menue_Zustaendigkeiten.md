@@ -2,6 +2,12 @@
 
 Eigenständige Funktionen werden ausschließlich im zugehörigen Menü angezeigt und bearbeitet. Die Hauptnavigation enthält jedes erlaubte Ziel einmal. Die Sichtbarkeit bleibt an Rolle und Betrieb gebunden.
 
+Ab v1006 bleibt bei einem Wechsel des Einkaufszugangs der aktuelle Bereich erhalten.
+Wer im Warenkorb von Neugart zu FiF wechselt, sieht weiterhin nur den Warenkorb.
+Die zusätzlichen Such-/Warenkorb-Wechselbuttons im Seiteninhalt entfallen; dafür
+werden ausschließlich die vorhandenen Hauptmenüs Einkauf und Warenkorb verwendet.
+Der allgemeine Warenkorb heißt auch in der Seitenüberschrift Warenkorb.
+
 | Menü | Zuständige Funktion |
 | --- | --- |
 | Übersicht | Tagesübersicht; keine Firmen- oder Export-Einrichtung |

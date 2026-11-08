@@ -44,7 +44,7 @@
       sync();
       if(!scope)return '<p>Bitte zuerst einen Betrieb auswählen.</p>';
       if(accounts===null){queueMicrotask(()=>{if(accounts===null&&['shopping','shopping-cart'].includes(state.view))run(async current=>{await list(current);if(current()&&!accounts.length)status='Dein Geschäftskonto hat noch keinen Neugart-Zugang für dich freigegeben.';});});}
-      return `<section class="panel"><h2>Neugart-Einkauf</h2><button type="button" class="primary" data-ng-action="cart">Warenkorb öffnen (${basket.length})</button>${state.profile.role==='employee'?'':'<button type="button" class="secondary" data-ng-action="mode">Zur allgemeinen Einkaufssuche</button>'}${feedback()}
+      return `<section class="panel"><h2>Neugart-Einkauf</h2>${feedback()}
       ${accounts===null?'<p>Freigaben werden geladen …</p>':!accounts.length?'<button type="button" class="secondary" data-ng-action="load">Freigaben erneut prüfen</button>':`
       <label>Neugart-Zugang<select data-ng-account>${accounts.map(a=>`<option value="${esc(a.id)}" ${a.id===accountId?'selected':''}>${esc(a.label)}</option>`).join('')}</select></label>
       ${accountButton(accountId)} ${shopLink()}
@@ -59,7 +59,7 @@
       sync();
       if(accounts===null){shopping();return '<section class="panel"><h2>Mein Warenkorb</h2><p>Freigaben werden geladen …</p></section>';}
       return `<section class="panel"><h2>Mein Warenkorb</h2><p>Hier stehen die Artikel, die du für diesen Betrieb und Neugart-Zugang hinzugefügt hast. Erst der Button „Zum Großhändler übertragen und öffnen“ überträgt sie in den offiziellen Händlerwarenkorb; dabei wird keine Bestellung ausgelöst.</p>${feedback()}
-      <button type="button" class="secondary" data-ng-action="search">Weitere Artikel suchen</button>
+
       ${accounts.length?`<label>Neugart-Zugang<select data-ng-account>${accounts.map(a=>`<option value="${esc(a.id)}" ${a.id===accountId?'selected':''}>${esc(a.label)}</option>`).join('')}</select></label>${accountButton(accountId)} ${shopLink()}`:'<p>Für dich ist kein Neugart-Zugang freigegeben.</p>'}
       ${basket.length?`<form data-ng-form="cart"><label>Warenkorbname<input name="cart_name" maxlength="60" value="${esc(cartName)}"></label>${basket.map(m=>`<label>${window.WorktimeArticleTools?.html(m,{star:false})||''}${esc(m.catalog_product_name||m.name)} · ${esc(m.unit)}<input type="number" min="0.01" max="999999.99" step="0.01" required name="qty:${esc(m.id)}" value="${esc(m.quantity)}"></label><button type="button" class="secondary" data-ng-action="remove" data-id="${esc(m.id)}">Entfernen</button>`).join('')}<div data-ng-totals>${window.WorktimeArticlePrices?.totalsHtml(basket)||''}</div><button class="primary" ${pending?'disabled':''}>${attempt?.confirmed?'Warenkorb beim Großhändler öffnen':'Zum Großhändler übertragen und öffnen'}</button></form>`:'<p>Dein Warenkorb ist leer.</p>'}</section>`;
     }

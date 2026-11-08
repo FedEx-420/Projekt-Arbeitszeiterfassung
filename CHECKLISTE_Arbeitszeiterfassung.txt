@@ -370,3 +370,7 @@ KLARWERK-VERBINDUNG v1007
 [x] Kontogrenzen, aktuelle Rechte, Wiederholung, Widerruf, Original-PDF-Mailanhang und UI mit isolierten Daten prüfen.
 [ ] Automatischer Neugart-/FiF-Rechnungsabruf: freigeschaltete dokumentierte Rechnungs-Schnittstelle erforderlich; aktuell nur Webportale vorhanden.
 
+JUPROWA/OFFA
+[ ] Unterstützten Schreibzugang oder vollständiges Importformat für externe Arbeitsscheine ermitteln. Cloud-Menüs und Handbuch geprüft. Der dokumentierte UGL-Import betrifft nur Materialpositionen.
+[ ] Vollständig gespeicherten Kundenarbeitsschein nach Abschluss mit eindeutiger Firmen-, Auftrags-, Mitarbeiter- und Artikelzuordnung übertragen.
+[ ] Übernahme von Zeiten, Positionen, Unterschrift und Anhängen sowie Bestätigung und Wiederholung ohne Doppelung im Testmandanten prüfen.

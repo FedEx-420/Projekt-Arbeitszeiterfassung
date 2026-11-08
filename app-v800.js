@@ -1986,7 +1986,8 @@
       if (!state.busy) perform('', refreshPlanningData);
       return;
     }
-    if (action === 'nav' && ['time', 'orders'].includes(button.dataset.view)) { syncPlanningIfVisible(); return; }
+    if (action === 'nav' && ['time', 'orders', 'invoices'].includes(button.dataset.view)) { syncPlanningIfVisible(); return; }
+    if (action === 'open-billing' || action === 'close-billing') { syncPlanningIfVisible(); return; }
     if (action === 'plan-refresh') { if (!state.busy) perform('Planung aktualisiert.', refreshPlanningData); return; }
     if (action === 'plan-week') { state.planWeek = addDate(planningWeekStart(), n(button.dataset.days)); state.planId = ''; state.planForm = false; render(); return; }
     if (action === 'plan-today') { state.planWeek = planningWeekStart(today()); state.planId = ''; state.planForm = false; render(); return; }
@@ -2081,12 +2082,31 @@
     if (event.target.matches('[data-date], [data-select="employee"], [data-select="business"]')) state.planPrefill = null;
     if (event.target.matches('[data-select="business"]')) { state.planId = ''; state.planForm = false; }
   }, true);
-  let planningSyncBusy = false;
+  const billingSyncViews = new Set(['invoices', 'invoices-paid', 'billing-detail']);
+  const billingInteractionActive = () => state.menu || document.querySelector('dialog[open]') || root.querySelector('[data-ledger-form="cancel"]');
+  let planningSyncBusy = false, billingRenderPending = false;
   async function syncPlanningIfVisible() {
-    if (!state.session || !['planning', 'time', 'orders','home','calendar','settings'].includes(state.view) || state.busy || planningSyncBusy || document.visibilityState === 'hidden') return;
+    const billing = billingSyncViews.has(state.view);
+    if (!state.session || state.busy || planningSyncBusy || document.visibilityState === 'hidden') return;
+    if (billing ? billingInteractionActive() : !['planning', 'time', 'orders', 'home', 'calendar', 'settings'].includes(state.view)) return;
     planningSyncBusy = true;
     try {
-      if(await refreshPlanningData({ifChanged:true})===false)return;
+      const changed = await refreshPlanningData({ifChanged:true}) !== false;
+      if (billingSyncViews.has(state.view)) {
+        billingRenderPending ||= changed;
+        if (!billingRenderPending || state.busy || billingInteractionActive()) return;
+        const view = state.view, profile = state.profile?.id, company = businessId();
+        if (view === 'invoices-paid') await invoiceLedger?.load();
+        if (state.view !== view || state.profile?.id !== profile || businessId() !== company || state.busy || billingInteractionActive()) return;
+        billingRenderPending = false;
+        if (view === 'billing-detail' && state.billingMode === 'open' && !invoiceGroups(false).some(group => same(group.key, state.billingKey))) {
+          state.billingKey = '';
+          state.view = 'invoices';
+        }
+        render();
+        return;
+      }
+      if (!changed) return;
       // Preserve focus and typed values while a manager edits a planning form.
       if (['time', 'orders'].includes(state.view)) updateDayPlanningPanels();
       else if (state.view === 'planning') {
@@ -2099,6 +2119,9 @@
   }
   window.setInterval(syncPlanningIfVisible, 20000);
   document.addEventListener('visibilitychange', syncPlanningIfVisible);
+  window.addEventListener('focus', () => {
+    if (billingSyncViews.has(state.view)) syncPlanningIfVisible();
+  });
 
   // Team orders are enabled only after the additive server migration is live.
   // A missing RPC never disables the existing single-employee workflow.

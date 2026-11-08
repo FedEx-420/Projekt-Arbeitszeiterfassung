@@ -374,3 +374,7 @@ JUPROWA/OFFA
 [ ] Unterstützten Schreibzugang oder vollständiges Importformat für externe Arbeitsscheine ermitteln. Cloud-Menüs und Handbuch geprüft. Der dokumentierte UGL-Import betrifft nur Materialpositionen.
 [ ] Vollständig gespeicherten Kundenarbeitsschein nach Abschluss mit eindeutiger Firmen-, Auftrags-, Mitarbeiter- und Artikelzuordnung übertragen.
 [ ] Übernahme von Zeiten, Positionen, Unterschrift und Anhängen sowie Bestätigung und Wiederholung ohne Doppelung im Testmandanten prüfen.
+
+KLARWERK-ABGLEICH v1008
+[x] Offene Arbeitsscheine nach verbindlichem Rechnungsabschluss in Klarwerk auch in der Arbeitszeiterfassung automatisch aus der offenen Liste entfernen.
+[x] Wieder geöffnete Arbeitsscheine nach einem Storno erneut anzeigen. Abschluss und Wiederöffnung im Browser mit Testdaten geprüft.

@@ -23,6 +23,12 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm exec playwright install --with-deps chromium firefox
+      - name: Scoped Klarwerk connection and private originals
+        run: |
+          node --check klarwerk-connection-v1007.js
+          node tests/team/klarwerk-edge-v1007.test.cjs
+          node tests/team/klarwerk-browser-v1007.test.cjs
+          node tests/team/klarwerk-bridge-v1007.test.cjs
       - name: Navigation and disconnected finance workspace
         run: |
           node tests/team/navigation-v901.test.cjs

@@ -361,3 +361,12 @@ Wünschen. Offene Punkte werden erst nach Umsetzung und passender Prüfung
 abgehakt. Passwörter, Kundendaten, private Einkaufspreise und private Kataloge
 gehören nicht in diese Datei. Tests dürfen keine echten Bestellungen auslösen.
 
+
+KLARWERK-VERBINDUNG v1007
+[x] Zwei Apps getrennt halten; Betrieb ausdrücklich und widerrufbar freigeben.
+[x] Offene Arbeitsscheine in Klarwerk mit nativem Preis-/Steuer-/Abschlussverfahren abrechnen; Doppelabrechnung verhindern.
+[x] Kunden und Betriebsdaten kontrolliert übernehmen; Originalrechnungen und Stornos abgleichen.
+[x] Private Originalrechnungen von Geschäftskonto/Mitarbeitern hochladen und als Ausgabe mit Original übernehmen.
+[x] Kontogrenzen, aktuelle Rechte, Wiederholung, Widerruf, Original-PDF-Mailanhang und UI mit isolierten Daten prüfen.
+[ ] Automatischer Neugart-/FiF-Rechnungsabruf: freigeschaltete dokumentierte Rechnungs-Schnittstelle erforderlich; aktuell nur Webportale vorhanden.
+

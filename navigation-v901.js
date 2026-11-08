@@ -11,7 +11,7 @@
     ['shopping', 'Einkauf', 'Material an Neugart / GC ONLINE PLUS übergeben', 'office', ['shopping']],
     ['shopping-cart', 'Warenkorb', 'Deine ausgewählten Artikel bestellen', 'office', ['shopping-cart']],
     ['catalogs', 'Kataloge', 'Katalog hinzufügen und Fachhändler Kataloge', 'office', ['catalogs','supplier-catalogs']],
-    ['legal', 'Unterlagen & Freigaben', 'Dokumente und verständliche Hilfen', 'legal', ['legal']],
+    ['legal', 'Firmendaten & Unterlagen', 'Firmendaten, Steuerangaben und Dokumentfreigaben', 'legal', ['legal']],
     ['account', 'Mein Konto', 'Einstellungen, Team und Geräte', 'account', ['settings']],
     ['platform', 'Anbieteradministration', 'Preise und Geschäftskonten', 'platform', ['platform']]
   ];

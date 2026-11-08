@@ -56,7 +56,7 @@
         const [id] = group.links[0];
         return `<button type="button" class="nav-category ${active ? 'active' : ''}" data-action="nav" data-view="${escape(id)}"${active ? ' aria-current="page"' : ''}>${heading}<span class="nav-chevron" aria-hidden="true">›</span></button>`;
       }
-      return `<details class="nav-category-group ${active ? 'current' : ''}"${active ? ' open' : ''}><summary>${heading}<span class="nav-chevron" aria-hidden="true">⌄</span></summary><div class="nav-destinations">${group.links.map(([id, label]) => routeButton(id, label, current)).join('')}</div></details>`;
+      return `<section class="nav-section ${active ? 'current' : ''}"><div class="nav-section-title">${escape(group.label)}</div><div class="nav-destinations">${group.links.map(([id, label]) => routeButton(id, label, current)).join('')}</div></section>`;
     }).join('');
     return `<div class="navigation-dropdown"><button id="app-menu-toggle" type="button" class="menu-toggle" data-action="menu" aria-expanded="${open}" aria-controls="app-menu-panel">${icon('menu')}<span>Menü</span><span aria-hidden="true">⌄</span></button><section id="app-menu-panel" class="app-menu-sheet nav-v901"${open ? '' : ' hidden'}><header><div><small>Du bist hier</small><b>${escape(currentLabel(items, current))}</b></div><button type="button" class="nav-close" data-action="menu" aria-label="Menü schließen">×</button></header><nav aria-label="Hauptmenü">${list}</nav><footer><button type="button" data-action="logout">Abmelden <span aria-hidden="true">↗</span></button></footer></section></div>`;
   }

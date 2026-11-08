@@ -25,6 +25,7 @@ jobs:
       - run: pnpm exec playwright install --with-deps chromium firefox
       - name: Finance workspace, company isolation and Klarwerk presentation
         run: |
+          node tests/team/navigation-v901.test.cjs
           node tests/team/finance-v1000.test.cjs
           node tests/team/finance-browser-v1000.test.cjs
       - name: Invoice price and bulk work-order interfaces

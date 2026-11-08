@@ -346,3 +346,6 @@ Die Arbeitszeiterfassung bleibt eine eigenständige App. Neues helles Layout mit
 
 ## v1001 – Durchgängige Accountable-inspirierte Oberfläche
 Die Arbeitszeiterfassung verwendet in allen Bereichen accountable-theme-v1001.css. Das gemeinsame Stylesheet wird zuletzt in Haupt-App und Finanzansicht geladen. Navigation, Untermenüs, Formulare, Tabellen, Dokumentregister, Planung, Kalender, Dialoge und Anmeldung folgen derselben Lavendel-/Violett-Gestaltung. Bestehende Eingabehilfen und semantische Warn-/Fehlerfarben bleiben erhalten. Klarwerk bleibt eine getrennte App und wird nicht geändert. Keine Änderungen an Anmeldung, Finanzlogik oder Datenbank. Referenz und Prüfung: docs/Pruefstand_v1001.md.
+
+## v1002 – Neutral und einfach; Nutzer lehnt Lila ausdrücklich ab
+Mit Accountable war der übersichtliche Aufbau gemeint, keine violette Farbgestaltung. Ab jetzt Weiß/Hellgrau, dunkle Schrift und dezentes Grün verwenden. neutral-theme-v1002.css ersetzt die aktive v1001-Gestaltung in Haupt-App und Finanzbereich. Alle freigegebenen Menüpunkte sind direkt erreichbar, Gruppen sind nur noch Abschnittstitel. Desktop-Menü bleibt links; kleine Bildschirme behalten ein öffnbares Menü. Anmeldung als einfache weiße Karte ohne Werbefläche. Konten, Berechtigungen, Daten und Abläufe unverändert.

@@ -7,7 +7,7 @@ const { randomUUID, createHash } = require('node:crypto');
 const { chromium } = require('playwright');
 const directory = path.resolve(__dirname, '../..');
 const source = fs.readFileSync(path.join(directory, 'app-v800.js'), 'utf8').replace(/\}\)\(\);\s*$/, `
-  window.__appTest = { state, render, reload, planningMeta, planningNotes, planningPeople, planningRows, planningCustomers, planningDays, planningWeekStart, planConflicts, recordedPeriods, dayHours, overtime, allRows, refreshPlanningData, syncPlanningIfVisible, savePlanning, saveOrder, printPdf };
+  window.__appTest = { state, render, reload, planningMeta, planningNotes, planningPeople, planningRows, planningCustomers, planningDays, planningWeekStart, planConflicts, recordedPeriods, dayHours, overtime, allRows, refreshPlanningData, syncPlanningIfVisible, isSyncing: () => planningSyncBusy, savePlanning, saveOrder, printPdf };
 })();`);
 const people = [
   { id: 'admin', role: 'administrator', username: 'Administrator' },
@@ -26,6 +26,7 @@ const database = {
   company_datev_settings_v907: [], datev_bookings_v907: [], datev_exports_v907: [], datev_export_artifacts_v907: [],
   worker_time_rules_v908: [], worker_school_rules_v908: [], mailbox_user_state_v908: [],
   invoice_batches_v908: [], invoice_cancellations_v908: [], invoice_order_links_v908: [],
+  material_favorite_lists_v959: [], material_favorite_items_v959: [],
   customers: [
     { id: 'customer-one', employee_id: 'max', name: 'Klostermanns Hof', custom_fields: { first_name: 'Testkunde', street: 'Teststraße', house_no: '12', postal_code: '48143', city: 'Münster', phone_private: '0251 12345', phone_mobile: '0176 12345', email: 'kunde@example.invalid', extra_contact: 'Schlüssel im Büro' } },
     { id: 'customer-two', employee_id: 'felix', name: 'Klostermanns Hof', custom_fields: { street: 'Andere Firmenstraße', city: 'Andere Firma' } }
@@ -433,6 +434,25 @@ async function main() {
       await page.evaluate(()=>window.__appTest.syncPlanningIfVisible());assert.equal(await page.evaluate(()=>JSON.stringify(window.__appTest.state.rows)),before);
       failPlanningGet=false;const reads=historyReads;await page.evaluate(()=>window.__appTest.syncPlanningIfVisible());assert.ok(historyReads>=reads+7);
       assert.equal(await page.evaluate(()=>window.__appTest.state.rows.appointments[0].title),'Remote change after outage');
+    });
+    await test('Billing reads a remote invoice completion and reopening without leaving a stale open order', async()=>{
+      const order = database.work_orders[0];
+      await setRole('company-one', 'invoices');
+      await page.locator('[data-action="open-billing"]').click();
+      assert.equal(await page.evaluate(()=>window.__appTest.state.view), 'billing-detail');
+      await page.waitForFunction(()=>!window.__appTest.isSyncing());
+      order.invoiced = true;
+      await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+      await page.getByText('Alle Arbeitsscheine sind abgerechnet.', {exact:true}).waitFor();
+      assert.equal(await page.locator('[data-action="open-billing"]').count(), 0);
+      assert.equal(await page.evaluate(id=>window.__appTest.state.rows.orders.find(row=>row.id===id).invoiced, order.id), true);
+
+      order.invoiced = false;
+      order.invoice_reopened_from_v908 = 'original-invoice';
+      await page.evaluate(()=>window.__appTest.syncPlanningIfVisible());
+      assert.equal(await page.locator('[data-action="open-order"]').getAttribute('data-id'), order.id);
+      delete order.invoice_reopened_from_v908;
+      await setRole('company-one');
     });
     await test('Remote deletion removes order and hours from state on the next check',async()=>{
       const deleted=database.work_orders[0].id;database.work_orders=database.work_orders.filter(row=>row.id!==deleted);database.time_entries=database.time_entries.filter(row=>row.work_order_id!==deleted);

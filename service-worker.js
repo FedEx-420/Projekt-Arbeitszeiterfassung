@@ -156,3 +156,6 @@ for(let i=0;i<FILES.length;i++)if(FILES[i].startsWith('./article-tools-v959.js?'
 for(let i=0;i<FILES.length;i++)if(["./app-v800.js","./neugart-accounts-v971.js","./fif-accounts-v997.js","./supplier-cart-ui-v938.js","./purchase-search-v939.js"].includes(FILES[i].split("?")[0]))FILES[i]=FILES[i].split("?")[0]+"?v=998";
 
 for(let i=0;i<FILES.length;i++)if(["./app-v800.js", "./article-search-v947.js", "./product-features-v928.js", "./supplier-stock-v948.js", "./supplier-cart-ui-v938.js", "./purchase-search-v939.js", "./fif-accounts-v997.js"].includes(FILES[i].split("?")[0]))FILES[i]=FILES[i].split("?")[0]+"?v=999";
+
+// Keep the final v1000 entry points after older version mappings.
+for(let i=0;i<FILES.length;i++)if(['./app-v800.js','./material-browser-v926.js'].includes(FILES[i].split('?')[0]))FILES[i]=FILES[i].split('?')[0]+'?v=1000';

@@ -35,3 +35,5 @@ Die neue vollständige Browser-Fixture ist in die bestehende GitHub-Prüfung auf
 ELSTER, automatische Bankabfragen und strukturierte E-Rechnungen sind auch in der Klarwerk-Ausgangsversion nicht angebunden und werden hier nicht als verfügbar dargestellt. Zahlungsübersicht und Rücklagenziel sind keine vollständige Steuerberechnung, kein revisionssicheres Archiv und keine Zusicherung der Rechtssicherheit.
 
 Die vollständige Finanz-Browser-Fixture bestand im GitHub-Lauf am 08.11.2026 nach Anpassung der eingebetteten Navigation und Dialoghöhe. Die bestehende Startprüfung unterstützt nun sowohl das mobile Klappmenü als auch die feste Desktop-Navigation.
+
+Bei großen Materiallisten bereitet die Texteingabe Treffer und Produktmerkmale in kurzen, abbrechbaren Arbeitsschritten vor. Navigation, Firma und Suchtext werden vor der Anzeige erneut geprüft; die bestehende Ein-Sekunden-Grenze des Firefox-Tests bleibt unverändert.

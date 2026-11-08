@@ -169,3 +169,5 @@ for(let i=0;i<FILES.length;i++)if(["./app-v800.js", "./datev-v907.js", "./fif-ac
 
 for(let i=FILES.length-1;i>=0;i--)if(/business-readiness-v906\.(js|css)/.test(FILES[i]))FILES.splice(i,1);
 for(let i=0;i<FILES.length;i++)if(["./app-v800.js", "./catalog-workflow-v933.js", "./datev-v907.js", "./legal-v900.js", "./purchase-search-v939.js", "./supplier-cart-ui-v938.js"].includes(FILES[i].split("?")[0]))FILES[i]=FILES[i].split("?")[0]+"?v=1005";
+
+for(let i=0;i<FILES.length;i++)if(FILES[i].split('?')[0]==='./platform-v900.js')FILES[i]='./platform-v900.js?v=1005';

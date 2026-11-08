@@ -33,3 +33,5 @@ Isolierte Datenbanktests prüfen Admin-/Firmen-/Mitarbeiter-/Anonymous-Abgrenzun
 Die neue vollständige Browser-Fixture ist in die bestehende GitHub-Prüfung aufgenommen. Sie nutzt ausschließlich synthetische Firmen, Kunden, Dokumente und Bilder; sie prüft Haupt-App, Finanzansicht, Firmenwechsel, Dateiablage und mobiles Layout. Der lokale Windows-Browserstart war durch die Testumgebung blockiert; maßgeblich ist der tatsächliche GitHub-Prüflauf des veröffentlichten Commits.
 
 ELSTER, automatische Bankabfragen und strukturierte E-Rechnungen sind auch in der Klarwerk-Ausgangsversion nicht angebunden und werden hier nicht als verfügbar dargestellt. Zahlungsübersicht und Rücklagenziel sind keine vollständige Steuerberechnung, kein revisionssicheres Archiv und keine Zusicherung der Rechtssicherheit.
+
+Die vollständige Finanz-Browser-Fixture bestand im GitHub-Lauf am 08.11.2026 nach Anpassung der eingebetteten Navigation und Dialoghöhe. Die bestehende Startprüfung unterstützt nun sowohl das mobile Klappmenü als auch die feste Desktop-Navigation.

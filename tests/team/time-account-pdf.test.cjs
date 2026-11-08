@@ -36,6 +36,8 @@ async function main(){
         try{
           await actor(current);
           if(url.pathname==='/functions/v1/mailbox-send'&&body.action==='recipients')return send({recipients:[]});
+          // Settings also reads existing connector grants; this POST performs no mutation.
+          if(url.pathname==='/functions/v1/klarwerk-bridge-v1007'&&body.action==='links')return send([]);
           if(url.pathname.includes('/rpc/')){
             const name=url.pathname.split('/').at(-1);
             if(name==='work_order_team_context')return send((await db.query('select work_order_team_context($1) result',[body.p_company])).rows[0].result);

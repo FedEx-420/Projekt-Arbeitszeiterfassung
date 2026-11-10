@@ -378,3 +378,9 @@ JUPROWA/OFFA
 KLARWERK-ABGLEICH v1008
 [x] Offene Arbeitsscheine nach verbindlichem Rechnungsabschluss in Klarwerk auch in der Arbeitszeiterfassung automatisch aus der offenen Liste entfernen.
 [x] Wieder geöffnete Arbeitsscheine nach einem Storno erneut anzeigen. Abschluss und Wiederöffnung im Browser mit Testdaten geprüft.
+
+JUPROWA MATERIALDATEI v1009
+[x] ServicePad-Materialimport ohne OFFA-Zugang mit einem fiktiven UGL-4.0-Datensatz im ungespeicherten Formular prüfen. Menge, Einheit und Bezeichnung im Ziel sichtbar.
+[x] UGL-Materialdatei aus gespeichertem, offenem Kundenarbeitsschein für Geschäft und Administration bereitstellen. Browser-Download, führende Nullen, exakte gespeicherte Werte und Firmen-/Rollengrenzen mit Testdaten geprüft.
+[ ] Import einer aus dem App-Download erzeugten Datei samt Preisprüfung mit einem Testmandanten abnehmen. Preisfelder waren im geprüften ServicePad-Konto ausgeblendet.
+[ ] Vollständige automatische Übergabe mit Auftrag, Zeiten, Unterschrift und Anhängen bleibt offen.

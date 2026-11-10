@@ -28,7 +28,6 @@ async function main() {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const browser = await chromium.launch({
     channel: process.platform === 'win32' ? 'msedge' : undefined,
-    ...(process.env.WORKTIME_TEST_CHROMIUM ? { executablePath: process.env.WORKTIME_TEST_CHROMIUM } : {}),
     headless: true
   });
   try {
@@ -96,8 +95,8 @@ async function main() {
       await page.evaluate(({ field, invalid }) => {
         const { state } = window.__workOrderQA;
         const row = field === 'unit_price' ? state.rows.items[0] : state.rows.materials[0];
-        window.__resetUgl = () => { row[field] = old; };
         const old = row[field];
+        window.__resetUgl = () => { row[field] = old; };
         row[field] = invalid;
       }, { field, invalid });
       await button.click();

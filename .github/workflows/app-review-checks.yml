@@ -40,6 +40,7 @@ jobs:
           node tests/team/invoice-fixed-browser-v984.test.cjs
           node tests/team/invoice-suppliers-browser-v922.test.cjs
           node tests/team/open-order-tools-browser-v934.test.cjs
+          node tests/team/juprowa-material-browser-v1009.test.cjs
 
       - name: Invoice and work-order rules in disposable databases
         run: |

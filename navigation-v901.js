@@ -7,11 +7,11 @@
     ['work', 'Aufträge & Zeiten', 'Arbeitsscheine, Zeiten und Belege', 'work', ['orders', 'time', 'receipts']],
     ['customers', 'Kunden', 'Kontaktdaten und Kundenaufträge', 'customers', ['customers']],
     ['planning', 'Planung & Kalender', 'Termine, Urlaub und Krankheit', 'calendar', ['planning', 'calendar']],
-    ['office', 'Büro', 'Abrechnung, Angebote und Postfach', 'office', ['invoices', 'invoices-paid', 'offers', 'materials', 'datev', 'mailbox']],
+    ['office', 'Büro', 'Angebote, Materialliste und Postfach', 'office', ['offers', 'materials', 'mailbox']],
     ['shopping', 'Einkauf', 'Artikel suchen und hinzufügen', 'office', ['shopping']],
     ['shopping-cart', 'Warenkorb', 'Deine ausgewählten Artikel bestellen', 'office', ['shopping-cart']],
     ['catalogs', 'Kataloge', 'Katalog hinzufügen und Fachhändler Kataloge', 'office', ['catalogs','supplier-catalogs']],
-    ['legal', 'Firmendaten & Unterlagen', 'Firmendaten, Steuerangaben und Dokumentfreigaben', 'legal', ['legal']],
+    ['legal', 'Firmendaten & Unterlagen', 'Firmendaten und Dokumentfreigaben', 'legal', ['legal']],
     ['account', 'Mein Konto', 'Einstellungen, Team und Geräte', 'account', ['settings']],
     ['platform', 'Anbieteradministration', 'Preise und Geschäftskonten', 'platform', ['platform']]
   ];

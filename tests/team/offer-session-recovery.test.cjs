@@ -14,6 +14,7 @@ const server=http.createServer((req,res)=>{
 async function main(){
   const {db,ids,actor,admin}=await fixture({offers:true,units:true,catalog:true});let queue=Promise.resolve(),passed=0,refreshes=0,saves=0,failRefresh=false,failSave=false,expireServer=false,serial=0;const errors=[];
   await db.exec(fs.readFileSync(path.join(directory, 'supabase/migrations/20261017212517_offer_composition_v908.sql'), 'utf8'));
+  await db.exec(fs.readFileSync(path.join(directory, 'supabase/migrations/20261112140100_offer_net_draft_v1011.sql'), 'utf8'));
   const token=(exp,label)=>'test.'+Buffer.from(JSON.stringify({exp})).toString('base64url')+'.'+label;
   const session=(label='fresh',expired=false)=>{const exp=Math.floor(Date.now()/1000)+(expired?60:12000);return {access_token:token(exp,label+'-'+(++serial)),refresh_token:'synthetic-refresh-'+serial,expires_at:exp,expires_in:12000,user:{id:ids.business}};};
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
@@ -53,16 +54,13 @@ async function main(){
     }
     async function submitOffer() {
       await form().locator('button.primary').click();
-      const tax = page.getByRole('dialog', { name: 'Umsatzsteuer für das Angebot' });
-      await tax.locator('[name="mode"]').selectOption('standard');
-      await tax.locator('[name="confirmed"]').check();
-      await tax.locator('button[type="submit"]').click();
+
     }
     async function ageDuringPrompts(){await page.evaluate(()=>{window.__clockOffset=0;const now=Date.now;Date.now=()=>now()+window.__clockOffset;const prompt=window.prompt;window.prompt=(...args)=>{const answer=prompt(...args);window.__clockOffset+=120000;return answer;};});}
     let dialogs=0;const acceptZero=async dialog=>{dialogs++;await dialog.accept('0');};page.on('dialog',acceptZero);
     await test('Five new-article choices can outlast the JWT and still save exactly once',async()=>{
       await newOffer();await page.evaluate(data=>window.__appTest.auth.install(data),session('old',true));await ageDuringPrompts();const before=refreshes,start=saves;await submitOffer();await page.waitForFunction(()=>document.querySelector('[data-offer-status]')?.textContent.includes('gespeichert')&&!document.querySelector('form[data-form="offer"] button.primary')?.disabled);
-      assert.equal(dialogs,5);assert.equal(refreshes-before,1);assert.equal(saves-start,1);await admin();const rows=(await db.query('select * from offers')).rows;assert.equal(rows.length,1);assert.deepEqual(rows[0].items.map(row=>row.name),['Kabel neu 1','Kabel neu 2','Kabel neu 3','Kabel neu 4','Kabel neu 5']);assert.equal(rows[0].total,'226.10');assert.equal(await backup(),null);assert.equal((await db.query('select count(*)::int n from materials')).rows[0].n,9);
+      assert.equal(dialogs,5);assert.equal(refreshes-before,1);assert.equal(saves-start,1);await admin();const rows=(await db.query('select * from offers')).rows;assert.equal(rows.length,1);assert.deepEqual(rows[0].items.map(row=>row.name),['Kabel neu 1','Kabel neu 2','Kabel neu 3','Kabel neu 4','Kabel neu 5']);assert.equal(rows[0].total,'190.00');assert.equal(await backup(),null);assert.equal((await db.query('select count(*)::int n from materials')).rows[0].n,9);
     });
     await test('A JWT expiry rejection from the server refreshes and saves only one quote',async()=>{await newOffer(['Kabel']);expireServer=true;const before=refreshes,start=saves;await submitOffer();await page.waitForFunction(()=>document.querySelector('[data-offer-status]')?.textContent.includes('gespeichert')&&!document.querySelector('form[data-form="offer"] button.primary')?.disabled);assert.equal(refreshes-before,1);assert.equal(saves-start,2);await admin();assert.equal((await db.query('select count(*)::int n from offers')).rows[0].n,2);});
     await test('Failed refresh keeps all positions, prices, notes and choices in the unlocked form',async()=>{

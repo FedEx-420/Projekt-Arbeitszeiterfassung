@@ -1,3 +1,4 @@
+import '../../../datev-format-v907.js';
 // Service-role RPC is reachable only after a real user session or scoped capability check.
 const url=Deno.env.get('SUPABASE_URL')!,key=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,anon=Deno.env.get('SUPABASE_ANON_KEY')!;
 const allowed=new Set(['https://fedex-420.github.io','https://klarwerk-finanzen.fvaneikelen378403.chatgpt.site']);
@@ -17,6 +18,17 @@ if(['pair','links','revoke','offer-scope','receipt-create','receipt-complete'].i
 }
 if(action==='exchange'){if(typeof body.code!=='string'||!/^\w{64}$/.test(body.code))return respond({error:'Freigabecode ungültig.'},403);const token=random(),result=await rpc('klarwerk_dispatch_v1007',{p_hash:await hash(body.code),p_op:'exchange',p_body:{token_hash:await hash(token),account_label:String(body.account_label||'Klarwerk').slice(0,150)}});return respond({...result,token});}
 const token=req.headers.get('x-klarwerk-key');if(!token||!/^\w{64}$/.test(token))return respond({error:'Verbindungsfreigabe erforderlich.'},401);
+if(action==='datev-generate'){
+ const id=body.data?.id;
+ if(typeof id!=='string'||!(/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(id)))return respond({error:'Gültige Export-ID erforderlich.'},400);
+ const p_hash=await hash(token);
+ const batch=await rpc('klarwerk_dispatch_v1007',{p_hash,p_op:'datev-source',p_body:{id}});
+ const format=(globalThis as unknown as {WorktimeDatevFormat:{build:(batch:unknown)=>{bytes:Uint8Array;filename:string}}}).WorktimeDatevFormat;
+ const {bytes,filename}=format.build({...batch,period:batch.period.slice(0,7)});
+ if(bytes.length>3000000)return respond({error:'Dateigröße nicht unterstützt.'},413);
+ let binary='';for(let i=0;i<bytes.length;i+=16384)binary+=String.fromCharCode(...bytes.subarray(i,i+16384));
+ return respond(await rpc('klarwerk_dispatch_v1007',{p_hash,p_op:'datev-artifact',p_body:{id,content:btoa(binary),filename}}));
+}
 if(!['company','list','rpc','receipt-file','disconnect'].includes(action))return respond({error:'Unbekannte Aktion.'},400);
 const result=await rpc('klarwerk_dispatch_v1007',{p_hash:await hash(token),p_op:action,p_body:body.data||{}});
 if(action==='receipt-file'){const r=await fetch(url+'/storage/v1/object/sign/purchase-receipts-v1007/'+result.path.split('/').map(encodeURIComponent).join('/'),{method:'POST',headers:{apikey:key,Authorization:'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify({expiresIn:60})});const signed=await r.json();if(!r.ok)throw Error('Originalbeleg nicht verfügbar.');return respond({name:result.name,mime:result.mime,url:url+'/storage/v1'+signed.signedURL});}

@@ -3,7 +3,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
 const {chromium}=require('playwright');
 const {fixture}=require('./team-db-fixture.cjs');
 const directory=path.resolve(__dirname,'../..');
-const source=fs.readFileSync(path.join(directory,'app-v800.js'),'utf8').replace(/\}\)\(\);\s*$/,`window.__appTest={state,render,reload,collectTeamPeriods,recordedPeriods,dayHours,overtime,orderHours,teamEnabled,printOrderPdf,printBillingPdf,printInvoicePdf,invoiceGroups,syncPlanningIfVisible};})();`);
+const source=fs.readFileSync(path.join(directory,'app-v800.js'),'utf8').replace(/\}\)\(\);\s*$/,`window.__appTest={state,render,reload,collectTeamPeriods,recordedPeriods,dayHours,overtime,orderHours,teamEnabled,printOrderPdf,syncPlanningIfVisible};})();`);
 const server=http.createServer((request,response)=>{
   const name=new URL(request.url,'http://localhost').pathname.slice(1)||'index.html';
   if(name==='config.js'){response.setHeader('Content-Type','application/javascript');return response.end('window.WORKTIME_CONFIG={supabaseUrl:"https://test.invalid",supabasePublishableKey:"test"}');}
@@ -272,10 +272,9 @@ async function main(){
       assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
       await page.screenshot({path:path.join(__dirname,'planned-orders-desktop.png'),fullPage:true});await page.setViewportSize({width:390,height:844});
     });
-    await test('Work order PDF and invoice include every employee, each shift and labor prices once',async()=>{
+    await test('Work order PDF includes every employee, each shift and labor prices once',async()=>{
       const pdfPromise=context.waitForEvent('page');await page.evaluate(id=>window.__appTest.printOrderPdf(id),planId);const pdf=await pdfPromise;await pdf.waitForLoadState();
       const text=await pdf.locator('body').innerText();assert.match(text,/anna/);assert.match(text,/max/);assert.match(text,/08:00 Uhr bis 11:00 Uhr/);assert.match(text,/Meisterstunde/);assert.match(text,/75,00/);await pdf.close();
-      const invoicePromise=context.waitForEvent('page');await page.evaluate(()=>window.__appTest.printInvoicePdf(window.__appTest.invoiceGroups(false)[0]));const invoice=await invoicePromise;await invoice.waitForLoadState();const bill=await invoice.locator('body').innerText();assert.match(bill,/anna/);assert.match(bill,/max/);assert.match(bill,/Monteurstunde/);assert.match(bill,/Meisterstunde/);await invoice.close();
     });
     await setRole('anna','orders','2026-10-06');
     await test('Deleting the shared work order removes all linked account times and draft markers',async()=>{
@@ -300,12 +299,20 @@ async function main(){
       await page.locator('[data-action="edit-material"][data-id="'+id+'"]').click();const editor=page.locator('[data-form="material-edit"]');assert.equal(await editor.locator('[name="unit"]').inputValue(),'Kg');await editor.locator('[name="unit"]').selectOption('Pau');await editor.locator('button').click();await page.waitForFunction(()=>!window.__appTest.state.busy);await admin();assert.equal((await db.query('select unit from materials where id=$1',[id])).rows[0].unit,'Pau');assert.equal((await db.query("select unit from work_order_items where work_order_id=$1 and position_name='Sonderleistung Einheitentest'",[unitOrder])).rows[0].unit,'Kg');
       assert.equal(await page.locator('[data-form="hourly-price"] [name="unit"]').count(),4);
     });
-    await test('Work proof and invoice PDFs display the per-position units beside the quantity',async()=>{
+    await test('Work proof PDF displays the per-position units beside the quantity',async()=>{
       await setRole('business','orders','2026-10-07');
-      for(const [kind,call] of [['Arbeitsnachweis',()=>window.__appTest.printOrderPdf(window.__appTest.state.rows.orders.find(o=>o.title==='Einheiten-Test').id)],['Rechnung',()=>window.__appTest.printInvoicePdf(window.__appTest.invoiceGroups(false)[0])]]){
-        const pending=context.waitForEvent('page');await page.evaluate(call);const pdf=await pending;await pdf.waitForLoadState();assert.match(await pdf.locator('body').innerText(),/3 Kg/);assert.match(await pdf.locator('body').innerText(),/2 H/);
-        if(process.env.PDF_QA_OUTPUT_DIR){fs.mkdirSync(process.env.PDF_QA_OUTPUT_DIR,{recursive:true});await pdf.pdf({path:path.join(process.env.PDF_QA_OUTPUT_DIR,kind+'_Einheiten.pdf'),format:'A4',printBackground:true,preferCSSPageSize:true});}await pdf.close();
+      const pending=context.waitForEvent('page');
+      await page.evaluate(id=>window.__appTest.printOrderPdf(id),unitOrder);
+      const pdf=await pending;
+      await pdf.waitForLoadState();
+      const body=await pdf.locator('body').innerText();
+      assert.match(body,/3 Kg/);
+      assert.match(body,/2 H/);
+      if(process.env.PDF_QA_OUTPUT_DIR){
+        fs.mkdirSync(process.env.PDF_QA_OUTPUT_DIR,{recursive:true});
+        await pdf.pdf({path:path.join(process.env.PDF_QA_OUTPUT_DIR,'Arbeitsnachweis_Einheiten.pdf'),format:'A4',printBackground:true,preferCSSPageSize:true});
       }
+      await pdf.close();
     });
     assert.deepEqual(errors,[]);console.log(JSON.stringify({passed,runtimeErrors:errors.length,productionWrites:0}));
   }finally{await browser.close();server.close();await db.close();}

@@ -435,22 +435,22 @@ async function main() {
       failPlanningGet=false;const reads=historyReads;await page.evaluate(()=>window.__appTest.syncPlanningIfVisible());assert.ok(historyReads>=reads+7);
       assert.equal(await page.evaluate(()=>window.__appTest.state.rows.appointments[0].title),'Remote change after outage');
     });
-    await test('Billing reads a remote invoice completion and reopening without leaving a stale open order', async()=>{
+    await test('A work order reflects Klarwerk finalization and reopening without local billing controls', async()=>{
       const order = database.work_orders[0];
-      await setRole('company-one', 'invoices');
-      await page.locator('[data-action="open-billing"]').click();
-      assert.equal(await page.evaluate(()=>window.__appTest.state.view), 'billing-detail');
+      await setRole('company-one', 'order-detail');
+      await page.evaluate(id=>{window.__appTest.state.orderId=id;window.__appTest.render();}, order.id);
+      await page.locator('form[data-form="order-edit"]').waitFor();
       await page.waitForFunction(()=>!window.__appTest.isSyncing());
       order.invoiced = true;
       await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
-      await page.getByText('Alle Arbeitsscheine sind abgerechnet.', {exact:true}).waitFor();
-      assert.equal(await page.locator('[data-action="open-billing"]').count(), 0);
+      await page.getByText('Bereits abgerechnet', {exact:true}).waitFor();
+      assert.equal(await page.locator('[data-action="invoice-order"],[data-action="mark-invoice-order"]').count(), 0);
       assert.equal(await page.evaluate(id=>window.__appTest.state.rows.orders.find(row=>row.id===id).invoiced, order.id), true);
 
       order.invoiced = false;
       order.invoice_reopened_from_v908 = 'original-invoice';
       await page.evaluate(()=>window.__appTest.syncPlanningIfVisible());
-      assert.equal(await page.locator('[data-action="open-order"]').getAttribute('data-id'), order.id);
+      assert.equal(await page.getByText('Bereits abgerechnet', {exact:true}).count(), 0);
       delete order.invoice_reopened_from_v908;
       await setRole('company-one');
     });

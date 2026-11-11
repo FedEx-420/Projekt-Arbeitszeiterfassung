@@ -396,3 +396,9 @@ KLARWERK-MENÜS UND ANGEBOTE v1010
 [x] Automatischen Abgleich für Rechnungen, Einkaufsbelege und Angebote in den regulären Klarwerk-Menüs integrieren. Kontoverbindung in den Einstellungen verwalten.
 [x] Angebote in Arbeitszeiterfassung erstellen und bearbeiten. In Klarwerk die gespeicherte Fassung steuerlich prüfen, freigeben und mit geprüftem PDF als E-Mail-Entwurf vorbereiten.
 [x] Angebotsumfang pro Verbindung bestätigen, Firmen- und Revisionsgrenzen sowie den PDF-Anhang mit isolierten Daten prüfen.
+
+KLARWERK-ABRECHNUNG v1011
+[x] Offene Kunden-Arbeitsscheine erscheinen automatisch in Klarwerk unter Rechnungen mit Status „Offen“. Abrechnung übernimmt die gespeicherten Zeiten und Positionen. Browser-Prüfung mit synthetischen Daten.
+[x] In der Arbeitszeiterfassung entfallen Abrechnungslisten, Rechnungserstellung, DATEV und Steuerformulare. Arbeitsscheine bleiben für die Erfassung im jeweiligen Arbeitsbereich bearbeitbar. Angebote werden als Nettoentwürfe gespeichert.
+[x] Klarwerk übernimmt unter Exporte den bisherigen DATEV-Dateiweg, die gespeicherte Exporthistorie, die Firmen-/Steuerangaben und die Verfahrensdokumentation. Betriebsgrenzen, unveränderte Exportdatei und Rechnungsabschluss mit Testdaten geprüft.
+[ ] Koordinierte Bereitstellung von Datenbank, Klarwerk und Arbeitszeiterfassung vollständig bestätigen. Keine Live-Rechnung und kein DATEV-Import zu Prüfzwecken.

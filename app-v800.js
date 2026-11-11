@@ -10,7 +10,7 @@
   const today = () => new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Berlin',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
   const state = {
     session: null, profile: null, people: [], view: 'home', date: today(), month: today().slice(0, 7),
-    businessId: '', businessBrand: null, employeeId: '', customerId: '', customerSearch: '', materialId: '', orderId: '', timeEntryId: '', orderCustomer: '', orderOrigin: 'orders', billingKey: '', billingMode: 'open', menu: false, vacationForm: false, appointmentForm: false, composeMessage: false, mailboxFolder: 'received', notice: null, busy: false,
+    businessId: '', businessBrand: null, employeeId: '', customerId: '', customerSearch: '', materialId: '', orderId: '', timeEntryId: '', orderCustomer: '', orderOrigin: 'orders', menu: false, vacationForm: false, appointmentForm: false, composeMessage: false, mailboxFolder: 'received', notice: null, busy: false,
     rows: { people: [], workweeks: [], entries: [], orders: [], items: [], customers: [], customerRates: [], days: [], vacations: [], messages: [], attachments: [], recipients: [], materials: [], appointments: [], planningRequests: [], payslips: [], documents: [] }
   };
   let startupStage = '', startupGeneration = 0, startupAccountReady = null, materialLoadState = 'idle';
@@ -31,13 +31,8 @@
     'supplier-catalogs': [],
     offers: ['offers','customers','customerRates','materials','legal'],
     settings: ['device','businessRules','legal'],
-    invoices: ['orders','items','customers','customerRates','materials','documents','ledger','legal'],
-    'invoices-paid': ['orders','items','customers','customerRates','materials','documents','ledger','legal'],
-    'invoice-draft': ['orders','items','customers','customerRates','materials','documents','ledger','legal'],
-    'billing-detail': ['orders','items','customers','customerRates','materials','documents','ledger','legal'],
     platform: ['platform'],
     legal: ['legal'],
-    datev: ['datev','ledger','legal']
   };
   function viewDataNeeds() {
     if (state.view === 'shopping-cart') return activeShoppingProvider()==='all'&&isManager()?['materials']:[];
@@ -271,7 +266,7 @@
     if (!user) return render();
     const generation = ++startupGeneration;
     const current = () => generation === startupGeneration && state.session?.user?.id === user;
-    state.view = 'home'; state.menu = false; state.customerId = ''; state.customerSearch = ''; state.orderId = ''; state.timeEntryId = ''; state.billingKey = ''; state.vacationForm = false; state.composeMessage = false;
+    state.view = 'home'; state.menu = false; state.customerId = ''; state.customerSearch = ''; state.orderId = ''; state.timeEntryId = ''; state.vacationForm = false; state.composeMessage = false;
     startupStage = 'verify';
     materialLoadState = 'idle';
     startupLoaded.clear();
@@ -430,7 +425,7 @@
   }
 
   function loginView() { return `<main class="login-page"><section class="login-card"><div class="brand-mark">ZE</div><h1>Zeiterfassung</h1><p>Arbeitszeiten einfach und sicher erfassen.</p><form data-form="login"><label>Firma<input name="company" autocomplete="organization" placeholder="Firmenname" required></label><label>Benutzername<input name="username" autocomplete="username" required></label><label>Passwort<input name="password" type="password" autocomplete="current-password" required></label><label class="login-admin"><input name="administrator_login" type="checkbox"> Anmeldung als Administrator (nur dann ohne Firma)</label><label>Beim nächsten Mal auf diesem Gerät angemeldet bleiben?<select name="remember_device" required><option value="">Bitte auswählen</option><option value="yes">Ja, auf diesem Gerät</option><option value="no">Nein, nur für diese Sitzung</option></select></label><p class="device-help">Nur auf einem eigenen, geschützten Gerät wählen. Dein Passwort wird nicht gespeichert. Abmelden beendet die Geräteanmeldung.</p><button class="primary" ${state.busy ? 'disabled' : ''}>Anmelden</button></form><button class="link-button" type="button" data-action="forgot">Passwort vergessen?</button>${noticeHtml()}</section></main>`; }
-  function menuItems() { return [['home','Übersicht',true],['time','Zeiterfassung',canUse('time')],['orders','Arbeitsscheine',canUse('orders')],['calendar','Kalender',canUse('calendar')],['customers','Kunden',canUse('customers')],['mailbox','Postfach',true],['materials','Materialliste',isManager()],['shopping','Einkauf',isManager()||state.profile?.role==='employee'],['shopping-cart','Warenkorb ('+shoppingCartCount()+')',isManager()||state.profile?.role==='employee'],['invoices','Abrechnungen Kunden',isManager()],['invoices-paid','Abgerechnete Arbeitsscheine',isManager()],['settings','Einstellungen',true]].filter(([, , yes]) => yes); }
+  function menuItems() { return [['home','Übersicht',true],['time','Zeiterfassung',canUse('time')],['orders','Arbeitsscheine',canUse('orders')],['calendar','Kalender',canUse('calendar')],['customers','Kunden',canUse('customers')],['mailbox','Postfach',true],['materials','Materialliste',isManager()],['shopping','Einkauf',isManager()||state.profile?.role==='employee'],['shopping-cart','Warenkorb ('+shoppingCartCount()+')',isManager()||state.profile?.role==='employee'],['settings','Einstellungen',true]].filter(([, , yes]) => yes); }
   function selector() {
     if (!isManager()) return '';
     const businessesHtml = isAdmin() ? `<label>Firma ansehen<select data-select="business"><option value="">Firma auswählen</option>${businesses().map(person => `<option value="${person.id}" ${same(person.id, businessId()) ? 'selected' : ''}>${escape(person.company_name || person.username)}</option>`).join('')}</select></label>` : '';
@@ -443,12 +438,12 @@
     }
     const title = managerBusiness()?.company_name || 'Zeiterfassung';
     const headerLogo = companyLogoUrl(managerBusiness()), roleName = isAdmin() ? 'Administrator' : isBusiness() ? 'Geschäftsleitung' : 'Mitarbeiter';
-    const current = state.view === 'invoice-draft'?'invoices':state.view === 'order-detail' ? (['invoices','invoices-paid','customers','planning'].includes(state.orderOrigin) ? state.orderOrigin : 'orders') : state.view === 'billing-detail' ? (state.billingMode === 'paid' ? 'invoices-paid' : 'invoices') : state.view;
+    const current = state.view === 'order-detail' ? (['customers','planning'].includes(state.orderOrigin) ? state.orderOrigin : 'orders') : state.view;
     const items = menuItems(), navigation = window.WorktimeNavigation?.markup({items,current,open:state.menu}) || `<button type="button" class="menu-toggle" data-action="menu" aria-expanded="${state.menu}">Menü ⌄</button>${state.menu ? `<section class="app-menu-sheet"><header><b>Menü auswählen</b><button type="button" class="secondary small" data-action="menu">Schließen</button></header><nav>${items.map(([id,text])=>`<button type="button" data-action="nav" data-view="${id}" class="${current===id?'active':''}">${text}</button>`).join('')}<hr><button type="button" data-action="logout">Abmelden</button></nav></section>` : ''}`;
     const context = `<section class="workspace-context" aria-label="Aktueller Bereich und Arbeitskonto"><div class="workspace-location"><span aria-hidden="true"></span><strong>${escape(window.WorktimeNavigation?.currentLabel(items,current) || 'Übersicht')}</strong></div>${selector()}</section>`;
     return `<div class="app-shell"><header class="topbar"><div class="brand-identity">${headerLogo ? `<img src="${escape(headerLogo)}" alt="Firmenlogo von ${escape(title)}">` : '<div class="brand-mark" aria-hidden="true">ZE</div>'}<div class="brand-caption"><h1>${escape(title)}</h1><p>${escape(state.profile?.username || '')} · ${roleName}</p></div></div><div class="top-actions">${navigation}</div></header><main class="content">${context}${['shopping','shopping-cart'].includes(state.view)?shoppingProviderView():''}${!startupViewReady() ? `<section class="panel" data-startup-view-pending>${(startupStage==='data'||materialLoadState==='loading')&&!viewDataNeeds().some(name=>startupFailed.has(name))?'<p role="status">Daten für diesen Bereich werden geladen …</p>':'<p role="alert">Die Daten für diesen Bereich konnten nicht vollständig geladen werden.</p><button type="button" class="primary" data-action="retry-startup">Erneut versuchen</button>'}</section>` : viewHtml()}${noticeHtml()}</main></div>`;
   }
-  function viewHtml() { return ({ home: homeView, time: timeView, orders: ordersView, 'order-detail': orderDetailView, calendar: calendarView, customers: customersView, mailbox: mailboxView, materials: materialsView, shopping: shoppingView, invoices: invoicesView, 'invoices-paid': paidInvoicesView, 'billing-detail': billingDetailView, settings: settingsView }[state.view] || homeView)(); }
+  function viewHtml() { return ({ home: homeView, time: timeView, orders: ordersView, 'order-detail': orderDetailView, calendar: calendarView, customers: customersView, mailbox: mailboxView, materials: materialsView, shopping: shoppingView, settings: settingsView }[state.view] || homeView)(); }
 
   let shoppingProvider='',shoppingProviderScope='';
   function activeShoppingProvider(){
@@ -583,8 +578,8 @@
     const items = state.rows.items.filter(item => same(item.work_order_id, order.id) && !isHourlyMaterial(item.position_name));
     const documents = state.rows.documents.filter(document => same(document.work_order_id, order.id));
     const rows = items.length ? items.map(materialRow).join('') : materialRow();
-    const invoiceButton = isManager() && !order.invoiced && (!order.work_kind||order.work_kind==='customer') ? `<button type="button" class="primary small" data-action="invoice-order" data-id="${order.id}">Rechnung erstellen</button><button type="button" class="secondary small" data-action="mark-invoice-order" data-id="${order.id}">Als abgerechnet markieren</button>` : order.invoiced ? '<span class="badge">Bereits abgerechnet</span>' : '';
-    return `<section class="panel"><div class="page-head"><div><span class="eyebrow">Arbeitsschein bearbeiten</span><h3>${escape(order.customer_name || 'Ohne Kunde')}</h3></div><div class="actions">${invoiceButton}${items.length && canExportJuprowaMaterial(order) ? `<button type="button" class="secondary small" data-action="juprowa-material" data-id="${escape(order.id)}">Juprowa-Materialdatei</button>` : ''}<button type="button" class="secondary small" data-action="order-pdf" data-id="${order.id}">PDF drucken / speichern</button><button type="button" class="danger small" data-action="delete-order" data-id="${order.id}">Arbeitsschein löschen</button><button type="button" class="secondary small" data-action="close-order">Schließen</button></div></div><form data-form="order-edit" class="entry-form"><input type="hidden" name="id" value="${order.id}">${orderDatePicker(order.work_date)}<label class="wide">Kunde<input name="customer" required list="customers" value="${escape(order.customer_name || '')}"></label><label class="wide">Beschreibung<input name="title" value="${escape(order.title || '')}"></label><div class="wide" id="material-lines">${rows}</div><button type="button" class="secondary wide" data-action="more-material">Weiteres Material</button>${teamEnabled() ? '' : `<p class="wide">Arbeitsstunden werden beim Speichern automatisch als <b>${escape(hourlyNameForEmployee(order.employee_id))}</b> mit dem Preis aus der Materialliste ergänzt.</p>`}${teamOrderTimeFields(order.employee_id,orderPeriods(order),`<label>Arbeitsbeginn${timeInput('start', order.start_time?.slice(0, 5))}</label><label>Arbeitsende${timeInput('end', order.end_time?.slice(0, 5))}</label><label>Pause in Stunden<input name="pause" type="number" min="0" step="0.25" value="${n(order.pause_hours)}"></label><label>Ausgeführte Stunden<input name="hours" type="number" min="0.25" step="0.25" value="${n(order.executed_hours)}" required></label>`)}${noteTemplates()}<label class="wide">Notiz / Dokumentation<textarea name="documentation" rows="4">${escape(order.documentation || '')}</textarea></label><label class="wide">Weitere Dokumente hochladen<input name="documents" type="file" multiple accept="image/*,.pdf,.doc,.docx"></label>${documents.length ? `<p class="wide">Vorhandene Dokumente: ${documents.map(document => escape(document.file_name)).join(', ')}</p>` : ''}${signatureFields(order)}<button class="primary wide" data-signature-submit>Änderungen speichern</button></form>${customerList()}${materialList()}</section>`;
+    const billingStatus = order.invoiced ? '<span class="badge">Bereits abgerechnet</span>' : '';
+    return `<section class="panel"><div class="page-head"><div><span class="eyebrow">Arbeitsschein bearbeiten</span><h3>${escape(order.customer_name || 'Ohne Kunde')}</h3></div><div class="actions">${billingStatus}${items.length && canExportJuprowaMaterial(order) ? `<button type="button" class="secondary small" data-action="juprowa-material" data-id="${escape(order.id)}">Juprowa-Materialdatei</button>` : ''}<button type="button" class="secondary small" data-action="order-pdf" data-id="${order.id}">PDF drucken / speichern</button><button type="button" class="danger small" data-action="delete-order" data-id="${order.id}">Arbeitsschein löschen</button><button type="button" class="secondary small" data-action="close-order">Schließen</button></div></div><form data-form="order-edit" class="entry-form"><input type="hidden" name="id" value="${order.id}">${orderDatePicker(order.work_date)}<label class="wide">Kunde<input name="customer" required list="customers" value="${escape(order.customer_name || '')}"></label><label class="wide">Beschreibung<input name="title" value="${escape(order.title || '')}"></label><div class="wide" id="material-lines">${rows}</div><button type="button" class="secondary wide" data-action="more-material">Weiteres Material</button>${teamEnabled() ? '' : `<p class="wide">Arbeitsstunden werden beim Speichern automatisch als <b>${escape(hourlyNameForEmployee(order.employee_id))}</b> mit dem Preis aus der Materialliste ergänzt.</p>`}${teamOrderTimeFields(order.employee_id,orderPeriods(order),`<label>Arbeitsbeginn${timeInput('start', order.start_time?.slice(0, 5))}</label><label>Arbeitsende${timeInput('end', order.end_time?.slice(0, 5))}</label><label>Pause in Stunden<input name="pause" type="number" min="0" step="0.25" value="${n(order.pause_hours)}"></label><label>Ausgeführte Stunden<input name="hours" type="number" min="0.25" step="0.25" value="${n(order.executed_hours)}" required></label>`)}${noteTemplates()}<label class="wide">Notiz / Dokumentation<textarea name="documentation" rows="4">${escape(order.documentation || '')}</textarea></label><label class="wide">Weitere Dokumente hochladen<input name="documents" type="file" multiple accept="image/*,.pdf,.doc,.docx"></label>${documents.length ? `<p class="wide">Vorhandene Dokumente: ${documents.map(document => escape(document.file_name)).join(', ')}</p>` : ''}${signatureFields(order)}<button class="primary wide" data-signature-submit>Änderungen speichern</button></form>${customerList()}${materialList()}</section>`;
   }
   function orderDetailView() { const order = state.rows.orders.find(row => same(row.id, state.orderId)); return order ? orderEditor(order) : `<section class="panel"><h2>Arbeitsschein nicht gefunden</h2><p>Der Arbeitsschein ist nicht mehr verfügbar.</p><button type="button" class="secondary" data-action="close-order">Zurück</button></section>`; }
   function ordersView() {
@@ -727,40 +722,6 @@
     const newMaterialPanel='<section class="panel"><h3>Neues Material</h3><form data-form="material" class="entry-form"><label>Artikel<input name="name" required></label><label>Preis in €<input name="price" type="number" min="0" step="0.01" value="0"></label>'+unitSelect('unit','Stk')+'<button class="primary">Artikel speichern</button></form></section>';
     return '<section class="page-head"><div><span class="eyebrow">Material</span><h2>Materialliste</h2></div></section>'+searchPanel+editor+'<details class="panel material-administration"><summary>Material anlegen und Stundenpreise verwalten</summary>'+newMaterialPanel+hourlyCards+'</details>';
   }
-  function orderInCurrentBusiness(order) { const person=state.rows.people.find(person=>same(person.id,order.employee_id))||teamEmployees().find(person=>same(person.id,order.employee_id));return Boolean(person)&&same(person.role==='business'?person.id:person.business_id,businessId()); }
-  function invoiceGroups(invoiced) {
-    const groups = {};
-    state.rows.orders.filter(row => orderInCurrentBusiness(row) && (!row.work_kind||row.work_kind==='customer') && Boolean(row.invoiced) === invoiced).forEach(row => { const key = !invoiced&&row.invoice_reopened_from_v908?'reopened:'+row.id:row.customer_id || `name:${lower(row.customer_name || 'Ohne Kunde')}`; (groups[key] ||= { key, customerName: row.customer_name || 'Ohne Kunde', orders: [] }).orders.push(row); });
-    return Object.values(groups).map(group => ({ ...group, hours: group.orders.reduce((sum, row) => sum + orderHours(row), 0) })).sort((a, b) => String(a.customerName).localeCompare(String(b.customerName), 'de'));
-  }
-  let billingSelectionScope = '', billingSelections = new Map();
-  async function chooseBillingOrders(group, purpose = 'invoice', initialId = '') {
-    if (!isManager() || !window.WorktimeBillingSelection) throw new Error('Die Arbeitsschein-Auswahl ist nicht verfügbar. Bitte die App aktualisieren.');
-    const scope = String(state.profile.id) + ':' + String(businessId());
-    if (billingSelectionScope !== scope) { billingSelectionScope = scope; billingSelections.clear(); }
-    const currentIds = new Set(group.orders.map(row => String(row.id))), remembered = billingSelections.get(group.key)?.filter(id => currentIds.has(id));
-    const initialIds = purpose === 'invoice' && initialId ? [initialId] : remembered?.length ? remembered : initialId ? [initialId] : undefined;
-    let selected;
-    try { selected = await window.WorktimeBillingSelection.choose({ group, people: state.rows.people, purpose, initialIds, resolve: () => isManager() && scope === String(state.profile.id) + ':' + String(businessId()) ? invoiceGroups(false).find(item => same(item.key, group.key)) : null }); }
-    catch (error) { notice(error.message || 'Die Auswahl konnte nicht geöffnet werden.', true); render(); return null; }
-    if (selected) billingSelections.set(group.key, selected.orders.map(row => String(row.id)));
-    return selected;
-  }
-  function billingListView(invoiced) {
-    const groups = invoiceGroups(invoiced), title = invoiced ? 'Erstellte Rechnungen' : 'Noch offene Arbeitsscheine';
-    const empty = invoiced ? 'Noch keine Arbeitsscheine abgerechnet.' : 'Alle Arbeitsscheine sind abgerechnet.';
-    return `<section class="page-head"><div><span class="eyebrow">Abrechnung</span><h2>${title}</h2></div></section><section class="list-section">${groups.map(group => `<article class="row-card"><button type="button" class="row-main" data-action="open-billing" data-key="${escape(group.key)}" data-mode="${invoiced ? 'paid' : 'open'}"><b>${escape(group.customerName)}</b><span>${group.orders.length} ${invoiced ? 'abgerechnete' : 'offene'} Arbeitsscheine · ${h(group.hours)} · Zusammengefasst öffnen</span></button></article>`).join('') || `<p class="empty">${empty}</p>`}</section>`;
-  }
-  function invoicesView() { return billingListView(false); }
-  function paidInvoicesView() { const orders = state.rows.orders.filter(row => orderInCurrentBusiness(row) && Boolean(row.invoiced)).sort((a, b) => String(b.work_date).localeCompare(String(a.work_date))); return `<section class="page-head"><div><span class="eyebrow">Abrechnung</span><h2>Abgerechnete Arbeitsscheine</h2></div></section><section class="list-section">${orders.map(row => `<article class="row-card"><button type="button" class="row-main" data-action="open-order" data-id="${row.id}"><b>${escape(row.customer_name || 'Ohne Kunde')}</b><span>${dateText(row.work_date)} · ${escape(row.title || 'Arbeitsschein')} · ${h(row.executed_hours)} · Öffnen</span></button></article>`).join('') || '<p class="empty">Noch keine Arbeitsscheine abgerechnet.</p>'}</section>`; }
-  function billingDetailView() {
-    const invoiced = state.billingMode === 'paid', group = invoiceGroups(invoiced).find(item => same(item.key, state.billingKey));
-    if (!group) return `<section class="panel"><h2>Abrechnung nicht gefunden</h2><button type="button" class="secondary" data-action="close-billing">Zurück</button></section>`;
-    const total = group.orders.reduce((sum, row) => sum + orderHours(row), 0);
-    const combinedDetails = group.orders.map(row => { const materials = state.rows.items.filter(item => same(item.work_order_id, row.id)); return `<div class="row-card"><div><b>${dateText(row.work_date)} · ${escape(row.title || 'Arbeitsschein')}</b><span>${timeText(row.start_time)} – ${timeText(row.end_time)} · Pause ${h(row.pause_hours)} · ${h(row.executed_hours)}</span>${row.documentation ? `<p>${escape(row.documentation)}</p>` : ''}${materials.length ? `<p><b>Material:</b> ${materials.map(item => `${window.WorktimeArticleTools?.html(state.rows.materials.find(m=>same(m.id,item.material_id)&&same(m.business_id,businessId())))||''}${escape(item.position_name)} (${n(item.quantity).toLocaleString('de-DE')} ${escape(itemUnit(item))})`).join(', ')}</p>` : ''}</div></div>`; }).join('');
-    return `<section class="page-head"><div><span class="eyebrow">${invoiced ? 'Bereits abgerechnet' : 'Ein gemeinsamer offener Arbeitsschein'}</span><h2>${escape(group.customerName)}</h2><p>${group.orders.length} zusammengefügte Einträge · ${h(total)}</p></div><div class="actions">${invoiced ? '' : '<button type="button" class="primary" data-action="invoice-group">Rechnung erstellen</button><button type="button" class="secondary" data-action="mark-invoice-group">Als abgerechnet markieren</button>'}<button type="button" class="secondary" data-action="billing-pdf">Arbeitsnachweis als PDF</button><button type="button" class="secondary" data-action="close-billing">Zurück</button></div></section><section class="panel"><h3>Gesamter Arbeitsschein</h3>${combinedDetails}</section>`;
-  }
-
   function permissionFields(person) { return [['customers','Kunden'],['orders','Arbeitsscheine'],['calendar','Kalender']].map(([id, title]) => `<label><input type="checkbox" name="perm-${id}" ${person?.menu_permissions?.[id] !== false ? 'checked' : ''}> ${title}</label>`).join(''); }
   function settingsView() {
     if (!isManager()) return `<section class="page-head"><div><span class="eyebrow">Mein Konto</span><h2>Einstellungen</h2></div></section><section class="panel"><p>Benutzername und Passwort werden durch die Geschäftsverwaltung festgelegt.</p><button type="button" class="secondary" data-action="pdf">Daten als PDF drucken</button></section>`;
@@ -885,16 +846,6 @@
   function invoiceItemName(item, order) {
     const material = currentMaterialForItem(item, order);
     return !order?.invoiced && material?.name ? material.name : item?.position_name || 'Leistung';
-  }
-  async function snapshotCurrentPrices(orders) {
-    for (const order of orders || []) {
-      for (const item of state.rows.items.filter(row => same(row.work_order_id, order.id))) {
-        const material = currentMaterialForItem(item, order);
-        if (!material) continue;
-        const price = customerLaborPrice(order,material,n(material.unit_price)), name = material.name;
-        if (n(item.unit_price) !== price || item.position_name !== name || !same(item.material_id, material.id)) await write('work_order_items', { material_id: material.id, unit_price: price, position_name: name }, 'PATCH', `id=eq.${encodeURIComponent(item.id)}`);
-      }
-    }
   }
   async function updateHourlyPrice(form) {
     const material = form.elements.id.value ? state.rows.materials.find(row => same(row.id, form.elements.id.value) && same(row.business_id, businessId()) && isHourlyMaterial(row)) : (isHourlyMaterial(form.elements.name?.value) ? await ensureHourlyMaterial(form.elements.name.value) : null);
@@ -1109,9 +1060,6 @@
     };
     if (windowRef.document.readyState === 'complete') addBar(); else windowRef.addEventListener('load', addBar, { once: true });
   }
-  function showInvoicePreviewControls(windowRef) {
-    addPdfReturnBar(windowRef, true);
-  }
   function pdfStyles() {
     return `*{box-sizing:border-box}body{margin:0;background:#edf4f2;color:#193631;font:14px/1.5 Arial,sans-serif}.pdf-page{max-width:980px;margin:28px auto;background:#fff;padding:34px 38px 42px;box-shadow:0 14px 34px rgba(17,55,48,.14)}.pdf-banner{display:flex;align-items:stretch;justify-content:space-between;gap:28px;min-height:142px;padding:18px 22px;background:linear-gradient(135deg,#075d59,#15917f);color:#fff;border-radius:16px 16px 6px 6px;overflow:hidden}.pdf-brand{display:flex;align-items:center;gap:18px;min-width:0}.pdf-logo{width:228px;min-width:150px;height:106px;padding:10px;background:#fff;border-radius:11px;display:flex;align-items:center;justify-content:center;box-shadow:0 8px 20px rgba(0,0,0,.16)}.pdf-logo img{display:block;width:100%;height:100%;object-fit:contain}.pdf-logo-fallback{font-size:30px;font-weight:800;letter-spacing:.08em;color:#075d59}.pdf-company{font-size:17px;font-weight:700;line-height:1.25}.pdf-subtitle{margin-top:5px;color:#d9faf3;font-size:13px}.pdf-title{text-align:right;display:flex;flex-direction:column;justify-content:center}.pdf-title h1{margin:0;font-size:32px;line-height:1.05;letter-spacing:.01em}.pdf-title span{margin-top:8px;color:#d9faf3;font-size:13px}.pdf-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:24px 0}.pdf-card{padding:15px 17px;border:1px solid #d6e5e1;background:#f7fbfa;border-radius:10px}.pdf-card-label{display:block;margin-bottom:5px;color:#4f6a64;font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase}.pdf-section{margin:24px 0}.pdf-section h2{margin:0 0 10px;color:#075d59;font-size:18px}.pdf-execution{margin:0 0 20px;padding:14px 17px;border-left:4px solid #15917f;background:#f2f8f6}.pdf-execution-row{padding:9px 0;border-bottom:1px solid #d7e5e1}.pdf-execution-row:last-child{border-bottom:0}.pdf-table{width:100%;border-collapse:collapse;margin:12px 0 0}.pdf-table th,.pdf-table td{padding:11px 9px;border-bottom:1px solid #d9e6e3;text-align:left;vertical-align:top}.pdf-table th{background:#e8f3f0;color:#31574f;font-size:11px;letter-spacing:.04em;text-transform:uppercase}.pdf-table .number{text-align:right;white-space:nowrap}.pdf-table small{display:block;color:#58716b;margin-top:3px}.pdf-tag{display:inline-block;margin:0 0 0 7px;padding:2px 7px;border-radius:999px;background:#d8f0e9;color:#076654;font-size:10px;font-weight:700;vertical-align:middle}.pdf-total{display:flex;justify-content:space-between;gap:18px;max-width:365px;margin:25px 0 0 auto;padding:13px 0 0;border-top:3px solid #15917f;color:#075d59;font-size:19px}.pdf-note{margin-top:35px;padding-top:14px;border-top:1px solid #d9e6e3;color:#5b706a;font-size:12px}.pdf-list{margin:6px 0;padding-left:20px}.pdf-list li{margin:7px 0}.pdf-muted{color:#5b706a}.pdf-empty{padding:14px;background:#f7fbfa;border-radius:9px;color:#5b706a}@media(max-width:650px){.pdf-page{margin:0;padding:18px}.pdf-banner{gap:14px;min-height:0;flex-direction:column}.pdf-logo{width:100%;height:90px}.pdf-title{text-align:left}.pdf-grid{grid-template-columns:1fr}.pdf-table{font-size:12px}.pdf-table th,.pdf-table td{padding:8px 5px}}@media print{body{background:#fff}.pdf-page{max-width:none;margin:0;padding:0;box-shadow:none}.pdf-banner{break-inside:avoid}#pdf-return-actions,#invoice-preview-actions{display:none!important}}`;
   }
@@ -1134,7 +1082,7 @@
     if (action === 'shift-day') { state.date = addDate(state.date, n(button.dataset.days)); state.month = state.date.slice(0, 7); state.orderId = ''; state.timeEntryId = ''; state.vacationForm = false; render(); return; }
     if (action === 'shift-order-date') { const input = button.closest('label')?.querySelector('input[name="work_date"]'); if (!input) return; input.value = addDate(input.value || state.date, n(button.dataset.days)); input.focus(); return; }
     if (action === 'menu') { if (navigationFeature) navigationFeature.toggle(); else { state.menu = !state.menu; render(); } return; }
-    if (action === 'nav') { state.view = button.dataset.view; state.menu = false; state.vacationForm = false; state.composeMessage = false; state.orderId = ''; state.timeEntryId = ''; state.orderCustomer = ''; state.orderOrigin = 'orders'; state.billingKey = ''; render(); window.scrollTo({top:0,behavior:'instant'}); return; }
+    if (action === 'nav') { state.view = button.dataset.view; state.menu = false; state.vacationForm = false; state.composeMessage = false; state.orderId = ''; state.timeEntryId = ''; state.orderCustomer = ''; state.orderOrigin = 'orders'; render(); window.scrollTo({top:0,behavior:'instant'}); return; }
     if (action === 'shopping-load') return recoverShopping();
     if (action === 'logout') return logout();
     if (action === 'retry-startup' && (startupStage === 'retry' || startupFailed.size)) return loadApp();
@@ -1142,7 +1090,7 @@
     if (action === 'pick-day') { state.date = button.dataset.date; state.month = state.date.slice(0, 7); state.timeEntryId = ''; state.vacationForm = false; render(); return; }
     if (action === 'month') { const date = new Date(`${state.month}-01T12:00:00`); date.setMonth(date.getMonth() + n(button.dataset.value)); state.month = date.toISOString().slice(0, 7); render(); return; }
     if (action === 'vacation-form') { state.vacationForm = true; render(); return; }
-    if (action === 'open-order') { const order = state.rows.orders.find(row => same(row.id, button.dataset.id)); if (!order) return; const person = state.rows.people.find(row => same(row.id, order.employee_id)); if (isAdmin() && person?.business_id) state.businessId = person.business_id; state.employeeId = order.employee_id; state.date = order.work_date; state.month = state.date.slice(0, 7); state.orderId = order.id; state.timeEntryId = ''; state.orderOrigin = ['invoices', 'invoices-paid', 'billing-detail', 'planning', 'customers'].includes(state.view) ? state.view : 'orders'; state.view = 'order-detail'; state.menu = false; render(); return; }
+    if (action === 'open-order') { const order = state.rows.orders.find(row => same(row.id, button.dataset.id)); if (!order) return; const person = state.rows.people.find(row => same(row.id, order.employee_id)); if (isAdmin() && person?.business_id) state.businessId = person.business_id; state.employeeId = order.employee_id; state.date = order.work_date; state.month = state.date.slice(0, 7); state.orderId = order.id; state.timeEntryId = ''; state.orderOrigin = ['planning', 'customers'].includes(state.view) ? state.view : 'orders'; state.view = 'order-detail'; state.menu = false; render(); return; }
     if (action === 'open-time') {
       const entry = state.rows.entries.find(row => same(row.id, button.dataset.id));
       if (!entry) return;
@@ -1155,8 +1103,6 @@
     }
     if (action === 'close-time') { state.timeEntryId = ''; render(); return; }
     if (action === 'close-order') { state.orderId = ''; state.view = state.orderOrigin || 'orders'; render(); return; }
-    if (action === 'open-billing') { state.billingKey = button.dataset.key; state.billingMode = button.dataset.mode === 'paid' ? 'paid' : 'open'; state.view = 'billing-detail'; state.menu = false; render(); return; }
-    if (action === 'close-billing') { state.view = state.billingMode === 'paid' ? 'invoices-paid' : 'invoices'; state.billingKey = ''; render(); return; }
     if (action === 'more-material') { document.getElementById('material-lines')?.insertAdjacentHTML('beforeend', materialRow()); return; }
     if (action === 'new-customer') { state.customerId = 'new'; render(); return; }
     if (action === 'customer') { state.customerId = button.dataset.id; render(); revealCustomerProfile(); return; }
@@ -1166,7 +1112,6 @@
     if (action === 'pdf') return printPdf();
     if (action === 'order-pdf') return printOrderPdf(button.dataset.id);
     if (action === 'juprowa-material') return exportJuprowaMaterial(button.dataset.id);
-    if (action === 'billing-pdf') return printBillingPdf(state.billingKey, state.billingMode === 'paid');
     if (action === 'compose-message') { state.composeMessage = !state.composeMessage; render(); return; }
     if (action === 'mailbox-folder') { state.mailboxFolder = button.dataset.folder || 'received'; render(); return; }
     if (action === 'payslip-template') {
@@ -1195,23 +1140,7 @@
     }
     if (action === 'delete-customer') return confirm('Kunde wirklich löschen?') && perform('Kunde wurde gelöscht.', () => remove('customers', `id=eq.${encodeURIComponent(button.dataset.id)}`));
     if (action === 'delete-material') { const material = state.rows.materials.find(row => same(row.id, button.dataset.id)); if (isHourlyMaterial(material)) { notice('Diese Stundenposition ist geschützt und kann nicht gelöscht werden.'); render(); return; } return confirm('Material wirklich löschen?') && perform('Material wurde gelöscht.', () => remove('materials', `id=eq.${encodeURIComponent(button.dataset.id)}`)); }
-    if (action === 'invoice') return perform('Arbeitsschein wurde als abgerechnet markiert.', async () => { const order = state.rows.orders.find(row => same(row.id, button.dataset.id)); if (!order) throw new Error('Der Arbeitsschein wurde nicht gefunden.'); await snapshotCurrentPrices([order]); await write('work_orders', { invoiced: true }, 'PATCH', `id=eq.${encodeURIComponent(button.dataset.id)}`); });
     if (action === 'remove-company-logo') return confirm('Firmenlogo wirklich entfernen?') && perform('Das Firmenlogo wurde entfernt.', () => account('business-logo-update', { businessId: businessId(), logoPath: null }));
-    if (action === 'invoice-order') {
-      const group = invoiceGroups(false).find(item => item.orders.some(order => same(order.id, button.dataset.id)));
-      if (!group) { notice('Für diesen Arbeitsschein ist keine offene Abrechnung verfügbar.', true); render(); return; }
-      const selected = await chooseBillingOrders(group, 'invoice', button.dataset.id); if (!selected) return;
-      showInvoicePreviewControls(printInvoicePdf(selected));
-      notice('Rechnungsvorschau geöffnet. Die Arbeitsscheine bleiben offen und können weiter bearbeitet werden.'); render(); return;
-    }
-    if (action === 'invoice-group') { const group = invoiceGroups(false).find(item => same(item.key, state.billingKey)); if (!group) return; const selected = await chooseBillingOrders(group); if (!selected) return; showInvoicePreviewControls(printInvoicePdf(selected)); notice('Rechnungsvorschau für die Auswahl geöffnet. Alle Arbeitsscheine bleiben vorerst offen.'); render(); return; }
-    if (action === 'mark-invoice-order') {
-      const group = invoiceGroups(false).find(item => item.orders.some(order => same(order.id, button.dataset.id)));
-      if (!group) { notice('Für diesen Arbeitsschein ist keine offene Abrechnung verfügbar.', true); render(); return; }
-      const selected = await chooseBillingOrders(group, 'mark', button.dataset.id); if (!selected) return;
-      return perform('Nur die ausgewählten Arbeitsscheine wurden als abgerechnet markiert.', async () => { await snapshotCurrentPrices(selected.orders); for (const order of selected.orders) await write('work_orders', { invoiced: true }, 'PATCH', `id=eq.${encodeURIComponent(order.id)}`); state.orderId = ''; state.view = 'invoices-paid'; });
-    }
-    if (action === 'mark-invoice-group') { const group = invoiceGroups(false).find(item => same(item.key, state.billingKey)); if (!group) return; const selected = await chooseBillingOrders(group, 'mark'); if (!selected) return; return perform('Nur die ausgewählten Arbeitsscheine wurden als abgerechnet markiert.', async () => { await snapshotCurrentPrices(selected.orders); for (const order of selected.orders) await write('work_orders', { invoiced: true }, 'PATCH', `id=eq.${encodeURIComponent(order.id)}`); state.billingKey = ''; state.view = 'invoices-paid'; }); }
     if (action === 'read') return perform('Nachricht als gelesen markiert.', () => write('mailbox_messages', { read_at: new Date().toISOString() }, 'PATCH', `id=eq.${encodeURIComponent(button.dataset.id)}`));
     if (action === 'trash') return perform('Nachricht wurde in den Papierkorb verschoben.', () => write('mailbox_messages', { deleted_at: new Date().toISOString() }, 'PATCH', `id=eq.${encodeURIComponent(button.dataset.id)}`));
     if (action === 'restore-mail') return perform('Nachricht wurde wiederhergestellt.', () => write('mailbox_messages', { deleted_at: null }, 'PATCH', `id=eq.${encodeURIComponent(button.dataset.id)}`));
@@ -1290,23 +1219,6 @@
     });
   });
 
-  function printInvoicePdf(group) {
-    if (!isManager()) throw new Error('Rechnungen können nur durch Administrator oder Geschäftskonto erstellt werden.');
-    if (!group?.orders?.length) throw new Error('Für diese Rechnung sind keine Arbeitsscheine vorhanden.');
-    const money = value => n(value).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' }), company = managerBusiness() || {};
-    const customer = state.rows.customers.find(row => same(row.id, group.orders[0]?.customer_id)) || state.rows.customers.find(row => lower(row.name) === lower(group.customerName));
-    const fields = customer?.custom_fields && typeof customer.custom_fields === 'object' ? customer.custom_fields : {}, customerName = customer?.name || group.customerName || 'Kunde';
-    const customerAddress = [[fields.street, fields.house_no].filter(Boolean).join(' '), [fields.postal_code, fields.city].filter(Boolean).join(' '), fields.email].filter(Boolean);
-    const first = [...group.orders].sort((left, right) => String(left.work_date).localeCompare(String(right.work_date)))[0], last = [...group.orders].sort((left, right) => String(right.work_date).localeCompare(String(left.work_date)))[0];
-    const invoiceNumber = `RE-${today().replaceAll('-', '')}-${String(first?.id || '').replace(/[^a-z0-9]/gi, '').slice(0, 8).toUpperCase() || 'OFFEN'}`;
-    const employeeInfo = order => { const person = state.rows.people.find(row => same(row.id, order.employee_id)); if (order.team_periods?.length) return { name: [...new Set(order.team_periods.map(p=>p.employee_name || personName(teamPerson(p.employee_id))))].join(', '), time: order.team_periods.map(p=>timeText(p.start_time)+' – '+timeText(p.end_time)).join(' / '), hours:h(orderHours(order)) }; return { name: person?.display_name || person?.username || 'Mitarbeiter nicht verfügbar', time: `${timeText(order.start_time)} – ${timeText(order.end_time)}`, hours: h(order.executed_hours) }; };
-    const executionRows = group.orders.map(order => { const employee = employeeInfo(order); if (order.team_periods?.length) return `<div><b>${dateText(order.work_date)}</b>${teamExecutionHtml(order)}</div>`; return `<div class="pdf-execution-row"><b>${escape(employee.name)}</b><br><span class="pdf-muted">${dateText(order.work_date)} · ${escape(employee.time)} · ${escape(employee.hours)}</span></div>`; }).join('');
-    const itemRows = group.orders.flatMap(order => { const employee = employeeInfo(order), orderItems = state.rows.items.filter(item => same(item.work_order_id, order.id)), items = orderItems.length ? orderItems : [{ position_name: order.title || 'Arbeitsleistung', quantity: n(order.executed_hours), unit_price: 0 }]; return items.map(item => { const price = invoiceItemPrice(item, order), name = invoiceItemName(item, order), hourly = isHourlyMaterial(name); return `<tr><td>${dateText(order.work_date)}</td><td><b>${escape(name)}</b>${hourly ? '<span class="pdf-tag">Arbeitszeit</span>' : ''}<small>${escape(employee.name)} · ${escape(employee.time)}${order.title ? ` · ${escape(order.title)}` : ''}</small></td><td class="number">${n(item.quantity).toLocaleString('de-DE')} ${escape(itemUnit(item))}</td><td class="number">${money(price)}</td><td class="number">${money(n(item.quantity) * price)}</td></tr>`; }); }).join('');
-    const total = group.orders.reduce((sum, order) => sum + state.rows.items.filter(item => same(item.work_order_id, order.id)).reduce((itemSum, item) => itemSum + n(item.quantity) * invoiceItemPrice(item, order), 0), 0);
-    const windowRef = window.open('', '_blank'); if (!windowRef) throw new Error('Bitte Pop-ups erlauben, um die Rechnung als PDF zu erstellen.');
-    windowRef.document.write(`<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Rechnung ${escape(invoiceNumber)}</title><style>${pdfStyles()}</style></head><body><main class="pdf-page">${pdfBrandHeader('Rechnung', invoiceNumber, company)}<section class="pdf-grid"><article class="pdf-card"><span class="pdf-card-label">Rechnung an</span><b>${escape([fields.first_name, customerName].filter(Boolean).join(' ') || customerName)}</b>${customerAddress.length ? `<br>${customerAddress.map(escape).join('<br>')}` : ''}</article><article class="pdf-card"><span class="pdf-card-label">Rechnungsdaten</span>Ausgestellt am ${dateText(today())}<br>Leistungszeitraum: ${dateText(first?.work_date)}${same(first?.work_date, last?.work_date) ? '' : ` bis ${dateText(last?.work_date)}`}<br>${group.orders.length} Arbeitsschein(e)</article></section><section class="pdf-execution"><b>Ausführung durch</b>${executionRows}</section><section class="pdf-section"><h2>Leistungen und Material</h2><table class="pdf-table"><thead><tr><th>Datum</th><th>Position / Ausführung</th><th class="number">Menge / Einheit</th><th class="number">Einzelpreis</th><th class="number">Gesamt</th></tr></thead><tbody>${itemRows}</tbody></table></section><div class="pdf-total"><b>Rechnungsbetrag</b><b>${money(total)}</b></div><p class="pdf-note">Diese Rechnung wurde automatisch aus ${group.orders.length} Arbeitsschein(en) erstellt.</p></main></body></html>`);
-    windowRef.document.close(); addPdfReturnBar(windowRef); return windowRef;
-  }
   function billingDayGroups(orders) {
     const groups = new Map();
     orders.forEach(order => {
@@ -1315,37 +1227,6 @@
       group.orders.push(order); groups.set(key, group);
     });
     return [...groups.values()].sort((left, right) => String(left.date).localeCompare(String(right.date)));
-  }
-  function printBillingPdf(key, invoiced) {
-    const group = invoiceGroups(invoiced).find(item => same(item.key, key)); if (!group) throw new Error('Die Abrechnung wurde nicht gefunden.');
-    const money = value => n(value).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
-    const dayGroups = billingDayGroups(group.orders);
-    const detailRows = dayGroups.map(day => {
-      const team = new Map();
-      day.orders.forEach(order => orderPeriods(order).forEach(period => {
-        const person = state.rows.people.find(row => same(row.id, period.employee_id));
-        const employeeName = period.employee_name || person?.display_name || person?.username || 'Mitarbeiter nicht verfügbar';
-        const employee = team.get(String(period.employee_id)) || { name: employeeName, shifts: [], hours: 0 };
-        employee.shifts.push(`${timeText(period.start_time)} bis ${timeText(period.end_time)} · Pause ${h(period.pause_hours)}`);
-        employee.hours += n(period.executed_hours); team.set(String(period.employee_id), employee);
-      }));
-      const teamRows = [...team.values()].map(employee => `<li><b>${escape(employee.name)}</b>: ${escape(employee.shifts.join(' / '))} · ${h(employee.hours)}</li>`).join('');
-      const documentations = day.orders.filter(order => String(order.documentation || '').trim()).map(order => {
-        const person = state.rows.people.find(row => same(row.id, order.employee_id));
-        return `<li><b>${escape(person?.display_name || person?.username || 'Mitarbeiter')}</b>: ${escape(order.documentation).replace(/\n/g, '<br>')}</li>`;
-      }).join('');
-      const rows = day.orders.flatMap(order => {
-        const items = state.rows.items.filter(item => same(item.work_order_id, order.id));
-        return items.map(item => {
-          const price = invoiceItemPrice(item, order), name = invoiceItemName(item, order);
-          return `<tr><td>${escape(name)}${isHourlyMaterial(name) ? '<span class="pdf-tag">Arbeitszeit</span>' : ''}${order.title ? `<small>${escape(order.title)}</small>` : ''}</td><td class="number">${n(item.quantity).toLocaleString('de-DE')} ${escape(itemUnit(item))}</td><td class="number">${money(price)}</td><td class="number">${money(n(item.quantity) * price)}</td></tr>`;
-        });
-      }).join('') || '<tr><td colspan="4" class="pdf-empty">Kein Material erfasst.</td></tr>';
-      return `<section class="pdf-section"><h2>${dateText(day.date)}</h2><div class="pdf-card"><span class="pdf-card-label">Mitarbeiter auf der Baustelle</span><ul style="margin:6px 0 0;padding-left:20px">${teamRows}</ul>${documentations ? `<br><b>Dokumentation</b><ul style="margin:6px 0 0;padding-left:20px">${documentations}</ul>` : ''}</div><table class="pdf-table"><thead><tr><th>Leistung / Material</th><th class="number">Menge / Einheit</th><th class="number">Einzelpreis</th><th class="number">Gesamt</th></tr></thead><tbody>${rows}</tbody></table></section>`;
-    }).join('');
-    const totalHours = group.orders.reduce((sum, order) => sum + orderHours(order), 0), totalMaterial = group.orders.reduce((sum, order) => sum + state.rows.items.filter(item => same(item.work_order_id, order.id)).reduce((itemSum, item) => itemSum + n(item.quantity) * invoiceItemPrice(item, order), 0), 0);
-    const windowRef = window.open('', '_blank'); if (!windowRef) throw new Error('Bitte Pop-ups erlauben, um die PDF zu erstellen.');
-    windowRef.document.write(`<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Arbeitsnachweis</title><style>${pdfStyles()}</style></head><body><main class="pdf-page">${pdfBrandHeader('Arbeitsnachweis', invoiced ? 'Bereits abgerechnet' : 'Offen zur Abrechnung')}<section class="pdf-grid"><article class="pdf-card"><span class="pdf-card-label">Kunde</span><b>${escape(group.customerName)}</b></article><article class="pdf-card"><span class="pdf-card-label">Übersicht</span>${group.orders.length} Arbeitsschein(e) · ${dayGroups.length} Einsatztag(e)<br>${h(totalHours)} Arbeitszeit</article></section>${detailRows}<div class="pdf-total"><b>Gesamtsumme</b><b>${money(totalMaterial)}</b></div><p class="pdf-note">Dieser Arbeitsnachweis fasst alle enthaltenen Arbeitsscheine je Einsatztag zusammen. Die beteiligten Mitarbeiter stehen gemeinsam unter dem jeweiligen Datum.</p></main><script>window.onload=()=>window.print()<\/script></body></html>`); windowRef.document.close(); addPdfReturnBar(windowRef);
   }
   function printOrderPdf(orderId) {
     const order = state.rows.orders.find(row => same(row.id, orderId)); if (!order) throw new Error('Der Arbeitsschein wurde nicht gefunden.');
@@ -1484,8 +1365,8 @@
     return `<section class="page-head"><div><span class="eyebrow">Persönliche Nachweise</span><h2>Belege</h2></div></section><section class="panel"><div class="actions">${receiptTabs(section)}</div><h3>${escape(title)}</h3>${body}</section>`;
   }
   function planningView() { return '<section class="page-head"><div><span class="eyebrow">Konzeptvorschau</span><h2>Planungsübersicht</h2></div></section><section class="panel"><h3>Planung wird erst nach Freigabe aktiviert</h3><p>Diese Ansicht ändert keine Aufträge und legt keine Termine an. Die vorgeschlagene Umsetzung steht unten als Konzept bereit.</p></section>'; }
-  function menuItems() { return [['home','Übersicht',true],['time','Zeiterfassung',canUse('time')],['orders','Arbeitsscheine',canUse('orders')],['calendar','Kalender',canUse('calendar')],['customers','Kunden',canUse('customers')],['receipts','Belege',true],['planning','Planungsübersicht',true],['mailbox','Postfach',true],['materials','Materialliste',isManager()],['shopping','Einkauf',isManager()||state.profile?.role==='employee'],['shopping-cart','Warenkorb ('+shoppingCartCount()+')',isManager()||state.profile?.role==='employee'],['invoices','Abrechnungen Kunden',isManager()],['invoices-paid','Abgerechnete Arbeitsscheine',isManager()],['settings','Einstellungen',true]].filter(([, , yes]) => yes); }
-  function viewHtml() { return ({ home: homeView, time: timeView, orders: ordersView, 'order-detail': orderDetailView, calendar: calendarView, customers: customersView, receipts: receiptsView, planning: planningView, mailbox: mailboxView, materials: materialsView, shopping: shoppingView, invoices: invoicesView, 'invoices-paid': paidInvoicesView, 'billing-detail': billingDetailView, settings: settingsView }[state.view] || homeView)(); }
+  function menuItems() { return [['home','Übersicht',true],['time','Zeiterfassung',canUse('time')],['orders','Arbeitsscheine',canUse('orders')],['calendar','Kalender',canUse('calendar')],['customers','Kunden',canUse('customers')],['receipts','Belege',true],['planning','Planungsübersicht',true],['mailbox','Postfach',true],['materials','Materialliste',isManager()],['shopping','Einkauf',isManager()||state.profile?.role==='employee'],['shopping-cart','Warenkorb ('+shoppingCartCount()+')',isManager()||state.profile?.role==='employee'],['settings','Einstellungen',true]].filter(([, , yes]) => yes); }
+  function viewHtml() { return ({ home: homeView, time: timeView, orders: ordersView, 'order-detail': orderDetailView, calendar: calendarView, customers: customersView, receipts: receiptsView, planning: planningView, mailbox: mailboxView, materials: materialsView, shopping: shoppingView, settings: settingsView }[state.view] || homeView)(); }
   function reportDateValid(value) {
     return /^\d{4}-\d{2}-\d{2}$/.test(String(value || '')) && Number.isFinite(Date.parse(value+'T12:00:00Z')) && new Date(value+'T12:00:00Z').toISOString().slice(0,10) === value;
   }
@@ -2015,8 +1896,7 @@
       if (!state.busy) perform('', refreshPlanningData);
       return;
     }
-    if (action === 'nav' && ['time', 'orders', 'invoices'].includes(button.dataset.view)) { syncPlanningIfVisible(); return; }
-    if (action === 'open-billing' || action === 'close-billing') { syncPlanningIfVisible(); return; }
+    if (action === 'nav' && ['time', 'orders'].includes(button.dataset.view)) { syncPlanningIfVisible(); return; }
     if (action === 'plan-refresh') { if (!state.busy) perform('Planung aktualisiert.', refreshPlanningData); return; }
     if (action === 'plan-week') { state.planWeek = addDate(planningWeekStart(), n(button.dataset.days)); state.planId = ''; state.planForm = false; render(); return; }
     if (action === 'plan-today') { state.planWeek = planningWeekStart(today()); state.planId = ''; state.planForm = false; render(); return; }
@@ -2111,31 +1991,20 @@
     if (event.target.matches('[data-date], [data-select="employee"], [data-select="business"]')) state.planPrefill = null;
     if (event.target.matches('[data-select="business"]')) { state.planId = ''; state.planForm = false; }
   }, true);
-  const billingSyncViews = new Set(['invoices', 'invoices-paid', 'billing-detail']);
-  const billingInteractionActive = () => state.menu || document.querySelector('dialog[open]') || root.querySelector('[data-ledger-form="cancel"]');
-  let planningSyncBusy = false, billingRenderPending = false;
+  let planningSyncBusy = false;
   async function syncPlanningIfVisible() {
-    const billing = billingSyncViews.has(state.view);
     if (!state.session || state.busy || planningSyncBusy || document.visibilityState === 'hidden') return;
-    if (billing ? billingInteractionActive() : !['planning', 'time', 'orders', 'home', 'calendar', 'settings'].includes(state.view)) return;
+    if (!['planning', 'time', 'orders', 'order-detail', 'home', 'calendar', 'settings'].includes(state.view)) return;
     planningSyncBusy = true;
+    const orderId = state.orderId;
+    const wasBilled = state.rows.orders.find(order => same(order.id, orderId))?.invoiced;
     try {
       const changed = await refreshPlanningData({ifChanged:true}) !== false;
-      if (billingSyncViews.has(state.view)) {
-        billingRenderPending ||= changed;
-        if (!billingRenderPending || state.busy || billingInteractionActive()) return;
-        const view = state.view, profile = state.profile?.id, company = businessId();
-        if (view === 'invoices-paid') await invoiceLedger?.load();
-        if (state.view !== view || state.profile?.id !== profile || businessId() !== company || state.busy || billingInteractionActive()) return;
-        billingRenderPending = false;
-        if (view === 'billing-detail' && state.billingMode === 'open' && !invoiceGroups(false).some(group => same(group.key, state.billingKey))) {
-          state.billingKey = '';
-          state.view = 'invoices';
-        }
+      if (!changed) return;
+      if (orderId && same(state.orderId, orderId) && wasBilled !== state.rows.orders.find(order => same(order.id, orderId))?.invoiced) {
         render();
         return;
       }
-      if (!changed) return;
       // Preserve focus and typed values while a manager edits a planning form.
       if (['time', 'orders'].includes(state.view)) updateDayPlanningPanels();
       else if (state.view === 'planning') {
@@ -2148,9 +2017,7 @@
   }
   window.setInterval(syncPlanningIfVisible, 20000);
   document.addEventListener('visibilitychange', syncPlanningIfVisible);
-  window.addEventListener('focus', () => {
-    if (billingSyncViews.has(state.view)) syncPlanningIfVisible();
-  });
+  window.addEventListener('focus', syncPlanningIfVisible);
 
   // Team orders are enabled only after the additive server migration is live.
   // A missing RPC never disables the existing single-employee workflow.
@@ -2397,14 +2264,6 @@
     reload=(current, ready)=>loadFeature(reloadBeforeLegalV900,legalFeature,'legal',current,ready);
     homeView=()=>homeBeforeLegalV900();
   }
-  const datevFeature=window.WorktimeDatev?.create({root,state,api,allRows,render:()=>render(),escape,isManager,businessId,managerBusiness,today});
-  if(datevFeature){
-    const menuBeforeDatev=menuItems,viewBeforeDatev=viewHtml,reloadBeforeDatev=reload,renderBeforeDatev=render;
-    menuItems=()=>{const items=menuBeforeDatev();if(isManager())items.splice(items.findIndex(row=>row[0]==='settings'),0,['datev','DATEV-Export',true]);return items;};
-    viewHtml=()=>state.view==='datev'?datevFeature.view()+(datevFeature.section()==='procedure'?(legalFeature?.accountingView()||''):''):viewBeforeDatev();
-    reload=(current, ready)=>loadFeature(reloadBeforeDatev,datevFeature,'datev',current,ready);
-    render=()=>{datevFeature.afterRender();renderBeforeDatev();};
-  }
   const renderBeforeNavigationV901=render;
   render=()=>{renderBeforeNavigationV901();navigationFeature?.afterRender();};
   // Real PDF snapshots replace the old reflowing HTML popups; no booking/finalization writes.
@@ -2433,17 +2292,6 @@
     const snapshot=structuredClone(data);
     return window.WorktimePdfViewer.open({title,filename,note,createBytes:async()=>{snapshot.logoBytes=await planningLogoBytes(snapshot.companyProfile);return window.DevicePdf[creator](snapshot);}});
   }
-  printInvoicePdf=group=>{
-    if(!isManager())throw new Error('Rechnungen können nur durch Administrator oder Geschäftskonto erstellt werden.');
-    const data=documentPdfModel(group?.orders||[],'invoice');
-    if(!window.WorktimeInvoiceTax)throw new Error('Die Steuerabfrage ist noch nicht geladen. Bitte die App neu öffnen.');
-    return window.WorktimeInvoiceTax.ask(data,tax=>openDocumentPdf({...data,tax},'Rechnungsvorschau',`Rechnung_${data.number}_${data.customer}.pdf`,'createInvoice','Vorschau – keine automatische Abrechnung.'));
-  };
-  printBillingPdf=(key,invoiced)=>{
-    const group=invoiceGroups(invoiced).find(item=>same(item.key,key));if(!group)throw new Error('Die Abrechnung wurde nicht gefunden.');
-    const data=documentPdfModel(group.orders);data.subtitle=invoiced?'Bereits abgerechnet':'Offen zur Abrechnung';
-    return openDocumentPdf(data,'Arbeitsnachweis',`Arbeitsnachweis_${data.customer}.pdf`,'createWorkReport','Alle ausgewählten Arbeitsscheine, nach Einsatztag zusammengefasst.');
-  };
   printOrderPdf=id=>{
     const order=state.rows.orders.find(row=>same(row.id,id));if(!order)throw new Error('Der Arbeitsschein wurde nicht gefunden.');
     const data=documentPdfModel([order]);data.subtitle=dateText(order.work_date);
@@ -2469,7 +2317,7 @@
   const businessFeature=window.WorktimeBusiness?.create({root,state,allRows,api,perform,escape,isManager,workerId,worker,workers,businessId,today,h,recordedPeriods,schoolPeriods,notice,render:()=>render()});
   if(businessFeature){
     const menusBeforeBusiness=menuItems,renderBeforeBusiness=render,reloadBeforeBusiness=reload,planningBeforeBusiness=refreshPlanningData;
-    menuItems=()=>menusBeforeBusiness().filter(item=>!['time','receipts'].includes(item[0])).map(item=>item[0]==='invoices'?[item[0],'Noch offene Arbeitsscheine',item[2]]:item[0]==='invoices-paid'?[item[0],'Erstellte Rechnungen',item[2]]:item);
+    menuItems=()=>menusBeforeBusiness().filter(item=>!['time','receipts'].includes(item[0]));
     settingsView=()=>businessFeature.settings(settingsBeforeWorkweekV905());
     reload=(current, ready)=>loadFeature(reloadBeforeBusiness,businessFeature,'businessRules',current,ready);
     refreshPlanningData=async(...args)=>{const result=await planningBeforeBusiness(...args);if(result!==false)await businessFeature.load();return result;};
@@ -2497,24 +2345,6 @@
     menuItems=()=>{const items=oldMenu();return isManager()?[...items,['catalogs','Katalog hinzufügen'],['supplier-catalogs','Fachhändler Kataloge']]:items;};
     viewHtml=()=>['catalogs','supplier-catalogs'].includes(state.view)&&isManager()?catalogWizard.view():oldView();
     render=()=>{oldRender();catalogWizard.mount();};
-  }
-  const openOrderTools=window.WorktimeOpenOrderTools?.create({root,state,render:()=>render(),reload:()=>reload(),businessId,isManager,deleteOrder:deleteWorkOrderCompletely,
-    getOpenOrders:()=>state.rows.orders.filter(order=>orderInCurrentBusiness(order)&&!order.invoiced&&(!order.work_kind||order.work_kind==='customer')),
-    markOrder:async order=>{await snapshotCurrentPrices([order]);const saved=await write('work_orders',{invoiced:true},'PATCH','id=eq.'+encodeURIComponent(order.id));if(!Array.isArray(saved)||!saved.some(row=>same(row.id,order.id)&&row.invoiced===true))throw Error('Der Abschluss wurde von der Datenbank nicht bestätigt. Bitte die Arbeitsscheine neu laden.');}});
-  if(openOrderTools){const renderBeforeOpenTools=render;render=()=>{renderBeforeOpenTools();openOrderTools.mount();};}
-  const invoiceLedger=window.WorktimeInvoiceLedger?.create({root,state,api,allRows,render:()=>render(),reload:()=>reload(),isManager,businessId,today,escape,getCompanyDetails:()=>legalFeature?.getCompanyDetails?.()||null,askTax:(data,accept,options)=>window.WorktimeInvoiceTax.ask(data,accept,options),openPdf:openDocumentPdf,scopeOrder:orderInCurrentBusiness});
-  if(invoiceLedger){
-    const reloadBeforeLedger=reload,viewBeforeLedger=viewHtml,renderBeforeLedger=render;
-    reload=(current, ready)=>loadFeature(reloadBeforeLedger,invoiceLedger,'ledger',current,ready);
-    paidInvoicesView=()=>invoiceLedger.view();
-    viewHtml=()=>state.view==='invoice-draft'?invoiceLedger.draftView():viewBeforeLedger();
-    printInvoicePdf=group=>invoiceLedger.start(group?.orders||[]);
-    render=()=>{invoiceLedger.afterRender();renderBeforeLedger();for(const button of root.querySelectorAll('[data-action="mark-invoice-order"],[data-action="mark-invoice-group"]'))button.remove();const billingButtons=root.querySelectorAll('[data-action="open-billing"]'),groupsByKey=billingButtons.length?new Map(invoiceGroups(false).map(g=>[g.key,g])):new Map();for(const button of billingButtons){const group=groupsByKey.get(button.dataset.key),order=group?.orders.length===1?group.orders[0]:null;if(order?.invoice_reopened_from_v908){button.insertAdjacentHTML('beforeend',invoiceLedger.badge(order));button.dataset.action='open-order';button.dataset.id=order.id;}}};
-    root.addEventListener('click',event=>{const button=event.target.closest('[data-action]');if(!button||!['invoice-order','invoice-group','mark-invoice-order','mark-invoice-group'].includes(button.dataset.action))return;event.preventDefault();event.stopImmediatePropagation();if(state.busy||!isManager())return;
-      const action=button.dataset.action,group=invoiceGroups(false).find(g=>action.endsWith('order')?g.orders.some(o=>o.id===button.dataset.id):g.key===state.billingKey);if(!group)return;
-      chooseBillingOrders(group,'invoice',button.dataset.id||'').then(selected=>selected&&invoiceLedger.start(selected.orders)).catch(error=>{notice(error.message,true);render();});
-    },true);
-    root.addEventListener('click',event=>{const button=event.target.closest('[data-action="nav"]');if(button?.dataset.view==='invoices-paid')invoiceLedger.load().then(()=>{if(state.view==='invoices-paid')render();});});
   }
   const articleTools=window.WorktimeArticleTools?.create({root,state,businessId,api,selectedNeugartAccount:()=>neugartAccounts?.selectedAccount()||'',shoppingProvider:()=>activeShoppingProvider()});
   const beforeArticleTools=render;render=()=>{beforeArticleTools();articleTools?.afterRender();};

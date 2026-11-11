@@ -40,9 +40,9 @@ async function main(){
     });
     await form().locator('[name="title"]').fill('Synthetischer Test ohne Speichern');
     await form().locator('[data-offer-name]').fill('Testartikel mit längerer Bezeichnung');
-    await test('Selected material anchors its slider and shows explicit net/gross labels',async()=>{
+    await test('Selected material anchors its slider and shows explicit net prices',async()=>{
       const slider=form().locator('[data-offer-price-slider]');assert.equal(await slider.getAttribute('min'),'11.106');assert.equal(await slider.getAttribute('max'),'13.574');
-      assert.match(await form().locator('.offer-net-price').innerText(),/Netto-Verkaufspreis/);assert.match(await form().locator('[data-offer-price-gross]').innerText(),/14,68.*19 %.*Vorschau/);
+      assert.match(await form().locator('.offer-net-price').innerText(),/Netto-Verkaufspreis/);assert.equal(await form().locator('[data-offer-price-gross]').count(),0);
     });
     await test('Dragging keeps the selected fine band stable and does not replace the focused input',async()=>{
       const bounds=await form().locator('[data-offer-price-slider]').evaluate(el=>[el.min,el.max]);
@@ -63,14 +63,16 @@ async function main(){
     }
     await test('Pauschal categories use cent steps and stay responsive without invalid fractional prices',async()=>{
       await page.setViewportSize({width:390,height:844});await form().locator('[name="offer_kind"]').selectOption('fixed');const slider=form().locator('[data-offer-category-slider]');assert.equal(await slider.getAttribute('step'),'0.01');
-      await slider.evaluate(el=>{el.value=String(Number(el.value)+.01);el.dispatchEvent(new Event('input',{bubbles:true}));});assert.equal(await form().locator('[data-offer-category-price]').evaluate(el=>el.validity.stepMismatch),false);assert.match(await form().locator('[data-offer-category-gross]').innerText(),/Brutto/);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth+1));
+      await slider.evaluate(el=>{el.value=String(Number(el.value)+.01);el.dispatchEvent(new Event('input',{bubbles:true}));});assert.equal(await form().locator('[data-offer-category-price]').evaluate(el=>el.validity.stepMismatch),false);assert.equal(await form().locator('[data-offer-category-gross]').count(),0);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth+1));
     });
     await test('Opening a historic gross offer converts only the edit draft with a visible warning',async()=>{
       await page.evaluate(()=>{const h=window.__offersHarness;h.state.rows.offers=[{id:'historic',revision:3,business_id:h.state.profile.id,customer_name:'Altkunde',customer_snapshot:{postal_code:'53343'},offer_date:'2026-01-21',title:'Altangebot',status:'draft',items:[{kind:'material',name:'Altartikel',quantity:2,unit_price:119}],offer_config:{kind:'itemized',tax_choice:{basis:'gross',mode:'standard',confirmed:true,overrides:{},reasons:{}}}}];h.state.offerId='historic';h.render();});
-      assert.equal(Number(await form().locator('[data-offer-price]').inputValue()),100);assert.match(await page.locator('.notice').innerText(),/gespeicherte Angebot und sein PDF bleiben.*unverändert/);assert.equal(await page.evaluate(()=>window.__offersHarness.state.rows.offers[0].items[0].unit_price),119);assert.match(await form().locator('[data-offer-price-gross]').innerText(),/119,00.*19 %/);
+      assert.equal(Number(await form().locator('[data-offer-price]').inputValue()),100);assert.match(await page.locator('.notice').innerText(),/gespeicherte Angebot und sein PDF bleiben.*unverändert/);assert.equal(await page.evaluate(()=>window.__offersHarness.state.rows.offers[0].items[0].unit_price),119);assert.equal(await form().locator('[data-offer-price-gross]').count(),0);
     });
-    await test('Net input basis is fixed in the actual tax dialog',async()=>{
-      await form().locator('button.primary').click();const dialog=page.locator('.invoice-tax-dialog');await dialog.waitFor();assert.equal(await dialog.locator('[name="basis"]').inputValue(),'net');assert.equal(await dialog.locator('[name="basis"]').isDisabled(),true);await dialog.locator('[data-tax-cancel]').click();
+    await test('Offers leave tax review to Klarwerk',async()=>{
+      assert.equal(await form().locator('[name="vat_rate"]').getAttribute('type'),'hidden');
+      assert.equal(await form().locator('[data-offer-tax]').count(),0);
+      assert.match(await form().locator('.offer-tax-note').innerText(),/Klarwerk/);
     });
     assert.deepEqual(errors,[]);await context.close();console.log(JSON.stringify({passed,productionWrites:0,externalRequests:0,viewports:5}));
   }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}

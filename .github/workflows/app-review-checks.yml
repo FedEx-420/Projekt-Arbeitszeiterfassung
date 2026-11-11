@@ -34,12 +34,8 @@ jobs:
           node tests/team/navigation-v901.test.cjs
           node tests/team/finance-v1000.test.cjs
           node tests/team/no-finance-browser-v1003.test.cjs
-      - name: Invoice price and bulk work-order interfaces
+      - name: Juprowa work-order material export
         run: |
-          node tests/team/invoice-auto-browser-v934.test.cjs
-          node tests/team/invoice-fixed-browser-v984.test.cjs
-          node tests/team/invoice-suppliers-browser-v922.test.cjs
-          node tests/team/open-order-tools-browser-v934.test.cjs
           node tests/team/juprowa-material-browser-v1009.test.cjs
 
       - name: Invoice and work-order rules in disposable databases

@@ -60,6 +60,28 @@ async function main(){
  const link=await manage(ids.business,ids.business,'pair',{pair_hash:H,label:'Synthetic Klarwerk'});
  await test('one-use exchange and current-authority checks',async()=>{const c=await dispatch(H,'exchange',{token_hash:T,account_label:'Synthetic A'});assert.equal(c.company.id,ids.business);await assert.rejects(dispatch(H,'exchange',{token_hash:U}));await assert.rejects(dispatch(U,'company'));});
  await test('company data stays scoped even when payload requests another company',async()=>{const company=await dispatch(T,'company',{company:ids.otherBusiness});assert.equal(company.company.id,ids.business);const customers=await dispatch(T,'list',{entity:'customers'});assert.ok(customers.every(x=>x.id!==ids.otherCustomer));const orders=await dispatch(T,'list',{entity:'orders'});assert.ok(orders.some(x=>x.id===order.id));});
+ await test('legacy grants require explicit offer scope, with company isolation and revocation', async()=>{
+  await db.exec('alter table public.offers add column offer_config jsonb');
+  const file=fs.readdirSync(path.resolve(__dirname,'../../supabase/migrations')).find(name=>name.endsWith('_klarwerk_offer_scope_v1009.sql'));
+  await db.exec(fs.readFileSync(file?path.resolve(__dirname,'../../supabase/migrations',file):path.resolve(__dirname,'../../../klarwerk-offer-scope-v1009.sql'),'utf8'));
+  for(const [actor,company,id] of [['business',ids.business,uuid(1300)],['otherBusiness',ids.otherBusiness,uuid(1301)]]){
+   await f.actor(actor);
+   await db.query("insert into public.offers(id,business_id,created_by,offer_number,customer_name,title,items) values($1,$2,$2,'','Fiktiver Kunde','Prüfangebot','[{\"kind\":\"material\",\"name\":\"Testposition\",\"quantity\":1,\"unit_price\":100}]')",[id,company]);
+  }
+  await f.admin();
+  assert.equal((await dispatch(T,'company')).offers_allowed,false);
+  await assert.rejects(dispatch(T,'list',{entity:'offers'}));
+  await assert.rejects(manage(ids.anna,ids.business,'offer-scope',{id:link.id,enabled:true}));
+  await assert.rejects(manage(ids.otherBusiness,ids.otherBusiness,'offer-scope',{id:link.id,enabled:true}));
+  await manage(ids.business,ids.business,'offer-scope',{id:link.id,enabled:true});
+  assert.equal((await dispatch(T,'company')).offers_allowed,true);
+  assert.deepEqual((await dispatch(T,'list',{entity:'offers',company:ids.otherBusiness})).map(row=>row.id),[uuid(1300)]);
+  assert.deepEqual(await dispatch(T,'list',{entity:'offers',id:uuid(1301)}),[]);
+  assert.equal((await dispatch(T,'list',{entity:'offers',id:uuid(1300)}))[0].revision,1);
+  await manage(ids.business,ids.business,'offer-scope',{id:link.id,enabled:false});
+  await assert.rejects(dispatch(T,'list',{entity:'offers'}));
+  assert.equal((await dispatch(T,'company')).company.id,ids.business);
+ });
  let prepared=await dispatch(T,'rpc',{name:'prepare_invoice_batch_v922',args:{p_company:ids.otherBusiness,p_order_ids:[order.id],p_prices:{},p_sources:{}}});
  const args={p_id:uuid(1007),p_company:ids.otherBusiness,p_issued:'2026-10-17',p_selection:prepared.selection,p_tax:taxFor(prepared.document),p_parties:parties,p_prices:{},p_sources:{},p_engine:922};let saved;
  await test('native finalization keeps source prices, numbering and invoice locks, with exact retries',async()=>{saved=await dispatch(T,'rpc',{name:'issue_invoice_auto_v934',args});assert.equal(saved.company_id,ids.business);assert.equal((await dispatch(T,'rpc',{name:'issue_invoice_auto_v934',args})).id,saved.id);await assert.rejects(dispatch(T,'rpc',{name:'issue_invoice_auto_v934',args:{...args,p_id:uuid(1008)}}));assert.equal((await db.query('select invoiced from work_orders where id=$1',[order.id])).rows[0].invoiced,true);});

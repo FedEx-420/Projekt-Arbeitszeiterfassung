@@ -391,3 +391,8 @@ JUPROWA ARBEITSSCHEINABGLEICH
 [ ] Neuen Arbeitsschein aus der Arbeitszeiterfassung mit Auftrag, Arbeiten, Zeiten, Material, Unterschrift und Anhängen vollständig in Juprowa anlegen und abschließen.
 [ ] Firmen- und Rollenrechte, geänderte Zielversionen, Teilausfälle, Wiederholung und parallele Abschlüsse mit fiktiven Daten prüfen. Der Juprowa-Status wird getrennt vom Abrechnungsstatus geführt.
 [ ] Beim Juprowa-Abruf Auftragsdaten, Zeiten, Materialpositionen, Berichte, Unterschrift und Anhänge übernehmen. Preisfelder, Rabatte und Summen aus der Quelle auslassen. Fehlende Preise in der Arbeitszeiterfassung als offen behandeln.
+
+KLARWERK-MENÜS UND ANGEBOTE v1010
+[x] Automatischen Abgleich für Rechnungen, Einkaufsbelege und Angebote in den regulären Klarwerk-Menüs integrieren. Kontoverbindung in den Einstellungen verwalten.
+[x] Angebote in Arbeitszeiterfassung erstellen und bearbeiten. In Klarwerk die gespeicherte Fassung steuerlich prüfen, freigeben und mit geprüftem PDF als E-Mail-Entwurf vorbereiten.
+[x] Angebotsumfang pro Verbindung bestätigen, Firmen- und Revisionsgrenzen sowie den PDF-Anhang mit isolierten Daten prüfen.

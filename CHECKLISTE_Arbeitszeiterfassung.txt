@@ -390,3 +390,4 @@ JUPROWA ARBEITSSCHEINABGLEICH
 [ ] Bestehenden Juprowa-Schein aus der Arbeitszeiterfassung bearbeiten und abschließen. Juprowa-Abschluss und Datenübernahme am Ziel bestätigen.
 [ ] Neuen Arbeitsschein aus der Arbeitszeiterfassung mit Auftrag, Arbeiten, Zeiten, Material, Unterschrift und Anhängen vollständig in Juprowa anlegen und abschließen.
 [ ] Firmen- und Rollenrechte, geänderte Zielversionen, Teilausfälle, Wiederholung und parallele Abschlüsse mit fiktiven Daten prüfen. Der Juprowa-Status wird getrennt vom Abrechnungsstatus geführt.
+[ ] Beim Juprowa-Abruf Auftragsdaten, Zeiten, Materialpositionen, Berichte, Unterschrift und Anhänge übernehmen. Preisfelder, Rabatte und Summen aus der Quelle auslassen. Fehlende Preise in der Arbeitszeiterfassung als offen behandeln.

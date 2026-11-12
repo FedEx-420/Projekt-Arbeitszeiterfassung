@@ -1,4 +1,4 @@
-const CACHE = 'worktime-v1011';
+const CACHE = 'worktime-v1012';
 const FILES = ['./','./index.html','./styles-v700.css','./responsive-v701.css','./navigation-v710.css','./menu-v720.css','./calendar-v800.css?v=2','./home-v827.css?v=3','./signature-v828.css?v=2','./planned-orders-v855.css','./offers-v857.css?v=908','./material-units-v860.css','./vendor/pdf-lib-1.17.1.min.js','./planning-pdf.js?v=854','./documents-pdf-v857.js?v=908','./offers-v857.js?v=908','./app-v800.js?v=908','./receipt-pdf-v863-1.js','./arrival-timer-v865.js?v=875','./iphone-shortcuts-v870.js','./iphone-shortcuts-v870.css','./owntracks-v871.js?v=908','./owntracks-v871.css?v=906','./device-features-v863.js?v=964','./device-features-v863.css?v=873','./config.js?v=875','./manifest.webmanifest','./icon.svg'];
 FILES.push('./presentation-v900.css','./platform-v900.js','./guidance-v900.js?v=907','./help-topics-v900.js','./navigation-v901.js?v=908','./navigation-v901.css');
 FILES.push('./legal-templates-v900.js','./legal-v900.js');
@@ -6,7 +6,7 @@ FILES.push('./safe-area-v902.css');
 FILES.push('./datev-format-v907.js','./datev-v907.js','./datev-v907.css','./help-topics-v900.js?v=907');
 FILES.push('./billing-selection-v906.js','./billing-selection-v906.css','./business-readiness-v906.js','./business-readiness-v906.css','./legal-v900.js?v=906');
 FILES.push('./business-rules-v908.js','./business-v908.js','./business-v908.css','./mailbox-rules-v908.js','./mailbox-v908.js','./mailbox-v908.css','./catalog-format-v908.js','./catalog-ui-v908.js','./catalog-ui-v908.css','./invoice-ledger-ui-v908.js','./invoice-ledger-ui-v908.css','./offer-model-v908.js','./offer-pdf-v908.js');
-FILES.push('./invoice-tax-v905.js','./invoice-tax-v905.css','./pdf-viewer-v904.js','./pdf-viewer-v904.css','./vendor/pdfjs-6.4.299/pdf.mjs','./vendor/pdfjs-6.4.299/pdf.worker.mjs');
+FILES.push('./invoice-tax-v905.js','./pdf-viewer-v904.js','./pdf-viewer-v904.css','./vendor/pdfjs-6.4.299/pdf.mjs','./vendor/pdfjs-6.4.299/pdf.worker.mjs');
 FILES.push(...['LiberationSans-Regular.ttf','LiberationSans-Bold.ttf','LiberationSans-Italic.ttf','LiberationSans-BoldItalic.ttf'].map(name=>'./vendor/pdfjs-6.4.299/standard_fonts/'+name));
 // Keep the previous shared assets, but cache the exact v909 invoice entry points.
 for(let index=0;index<FILES.length;index++){
@@ -185,4 +185,4 @@ for (let i = FILES.length - 1; i >= 0; i--) {
 }
 
 // Used only to preserve the net conversion of historically gross-priced offers.
-FILES.push('./invoice-tax-v905.js?v=909');
+FILES.push('./invoice-tax-v905.js?v=1012');

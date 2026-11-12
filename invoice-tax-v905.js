@@ -10,8 +10,6 @@
     reverse:{label:'Steuer schuldet der Kunde - Bauleistung',rate:0,law:'§ 13b Abs. 2 Nr. 4 und Abs. 5 UStG; § 14a Abs. 5 UStG',url:LAW+'__13b.html',help:'Kein 0-%-Steuersatz. Nur bei erfüllten Voraussetzungen für die Steuerschuldnerschaft des Leistungsempfängers, insbesondere einem nachhaltig Bauleistungen erbringenden Empfänger. Geeigneten Nachweis prüfen, ggf. USt 1 TG.'},
     exempt:{label:'Andere Steuerbefreiung / Sonderfall',rate:0,law:'Individuelle Rechtsgrundlage erforderlich',url:LAW+'__4.html',help:'Keine pauschale Befreiung. Den genauen Paragraphen, Absatz, gegebenenfalls Nummer und den tatsächlichen Grund mit Steuerberatung klären und unten angeben.'}
   };
-  const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const euro=value=>(value/100).toLocaleString('de-DE',{style:'currency',currency:'EUR'});
   function calculate(items,choice){
     if(!choice||!['net','gross'].includes(choice.basis)||!rules[choice.mode]||choice.confirmed!==true)throw Error('Bitte Preisbasis, Steuerbehandlung und Bestätigung vollständig angeben.');
     const groups=new Map(),notes=new Map();
@@ -28,34 +26,5 @@
     });
     return {version:905,checkedAt:'2026-10-16',basis:choice.basis,lines,groups:[...groups.values()],notes:[...notes.values()],net:lines.reduce((s,l)=>s+l.net,0),vat:lines.reduce((s,l)=>s+l.vat,0),gross:lines.reduce((s,l)=>s+l.gross,0)};
   }
-  function ask(data,accept,settings={}){
-    const allowedBasis=(settings.allowedBasis||['net','gross']).filter(value=>['net','gross'].includes(value));
-    const fixedBasis=allowedBasis.length===1?allowedBasis[0]:null;
-    const previous=document.activeElement,dialog=document.createElement('dialog');dialog.className='invoice-tax-dialog';dialog.setAttribute('aria-label','Umsatzsteuer für die Rechnung');
-    const options=Object.entries(rules).map(([key,rule])=>`<option value="${key}">${esc(rule.label)}</option>`).join('');
-    dialog.innerHTML=`<form novalidate><header><h2>Umsatzsteuer prüfen</h2><p>${esc(data.customer)} · ${data.items.length} Position(en)</p></header><p>Vor jeder neuen Rechnung bitte bewusst auswählen. Die App entscheidet nicht, ob eine Steuervergünstigung rechtlich zutrifft.</p><label>Preise in der Materialliste sind …<select name="basis" required><option value="">Bitte auswählen</option><option value="net">Nettopreise - Umsatzsteuer ggf. zusätzlich</option><option value="gross">Bruttopreise - Umsatzsteuer ggf. enthalten</option></select></label><label>Steuerbehandlung für die Rechnung<select name="mode" required><option value="">Bitte auswählen</option>${options}</select></label><details><summary>Abweichende Steuer je Position (gemischte Rechnung)</summary>${data.items.map((item,i)=>`<label>${i+1}. ${esc(item.name)}<select data-tax-line="${i}"><option value="">Wie Rechnung</option>${options}</select></label>`).join('')}</details><section data-tax-help></section><div class="tax-reasons">${Object.entries(rules).filter(([key])=>key!=='standard').map(([key,rule])=>`<label data-reason-box="${key}" hidden>${key==='exempt'?'Genauer Paragraph und Grund':esc(rule.label)+' - Voraussetzungen / Nachweis'}<textarea data-tax-reason="${key}" maxlength="1800" rows="3"></textarea></label>`).join('')}</div><p class="tax-confirm"><label><input type="checkbox" name="confirmed" required> Ich habe die steuerliche Einordnung und die Preisbasis geprüft. Bei Zweifeln kläre ich sie mit meiner Steuerberatung.</label></p><output data-tax-total></output><p class="tax-status" role="alert"></p><footer><button type="button" data-tax-cancel>Abbrechen</button><button type="submit" class="primary">PDF mit diesen Steuerangaben erstellen</button></footer><small>Hinweise recherchiert am 16.10.2026. Keine Steuerberatung und keine Rechtskonformitätsgarantie. Eine PDF allein ist keine strukturierte E-Rechnung; zusätzliche Rechnungspflichten bleiben zu prüfen.</small></form>`;
-    const form=dialog.querySelector('form'),status=dialog.querySelector('.tax-status');
-    if(fixedBasis){
-      for(const option of [...form.elements.basis.options])if(option.value!==fixedBasis)option.remove();
-      form.elements.basis.value=fixedBasis;
-      const label=form.elements.basis.closest('label');label.firstChild.textContent='Preisbasis: ausschließlich Nettopreise';
-      const help=document.createElement('p');help.className='device-help';help.textContent='Die Material- und Stundenpreise sind ohne Umsatzsteuer eingegeben. Der Bruttobetrag wird aus der gewählten Steuerbehandlung automatisch berechnet.';label.after(help);
-    }else if(allowedBasis.includes(settings.basis))form.elements.basis.value=settings.basis;
-    const close=()=>{dialog.close();dialog.remove();previous?.focus?.();};
-    const values=()=>({basis:fixedBasis||form.elements.basis.value,mode:form.elements.mode.value,confirmed:form.elements.confirmed.checked,overrides:Object.fromEntries([...form.querySelectorAll('[data-tax-line]')].map(el=>[el.dataset.taxLine,el.value])),reasons:Object.fromEntries([...form.querySelectorAll('[data-tax-reason]')].map(el=>[el.dataset.taxReason,el.value]))});
-    const update=()=>{
-      const value=values(),used=new Set(data.items.map((_,i)=>value.overrides[i]||value.mode));
-      const openHelp=new Set([...dialog.querySelectorAll('[data-tax-help-code][open]')].map(el=>el.dataset.taxHelpCode));dialog.querySelector('[data-tax-help]').innerHTML=[...used].filter(code=>rules[code]).map(code=>`<details class="tax-help" data-tax-help-code="${code}" ${openHelp.has(code)?'open':''}><summary>ⓘ ${esc(rules[code].label)} - Hilfe</summary><p>${esc(rules[code].help)}</p><p><a href="${rules[code].url}" target="_blank" rel="noopener">${esc(rules[code].law)} öffnen</a></p>${code==='pv'?'<a href="https://www.bundesfinanzministerium.de/Content/DE/FAQ/foerderung-photovoltaikanlagen" target="_blank" rel="noopener">BMF: Photovoltaik-Fragen und Antworten</a>':''}</details>`).join('');
-      for(const box of dialog.querySelectorAll('[data-reason-box]')){box.hidden=!used.has(box.dataset.reasonBox);box.querySelector('textarea').required=!box.hidden;}
-      for(const el of form.querySelectorAll('[aria-invalid]'))if(el.checkValidity()){el.removeAttribute('aria-invalid');el.classList.remove('field-error');}if(form.checkValidity())status.textContent='';
-      try{const totals=calculate(data.items,{...value,confirmed:true});dialog.querySelector('[data-tax-total]').textContent='Netto '+euro(totals.net)+' · Umsatzsteuer '+euro(totals.vat)+' · Gesamt '+euro(totals.gross);}catch{dialog.querySelector('[data-tax-total]').textContent='Bitte die Steuerangaben vervollständigen.';}
-    };
-    form.addEventListener('change',update);form.addEventListener('input',event=>{if(event.target.matches('[data-tax-reason]')){event.target.classList.remove('field-error');event.target.removeAttribute('aria-invalid');}});
-    form.addEventListener('submit',event=>{event.preventDefault();const invalid=[...form.elements].filter(el=>el.willValidate&&!el.checkValidity());if(invalid.length){invalid.forEach(el=>{el.classList.add('field-error');el.setAttribute('aria-invalid','true');});invalid[0].focus();status.textContent='Bitte die rot markierten Pflichtfelder ergänzen.';return;}
-      try{const tax=calculate(data.items,values());accept(tax);close();}catch(error){status.textContent=error.message;}
-    });
-    dialog.querySelector('[data-tax-cancel]').addEventListener('click',close);dialog.addEventListener('cancel',event=>{event.preventDefault();close();});document.body.append(dialog);dialog.showModal();form.elements.basis.focus();
-    return {actualPdf:true,setNote(){},close};
-  }
-  window.WorktimeInvoiceTax={rules,calculate,ask};
+  window.WorktimeInvoiceTax={rules,calculate};
 })();

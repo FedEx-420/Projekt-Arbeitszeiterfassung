@@ -10,19 +10,28 @@ export async function scanSupplier(job, portal, rpc, upload, now = Date.now) {
     page: 1,
     row: 0,
     document: 0,
-    issue: null,
+    issues: {},
     ...job.cursor_data
   };
   const scope = {provider: job.provider, account_id: job.account_id, lease: job.lease};
   const act = (op, data) => rpc(op, {...scope, ...data});
   const listing = await portal.page(cursor.page, cursor.from, cursor.to);
+  if (!cursor.row && !cursor.document) {
+    for (const [reason, count] of Object.entries(listing.issues || {})) {
+      cursor.issues[reason] = (cursor.issues[reason] || 0) + count;
+    }
+  }
+  const failed = error => {
+    if (error.code !== 'document') throw error;
+    const reason = error.reason || 'document-metadata';
+    cursor.issues[reason] = (cursor.issues[reason] || 0) + 1;
+  };
   let added = 0;
   let processed = 0;
   while (cursor.row < listing.rows.length && now() < deadline && processed++ < 12) {
     const row = listing.rows[cursor.row];
     const documents = await portal.documents(row).catch(error => {
-      if (error.code !== 'document') throw error;
-      cursor.issue = 'document';
+      failed(error);
       return [];
     });
     while (cursor.document < documents.length) {
@@ -41,8 +50,7 @@ export async function scanSupplier(job, portal, rpc, upload, now = Date.now) {
         added++;
       } catch (error) {
         // Preserve the rest of the import if the portal cannot supply a particular file.
-        if (error.code !== 'document') throw error;
-        cursor.issue = 'document';
+        failed(error);
       }
     }
     cursor.row++;
@@ -50,6 +58,6 @@ export async function scanSupplier(job, portal, rpc, upload, now = Date.now) {
   }
   if (cursor.row < listing.rows.length) return {result:'continue', cursor, added};
   if (listing.more) return {result:'continue', cursor:{...cursor, page:cursor.page + 1, row:0}, added};
-  if (cursor.issue) return {result:cursor.issue, cursor:{}, added};
+  if (Object.keys(cursor.issues).length) return {result:'document', cursor:{}, added, issues:cursor.issues};
   return {result:'complete', cursor:{}, added};
 }

@@ -406,3 +406,9 @@ KLARWERK-ABRECHNUNG v1011
 GROSSHÄNDLERBELEGE UND KLARWERK
 [x] Rechnungs- und Lieferschein-PDFs über die gespeicherten Neugart- und FiF-Webportalzugänge abrufen. Abruf nur bei aktiver Firmenverbindung, Originaldateien privat speichern und Wiederholungen anhand von Portalreferenz und Dateihash erkennen. Isoliert und mit vorhandenen Händleroriginalen geprüft.
 [ ] Klarwerk-Ansicht für Liefernachweise und weitere Originale auf der Produktionswebsite veröffentlichen. Rechnungen erscheinen bereits im bestehenden Klarwerk-Belegeingang. Die erweiterte Ansicht und die Zuordnung sind im isolierten Browsertest geprüft.
+
+ARBEITSZEITERFASSUNG ALS ERFASSUNGSAPP v1013
+[x] Klarwerk öffnet aus der Rechnungstabelle das eigene Formular mit Kunde, Arbeitsstunden und Material. Entwurf und Freigabe sind getrennt. Mit isolierten Browserdaten geprüft.
+[x] Zeit-App auf Übersicht, Zeiterfassung, Arbeitsscheine, zugehörige Kundendaten und Kontoeinstellungen beschränkt. Alte Rechnungsansicht, Arbeitszeit-Altversionen und OCR-Dateien entfernt; unnötige Module aus Pages und dem Offline-Cache ausgeschlossen.
+[x] Verbindung auf Kunden und Arbeitsscheine mit Positionen begrenzt; Rechnungs-, DATEV- und Steueroperationen erfordern Klarwerk. Tests mit synthetischen Betrieben.
+[ ] Produktiven Ablauf mit einem verbundenen Betrieb abnehmen. Für eine endgültige Löschung historischer Geschäftsdatensätze zuerst Bestand und Aufbewahrung eindeutig klären.

@@ -9,11 +9,10 @@ function clean(x:any):any{if(Array.isArray(x))return x.map(clean);if(!x||typeof 
 async function rpc(name:string,body:any){const r=await fetch(url+'/rest/v1/rpc/'+name,{method:'POST',headers:{apikey:key,Authorization:'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify(body)});const data=await r.json();if(!r.ok)throw Object.assign(Error(data.message||'Verbindung abgewiesen.'),{status:r.status===401||r.status===403?403:400});return clean(data)}
 Deno.serve(async(req:Request)=>{const origin=req.headers.get('origin')||'',headers:any={'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'};if(origin&&allowed.has(origin))Object.assign(headers,{'Access-Control-Allow-Origin':origin,'Vary':'Origin','Access-Control-Allow-Headers':'authorization,apikey,content-type,x-client-info,x-klarwerk-key','Access-Control-Allow-Methods':'POST,OPTIONS'});const respond=(x:any,status=200)=>new Response(JSON.stringify(x),{status,headers});
 try{if(origin&&!allowed.has(origin))return respond({error:'Herkunft nicht freigegeben.'},403);if(req.method==='OPTIONS')return new Response(null,{status:204,headers});if(req.method!=='POST')return respond({error:'POST erforderlich.'},405);const text=await req.text();if(text.length>2200000)return respond({error:'Anfrage zu groß.'},413);const body=JSON.parse(text),action=body.action;
-if(['pair','links','revoke','offer-scope','receipt-create','receipt-complete'].includes(action)){
+if(['pair','links','revoke'].includes(action)){
  const bearer=req.headers.get('authorization');if(!bearer?.startsWith('Bearer '))return respond({error:'Anmeldung erforderlich.'},401);
  const r=await fetch(url+'/auth/v1/user',{headers:{apikey:anon,Authorization:bearer}}),user=await r.json();if(!r.ok||!user.id)return respond({error:'Anmeldung ungültig.'},401);
  const data={...(body.data||{})};let code:string|undefined;if(action==='pair'){code=random();data.pair_hash=await hash(code)}
- if(action==='receipt-create'){data.id=crypto.randomUUID();const ext=String(data.extension||'').toLowerCase(),mime=String(data.mime||'');const pairs:any={pdf:['application/pdf'],xml:['application/xml','text/xml'],png:['image/png'],jpg:['image/jpeg'],webp:['image/webp']};if(!pairs[ext]?.includes(mime))throw Error('Dateiformat passt nicht zum Beleg.');}
  const result=await rpc('klarwerk_manage_v1007',{p_actor:user.id,p_company:body.company,p_op:action,p_body:data});return respond(code?{...result,code}:result);
 }
 if(action==='exchange'){if(typeof body.code!=='string'||!/^\w{64}$/.test(body.code))return respond({error:'Freigabecode ungültig.'},403);const token=random(),result=await rpc('klarwerk_dispatch_v1007',{p_hash:await hash(body.code),p_op:'exchange',p_body:{token_hash:await hash(token),account_label:String(body.account_label||'Klarwerk').slice(0,150)}});return respond({...result,token});}
@@ -29,8 +28,8 @@ if(action==='datev-generate'){
  let binary='';for(let i=0;i<bytes.length;i+=16384)binary+=String.fromCharCode(...bytes.subarray(i,i+16384));
  return respond(await rpc('klarwerk_dispatch_v1007',{p_hash,p_op:'datev-artifact',p_body:{id,content:btoa(binary),filename}}));
 }
-if(!['company','list','rpc','receipt-file','disconnect'].includes(action))return respond({error:'Unbekannte Aktion.'},400);
+if(!['company','list','rpc','disconnect'].includes(action))return respond({error:'Unbekannte Aktion.'},400);
+if(action==='list'&&['offers','receipts'].includes(body.data?.entity))return respond({error:'Datenart nicht freigegeben.'},403);
 const result=await rpc('klarwerk_dispatch_v1007',{p_hash:await hash(token),p_op:action,p_body:body.data||{}});
-if(action==='receipt-file'){const r=await fetch(url+'/storage/v1/object/sign/purchase-receipts-v1007/'+result.path.split('/').map(encodeURIComponent).join('/'),{method:'POST',headers:{apikey:key,Authorization:'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify({expiresIn:60})});const signed=await r.json();if(!r.ok)throw Error('Originalbeleg nicht verfügbar.');return respond({name:result.name,mime:result.mime,url:url+'/storage/v1'+signed.signedURL});}
 return respond(result);
 }catch(e){return respond({error:e instanceof SyntaxError?'Ungültige Anfrage.':e.message||'Verbindung fehlgeschlagen.'},e.status||400)}});

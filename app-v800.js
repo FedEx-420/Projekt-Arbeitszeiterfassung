@@ -16,31 +16,15 @@
   let startupStage = '', startupGeneration = 0, startupAccountReady = null, materialLoadState = 'idle';
   const startupLoaded = new Set(), startupFailed = new Set();
   const startupViewData = {
-    home: ['entries','orders','days','vacations','workweeks','businessRules'],
-    time: ['entries','orders','days','vacations','workweeks','customers','appointments','businessRules'],
-    orders: ['orders','entries','items','customers','customerRates','materials','days','vacations','appointments','team','businessRules'],
+    home: ['entries','orders','days','vacations','workweeks'],
+    time: ['entries','orders','days','vacations','workweeks','customers','appointments'],
+    orders: ['orders','entries','items','customers','customerRates','materials','days','vacations','appointments','team'],
     'order-detail': ['orders','items','customers','customerRates','materials','documents','days','vacations','team'],
-    calendar: ['appointments','orders','entries','days','vacations','workweeks','businessRules'],
     customers: ['customers','customerRates','orders','entries','items','documents'],
-    receipts: ['days','vacations','device'],
-    planning: ['appointments','planningRequests','customers','orders','entries','days','vacations','team','businessRules'],
-    mailbox: ['messages','attachments','recipients','mailbox'],
-    materials: ['materials'],
-    shopping: ['materials'],
-    catalogs: ['materials'],
-    'supplier-catalogs': [],
-    offers: ['offers','customers','customerRates','materials','legal'],
-    settings: ['device','businessRules','legal'],
-    platform: ['platform'],
-    legal: ['legal'],
+    settings: ['workweeks'],
   };
   function viewDataNeeds() {
-    if (state.view === 'shopping-cart') return activeShoppingProvider()==='all'&&isManager()?['materials']:[];
-    if(state.view==='shopping'&&activeShoppingProvider()==='gautzsch'&&fifAccounts?.usesSaved())return [];
-    if (state.view === 'shopping' && (state.profile?.role === 'employee' || neugartAccounts?.isShared())) return [];
-    const needs = startupViewData[state.view] || [];
-    return state.view === 'customers' && state.customerId && state.customerId !== 'new' && isManager()
-      ? [...needs,'materials'] : needs;
+    return startupViewData[state.view] || [];
   }
   function startupViewReady() {
     return ['people',...viewDataNeeds()].every(name => !startupFailed.has(name) &&
@@ -51,7 +35,6 @@
     else startupFailed.add(name);
     if (startupViewReady() && root.querySelector('[data-startup-view-pending]')) render();
   }
-  let fifAccounts=null, neugartAccounts=null, supplierCart=null, shoppingCatalogWizard=null, shoppingLoading=false, shoppingLoadFailed=false;
   const navigationFeature = window.WorktimeNavigation?.create({root,getOpen:()=>state.menu,setOpen:value=>{state.menu=value;}});
   /* BEGIN SESSION AUTH V859
    * Keep auth in the app bundle so previously cached index pages also work.
@@ -425,7 +408,7 @@
   }
 
   function loginView() { return `<main class="login-page"><section class="login-card"><div class="brand-mark">ZE</div><h1>Zeiterfassung</h1><p>Arbeitszeiten einfach und sicher erfassen.</p><form data-form="login"><label>Firma<input name="company" autocomplete="organization" placeholder="Firmenname" required></label><label>Benutzername<input name="username" autocomplete="username" required></label><label>Passwort<input name="password" type="password" autocomplete="current-password" required></label><label class="login-admin"><input name="administrator_login" type="checkbox"> Anmeldung als Administrator (nur dann ohne Firma)</label><label>Beim nächsten Mal auf diesem Gerät angemeldet bleiben?<select name="remember_device" required><option value="">Bitte auswählen</option><option value="yes">Ja, auf diesem Gerät</option><option value="no">Nein, nur für diese Sitzung</option></select></label><p class="device-help">Nur auf einem eigenen, geschützten Gerät wählen. Dein Passwort wird nicht gespeichert. Abmelden beendet die Geräteanmeldung.</p><button class="primary" ${state.busy ? 'disabled' : ''}>Anmelden</button></form><button class="link-button" type="button" data-action="forgot">Passwort vergessen?</button>${noticeHtml()}</section></main>`; }
-  function menuItems() { return [['home','Übersicht',true],['time','Zeiterfassung',canUse('time')],['orders','Arbeitsscheine',canUse('orders')],['calendar','Kalender',canUse('calendar')],['customers','Kunden',canUse('customers')],['mailbox','Postfach',true],['materials','Materialliste',isManager()],['shopping','Einkauf',isManager()||state.profile?.role==='employee'],['shopping-cart','Warenkorb ('+shoppingCartCount()+')',isManager()||state.profile?.role==='employee'],['settings','Einstellungen',true]].filter(([, , yes]) => yes); }
+  function menuItems() { return [['home','Übersicht',true],['time','Zeiterfassung',canUse('time')],['orders','Arbeitsscheine',canUse('orders')],['customers','Kunden zu Arbeitsscheinen',canUse('orders')&&canUse('customers')],['settings','Einstellungen',true]].filter(([, , yes]) => yes); }
   function selector() {
     if (!isManager()) return '';
     const businessesHtml = isAdmin() ? `<label>Firma ansehen<select data-select="business"><option value="">Firma auswählen</option>${businesses().map(person => `<option value="${person.id}" ${same(person.id, businessId()) ? 'selected' : ''}>${escape(person.company_name || person.username)}</option>`).join('')}</select></label>` : '';
@@ -441,66 +424,9 @@
     const current = state.view === 'order-detail' ? (['customers','planning'].includes(state.orderOrigin) ? state.orderOrigin : 'orders') : state.view;
     const items = menuItems(), navigation = window.WorktimeNavigation?.markup({items,current,open:state.menu}) || `<button type="button" class="menu-toggle" data-action="menu" aria-expanded="${state.menu}">Menü ⌄</button>${state.menu ? `<section class="app-menu-sheet"><header><b>Menü auswählen</b><button type="button" class="secondary small" data-action="menu">Schließen</button></header><nav>${items.map(([id,text])=>`<button type="button" data-action="nav" data-view="${id}" class="${current===id?'active':''}">${text}</button>`).join('')}<hr><button type="button" data-action="logout">Abmelden</button></nav></section>` : ''}`;
     const context = `<section class="workspace-context" aria-label="Aktueller Bereich und Arbeitskonto"><div class="workspace-location"><span aria-hidden="true"></span><strong>${escape(window.WorktimeNavigation?.currentLabel(items,current) || 'Übersicht')}</strong></div>${selector()}</section>`;
-    return `<div class="app-shell"><header class="topbar"><div class="brand-identity">${headerLogo ? `<img src="${escape(headerLogo)}" alt="Firmenlogo von ${escape(title)}">` : '<div class="brand-mark" aria-hidden="true">ZE</div>'}<div class="brand-caption"><h1>${escape(title)}</h1><p>${escape(state.profile?.username || '')} · ${roleName}</p></div></div><div class="top-actions">${navigation}</div></header><main class="content">${context}${['shopping','shopping-cart'].includes(state.view)?shoppingProviderView():''}${!startupViewReady() ? `<section class="panel" data-startup-view-pending>${(startupStage==='data'||materialLoadState==='loading')&&!viewDataNeeds().some(name=>startupFailed.has(name))?'<p role="status">Daten für diesen Bereich werden geladen …</p>':'<p role="alert">Die Daten für diesen Bereich konnten nicht vollständig geladen werden.</p><button type="button" class="primary" data-action="retry-startup">Erneut versuchen</button>'}</section>` : viewHtml()}${noticeHtml()}</main></div>`;
+    return `<div class="app-shell"><header class="topbar"><div class="brand-identity">${headerLogo ? `<img src="${escape(headerLogo)}" alt="Firmenlogo von ${escape(title)}">` : '<div class="brand-mark" aria-hidden="true">ZE</div>'}<div class="brand-caption"><h1>${escape(title)}</h1><p>${escape(state.profile?.username || '')} · ${roleName}</p></div></div><div class="top-actions">${navigation}</div></header><main class="content">${context}${!startupViewReady() ? `<section class="panel" data-startup-view-pending>${(startupStage==='data'||materialLoadState==='loading')&&!viewDataNeeds().some(name=>startupFailed.has(name))?'<p role="status">Daten für diesen Bereich werden geladen …</p>':'<p role="alert">Die Daten für diesen Bereich konnten nicht vollständig geladen werden.</p><button type="button" class="primary" data-action="retry-startup">Erneut versuchen</button>'}</section>` : viewHtml()}${noticeHtml()}</main></div>`;
   }
-  function viewHtml() { return ({ home: homeView, time: timeView, orders: ordersView, 'order-detail': orderDetailView, calendar: calendarView, customers: customersView, mailbox: mailboxView, materials: materialsView, shopping: shoppingView, settings: settingsView }[state.view] || homeView)(); }
-
-  let shoppingProvider='',shoppingProviderScope='';
-  function activeShoppingProvider(){
-    const scope=(state.profile?.id||'')+':'+(businessId()||'');
-    if(scope!==shoppingProviderScope){shoppingProviderScope=scope;shoppingProvider='';}
-    return shoppingProvider||(state.profile?.role==='employee'||neugartAccounts?.isShared()?'neugart':'all');
-  }
-  function shoppingCartCount(){const provider=activeShoppingProvider();return provider==='gautzsch'?(fifAccounts?.count()||0):provider==='neugart'?(neugartAccounts?.count()||0):(supplierCart?.count()||0);}
-  function shoppingProviderView(){
-    const selected=activeShoppingProvider();
-    return `<section class="panel"><label>Einkaufszugang<select data-shopping-provider><option value="neugart" ${selected==='neugart'?'selected':''}>Neugart</option><option value="gautzsch" ${selected==='gautzsch'?'selected':''}>Gautzsch · FiF</option><option value="all" ${selected==='all'?'selected':''}>Weitere Fachhändler</option></select></label></section>`;
-  }
-  root.addEventListener('click',event=>{if(event.target.closest('[data-ng-action=mode]')){shoppingProvider='';supplierCart?.selectProvider('all');}});
-  root.addEventListener('change',event=>{
-    if(!event.target.matches('[data-shopping-provider]'))return;
-    const provider=event.target.value;
-    if(!['neugart','gautzsch','all'].includes(provider))return;
-    activeShoppingProvider();
-    if(neugartAccounts?.isPending()||fifAccounts?.isPending()||supplierCart?.isBusy()){render();return;}
-    shoppingProvider=provider;
-    // Changing the wholesaler must keep the current menu (search or cart).
-    if(state.view!=='shopping-cart')state.view='shopping';
-    neugartAccounts?.setShared(provider==='neugart');
-    supplierCart?.selectProvider(provider);
-    render();
-  });
-  function shoppingView() {
-    const provider=activeShoppingProvider();
-    if(provider==='neugart')return neugartAccounts?.shopping()||'';
-    if(provider==='gautzsch'&&fifAccounts)return fifAccounts.shopping();
-    if(state.profile?.role==='employee')return '<section class="panel"><h2>Gautzsch · FiF</h2><p>Der FiF-Einkauf ist derzeit im Geschäfts- und Adminkonto verfügbar. Die Freigabe gespeicherter FiF-Zugänge für Mitarbeiter ist noch in Vorbereitung.</p></section>';
-    if(!isManager())return '<section class="panel"><h2>Einkauf</h2><p>Der Einkauf ist für die Geschäftsleitung und die Administration verfügbar.</p></section>';
-    if(supplierCart)return supplierCart.view();
-    return `<section class="page-head"><h2>Einkauf</h2></section><section class="panel" data-shopping-unavailable><h3>${shoppingLoading?'Einkauf wird geladen …':'Einkauf nachladen'}</h3><p role="${shoppingLoadFailed?'alert':'status'}">${shoppingLoadFailed?'Der Einkauf konnte noch nicht vollständig geladen werden. Prüfe deine Internetverbindung und versuche es erneut.':'Ein Teil des Einkaufs ist auf diesem Gerät noch nicht verfügbar. Du kannst ihn hier nachladen.'}</p>${shoppingLoading?'<progress aria-label="Einkauf wird geladen"></progress>':''}<button type="button" class="primary" data-action="shopping-load" ${shoppingLoading?'disabled':''}>${shoppingLoading?'Wird geladen …':'Einkauf laden'}</button><p>Deine gespeicherten Artikel und Einkaufsentwürfe bleiben erhalten.</p><button type="button" class="secondary" data-action="nav" data-view="materials">Materialliste öffnen</button></section>`;
-  }
-  function initializeShopping() {
-    if(supplierCart)return true;
-    if(!window.WorktimeSupplierCart||!window.WorktimeSupplierCartUI)return false;
-    try{supplierCart=window.WorktimeSupplierCartUI.create({root,state,businessId,isManager,render:()=>render(),api,supabaseUrl:base,catalogWizard:shoppingCatalogWizard,escape,searchMaterials:(query,options)=>activeShoppingProvider()==='gautzsch'&&fifAccounts?.selectedAccount()?fifAccounts.searchMaterials(query,options):Promise.resolve([]),getAddContext:()=>JSON.stringify([state.profile?.id,businessId(),activeShoppingProvider(),activeShoppingProvider()==='gautzsch'?fifAccounts?.selectedAccount():activeShoppingProvider()==='neugart'?neugartAccounts?.selectedAccount():'']),onAdd:material=>{if(activeShoppingProvider()==='gautzsch'&&fifAccounts?.selectedAccount()){fifAccounts.addMaterial(material);return true;}if(activeShoppingProvider()==='neugart'&&neugartAccounts?.selectedAccount()){neugartAccounts.addMaterial(material);return true;}return false;},onExternalAdd:()=>{shoppingProvider='all';neugartAccounts?.setShared(false);supplierCart?.selectProvider('all');}});return !!supplierCart;}
-    catch{shoppingLoadFailed=true;return false;}
-  }
-  async function recoverShopping() {
-    if(!isManager()||!state.session||shoppingLoading)return;
-    shoppingLoading=true;shoppingLoadFailed=false;render();
-    try{
-      for(const [name,file] of [['WorktimeSupplierCart','supplier-cart-v938.js'],['WorktimePurchaseSearch','purchase-search-v939.js'],['WorktimeSupplierCartUI','supplier-cart-ui-v938.js']]){
-        if(window[name])continue;
-        await new Promise((resolve,reject)=>{
-          const script=document.createElement('script'),timer=setTimeout(()=>done(false),12000);
-          function done(ok){clearTimeout(timer);script.onload=script.onerror=null;script.remove();ok?resolve():reject(Error('Einkauf nicht verfügbar.'));}
-          const version=document.querySelector('meta[name="worktime-version"]')?.content||'947';script.src=new URL(file+'?v='+encodeURIComponent(version),location.href).href;script.onload=()=>done(!!window[name]);script.onerror=()=>done(false);document.head.append(script);
-        });
-      }
-      if(!initializeShopping())throw Error('Einkauf nicht verfügbar.');
-    }catch{shoppingLoadFailed=true;}
-    finally{shoppingLoading=false;render();}
-  }
+  function viewHtml() { return ({home:homeView,time:timeView,orders:ordersView,'order-detail':orderDetailView,customers:customersView,settings:settingsView}[state.view]||homeView)(); }
 
   function homeView() {
     const id = workerId(), extra = overtime(id), company = managerBusiness() || {}, logo = companyLogoUrl(company), companyName = company.company_name || 'Ihr Geschäftskonto';
@@ -512,7 +438,7 @@
       ...manualEntries.map(row => `<article class="row-card"><button type="button" class="row-main" data-action="open-time" data-id="${row.id}"><b>${escape(row.customer_name || 'Ohne Kunde')}</b><span>${timeText(row.start_time)} – ${timeText(row.end_time)} · Zeiterfassung öffnen</span></button></article>`)
     ].join('');
     const activities = activityCards ? `<section class="list-section"><h3>Kunden des ausgewählten Tages</h3>${activityCards}</section>` : '';
-    return `${companyBanner}<section class="page-head"><div><span class="eyebrow">Willkommen, ${escape(worker()?.username || '')}</span><h2>${dateText(state.date)}</h2></div>${dayPicker()}</section><section class="stat-grid"><article><span>Überstunden ${state.date.slice(0, 4)}</span><strong class="${extra > 0 ? 'positive' : extra < 0 ? 'negative' : ''}">${extra ? h(extra) : '—'}</strong></article><article><span>Urlaub übrig</span><strong>${vacationLeft(id)} Tage</strong></article><article><span>Krankheitstage</span><strong>${annualSick(id)} Tage</strong></article></section><section class="panel"><h3>Ausgewählter Arbeitstag</h3><p>${locked(id) ? lockedText(id) : dayHours(id)>0 ? `${h(dayHours(id))} Arbeitszeit erfasst beziehungsweise gutgeschrieben.` : 'Für diesen Tag wurde noch keine Arbeitszeit erfasst.'}</p></section>${activities}`;
+    return `${companyBanner}<section class="page-head"><div><span class="eyebrow">Willkommen, ${escape(worker()?.username || '')}</span><h2>${dateText(state.date)}</h2></div>${dayPicker()}</section><section class="stat-grid"><article><span>Überstunden ${state.date.slice(0, 4)}</span><strong class="${extra > 0 ? 'positive' : extra < 0 ? 'negative' : ''}">${extra ? h(extra) : '—'}</strong></article><article><span>Arbeitszeit am ausgewählten Tag</span><strong>${h(dayHours(id))}</strong></article></section><section class="panel"><h3>Ausgewählter Arbeitstag</h3><p>${locked(id) ? lockedText(id) : dayHours(id)>0 ? `${h(dayHours(id))} Arbeitszeit erfasst beziehungsweise gutgeschrieben.` : 'Für diesen Tag wurde noch keine Arbeitszeit erfasst.'}</p></section>${activities}`;
   }
   function timeInput(name, value) { return `<input name="${name}" type="time" step="900" value="${value || ''}">`; }
   function customerList() { return `<datalist id="customers">${state.rows.customers.map(row => `<option value="${escape(row.name)}"></option>`).join('')}</datalist>`; }
@@ -540,46 +466,36 @@
     const material=state.rows.materials.find(item=>same(item.business_id,businessId())&&item.active!==false&&lower(item.name)===lower(event.target.value));
     if(material)select.value=materialUnit(material);
   });
-  function materialList() { if(window.WorktimeArticleTools)return '<datalist id="materials"></datalist>'; return `<datalist id="materials">${state.rows.materials.filter(row => same(row.business_id,businessId()) && row.active !== false && window.WorktimeGermanProducts?.allowed(row)).map(row => `<option value="${escape(row.name)}"></option>`).join('')}</datalist>`; }
+  function materialList() { return '<datalist id="materials"></datalist>'; }
+  let materialSearchRequest = 0;
+  root.addEventListener('input', async event => {
+    const input = event.target;
+    if (!input.matches('input[name="material"]')) return;
+    const list = root.querySelector('#materials'), request = ++materialSearchRequest, company = materialBusinessId(workerId());
+    if (!list) return;
+    list.replaceChildren();
+    const term = input.value.trim();
+    if (!term) return;
+    const current = () => request === materialSearchRequest && input.isConnected && company === materialBusinessId(workerId());
+    const materials = state.rows.materials.filter(row=>same(row.business_id,company)&&row.active!==false&&!isHourlyMaterial(row));
+    const search = window.WorktimeArticleSearch;
+    const matches = search ? await search.cooperativeFilter(materials,row=>search.matches(row,term),current)
+      : materials.filter(row=>lower(row.name).includes(lower(term)));
+    const result = search && matches ? await search.rankAsync(matches,term,row=>row,current) : matches;
+    if (!current() || !result) return;
+    for (const row of result.slice(0,12)) if (row.name) list.append(new Option(row.name));
+  });
   function signatureFields(order = {}) {
     const signedBy = String(order.signed_by || ''), signature = String(order.signature_data || ''), hasSignature = signature.startsWith('data:image/png;base64,');
     return `<div class="wide signature-field"><span class="field-label">Unterschrift</span><canvas class="signature-pad" width="960" height="320" data-signature="${escape(signature)}" aria-label="Unterschrift mit Finger oder Maus einzeichnen"></canvas><input type="hidden" name="signature_data" value="${escape(signature)}"><div class="actions"><button type="button" class="secondary small" data-action="clear-signature">Unterschrift löschen</button></div><p class="signature-help">Mit Finger oder Maus im Feld unterschreiben. Die Unterschrift ist zum Speichern erforderlich.</p></div><label class="wide">Unterschrieben von<input name="signed_by" required value="${escape(signedBy)}" placeholder="Name der unterschreibenden Person"></label>`;
   }
-  function canExportJuprowaMaterial(order) {
-    if (!isManager() || !order || order.invoiced || (order.work_kind && order.work_kind !== 'customer')) return false;
-    const owner = state.rows.people.find(person => same(person.id, order.employee_id)) ||
-      (same(state.profile?.id, order.employee_id) ? state.profile : null);
-    return !!businessId() && !!owner && same(owner.role === 'business' ? owner.id : owner.business_id, businessId());
-  }
-
-  function exportJuprowaMaterial(orderId) {
-    const order = state.rows.orders.find(row => same(row.id, orderId));
-    if (state.view !== 'order-detail' || !same(state.orderId, orderId) || !canExportJuprowaMaterial(order)) return;
-    try {
-      const items = state.rows.items.filter(item => same(item.work_order_id, order.id) && !isHourlyMaterial(item.position_name));
-      const file = window.WorktimeJuprowaUgl.create({ order, items, materials: state.rows.materials, company: businessId() });
-      const url = URL.createObjectURL(new Blob([file], { type: 'application/octet-stream' }));
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = 'Juprowa-Material-' + order.work_date + '.ugl';
-      link.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-      notice('Materialdatei erstellt. In ServicePad eine Materialposition öffnen und „UGL-Datei einlesen“ wählen. Danach Artikel, Einheiten und Preise prüfen.');
-    } catch (error) {
-      notice(error.message || 'Die Materialdatei konnte nicht erstellt werden.', true);
-    }
-    const oldNotice = root.querySelector('.notice');
-    if (oldNotice) oldNotice.outerHTML = noticeHtml();
-    else root.querySelector('.page-head')?.insertAdjacentHTML('afterend', noticeHtml());
-  }
-
   function orderEditor(order) {
     if (!order) return '';
     const items = state.rows.items.filter(item => same(item.work_order_id, order.id) && !isHourlyMaterial(item.position_name));
     const documents = state.rows.documents.filter(document => same(document.work_order_id, order.id));
     const rows = items.length ? items.map(materialRow).join('') : materialRow();
     const billingStatus = order.invoiced ? '<span class="badge">Bereits abgerechnet</span>' : '';
-    return `<section class="panel"><div class="page-head"><div><span class="eyebrow">Arbeitsschein bearbeiten</span><h3>${escape(order.customer_name || 'Ohne Kunde')}</h3></div><div class="actions">${billingStatus}${items.length && canExportJuprowaMaterial(order) ? `<button type="button" class="secondary small" data-action="juprowa-material" data-id="${escape(order.id)}">Juprowa-Materialdatei</button>` : ''}<button type="button" class="secondary small" data-action="order-pdf" data-id="${order.id}">PDF drucken / speichern</button><button type="button" class="danger small" data-action="delete-order" data-id="${order.id}">Arbeitsschein löschen</button><button type="button" class="secondary small" data-action="close-order">Schließen</button></div></div><form data-form="order-edit" class="entry-form"><input type="hidden" name="id" value="${order.id}">${orderDatePicker(order.work_date)}<label class="wide">Kunde<input name="customer" required list="customers" value="${escape(order.customer_name || '')}"></label><label class="wide">Beschreibung<input name="title" value="${escape(order.title || '')}"></label><div class="wide" id="material-lines">${rows}</div><button type="button" class="secondary wide" data-action="more-material">Weiteres Material</button>${teamEnabled() ? '' : `<p class="wide">Arbeitsstunden werden beim Speichern automatisch als <b>${escape(hourlyNameForEmployee(order.employee_id))}</b> mit dem Preis aus der Materialliste ergänzt.</p>`}${teamOrderTimeFields(order.employee_id,orderPeriods(order),`<label>Arbeitsbeginn${timeInput('start', order.start_time?.slice(0, 5))}</label><label>Arbeitsende${timeInput('end', order.end_time?.slice(0, 5))}</label><label>Pause in Stunden<input name="pause" type="number" min="0" step="0.25" value="${n(order.pause_hours)}"></label><label>Ausgeführte Stunden<input name="hours" type="number" min="0.25" step="0.25" value="${n(order.executed_hours)}" required></label>`)}${noteTemplates()}<label class="wide">Notiz / Dokumentation<textarea name="documentation" rows="4">${escape(order.documentation || '')}</textarea></label><label class="wide">Weitere Dokumente hochladen<input name="documents" type="file" multiple accept="image/*,.pdf,.doc,.docx"></label>${documents.length ? `<p class="wide">Vorhandene Dokumente: ${documents.map(document => escape(document.file_name)).join(', ')}</p>` : ''}${signatureFields(order)}<button class="primary wide" data-signature-submit>Änderungen speichern</button></form>${customerList()}${materialList()}</section>`;
+    return `<section class="panel"><div class="page-head"><div><span class="eyebrow">Arbeitsschein bearbeiten</span><h3>${escape(order.customer_name || 'Ohne Kunde')}</h3></div><div class="actions">${billingStatus}<button type="button" class="secondary small" data-action="order-pdf" data-id="${order.id}">PDF drucken / speichern</button><button type="button" class="danger small" data-action="delete-order" data-id="${order.id}">Arbeitsschein löschen</button><button type="button" class="secondary small" data-action="close-order">Schließen</button></div></div><form data-form="order-edit" class="entry-form"><input type="hidden" name="id" value="${order.id}">${orderDatePicker(order.work_date)}<label class="wide">Kunde<input name="customer" required list="customers" value="${escape(order.customer_name || '')}"></label><label class="wide">Beschreibung<input name="title" value="${escape(order.title || '')}"></label><div class="wide" id="material-lines">${rows}</div><button type="button" class="secondary wide" data-action="more-material">Weiteres Material</button>${teamEnabled() ? '' : `<p class="wide">Arbeitsstunden werden beim Speichern automatisch als <b>${escape(hourlyNameForEmployee(order.employee_id))}</b> mit dem Preis aus der Materialliste ergänzt.</p>`}${teamOrderTimeFields(order.employee_id,orderPeriods(order),`<label>Arbeitsbeginn${timeInput('start', order.start_time?.slice(0, 5))}</label><label>Arbeitsende${timeInput('end', order.end_time?.slice(0, 5))}</label><label>Pause in Stunden<input name="pause" type="number" min="0" step="0.25" value="${n(order.pause_hours)}"></label><label>Ausgeführte Stunden<input name="hours" type="number" min="0.25" step="0.25" value="${n(order.executed_hours)}" required></label>`)}${noteTemplates()}<label class="wide">Notiz / Dokumentation<textarea name="documentation" rows="4">${escape(order.documentation || '')}</textarea></label><label class="wide">Weitere Dokumente hochladen<input name="documents" type="file" multiple accept="image/*,.pdf,.doc,.docx"></label>${documents.length ? `<p class="wide">Vorhandene Dokumente: ${documents.map(document => escape(document.file_name)).join(', ')}</p>` : ''}${signatureFields(order)}<button class="primary wide" data-signature-submit>Änderungen speichern</button></form>${customerList()}${materialList()}</section>`;
   }
   function orderDetailView() { const order = state.rows.orders.find(row => same(row.id, state.orderId)); return order ? orderEditor(order) : `<section class="panel"><h2>Arbeitsschein nicht gefunden</h2><p>Der Arbeitsschein ist nicht mehr verfügbar.</p><button type="button" class="secondary" data-action="close-order">Zurück</button></section>`; }
   function ordersView() {
@@ -654,74 +570,9 @@
     const edit = selected || state.customerId === 'new'
       ? '<section class="panel" id="customer-profile" tabindex="-1"><h3>' + (selected ? 'Kunde bearbeiten' : 'Neuer Kunde') + '</h3><form data-form="customer" class="entry-form">' + customerFields(selected) + '<button class="primary wide">Kunde speichern</button></form>' + (selected ? '<button type="button" class="secondary wide" data-action="create-order-from-customer" data-id="' + escape(selected.id) + '">Arbeitsschein erstellen</button>' : '') + '</section>'
       : '';
-    return '<section class="page-head"><div><span class="eyebrow">Gemeinsame Daten</span><h2>Kundenliste</h2></div><button type="button" class="secondary" data-action="new-customer">Kunde hinzufügen</button></section>' + edit + customerRatesView(selected) + '<section class="list-section"><label>Kunden suchen<input type="search" data-customer-search value="' + escape(state.customerSearch) + '" placeholder="Name, Ort, Adresse, Telefon oder E-Mail"></label><p class="empty" data-customer-search-empty style="display:none">Kein passender Kunde gefunden.</p>' + list + '</section>';
+    return '<section class="page-head"><div><span class="eyebrow">Gemeinsame Daten</span><h2>Kundenliste</h2></div><button type="button" class="secondary" data-action="new-customer">Kunde hinzufügen</button></section>' + edit + '<section class="list-section"><label>Kunden suchen<input type="search" data-customer-search value="' + escape(state.customerSearch) + '" placeholder="Name, Ort, Adresse, Telefon oder E-Mail"></label><p class="empty" data-customer-search-empty style="display:none">Kein passender Kunde gefunden.</p>' + list + '</section>';
   }
-  function customerRatesView(customer) {
-    if (!customer || !isManager()) return '';
-    const rate = state.rows.customerRates?.find(row => same(row.customer_id,customer.id));
-    const company = materialBusinessId(customer.employee_id);
-    const fields = [['meister','Meister','Meisterstunde'],['monteur','Monteur','Monteurstunde'],['azubi','Auszubildender','Auszubildendenstunde']].map(([type,label,name]) => {
-      const fallback = state.rows.materials.find(row=>same(row.business_id,company)&&lower(row.name)===lower(name));
-      return `<label>${label} · €/h netto<input name="${type}" type="number" min="0" max="100000" step="0.01" value="${escape(rate?.[type]??'')}" placeholder="Firmenstandard: ${n(fallback?.unit_price).toLocaleString('de-DE',{minimumFractionDigits:2})} €"></label>`;
-    }).join('');
-    return `<section class="panel"><h3>Stundensätze für ${escape(customer.name)}</h3><p>Leer = Preis aus der Materialliste. 0,00 € = ausdrücklich kostenlos. Gilt für neue und noch nicht abgerechnete Arbeitsscheine; abgeschlossene Rechnungen behalten ihre Preise.</p>${state.customerRatesReady===false?'<p class="locked">Kundensätze konnten nicht geladen werden. Bitte erneut synchronisieren.</p>':`<form data-form="customer-rates" class="entry-form"><input type="hidden" name="customer_id" value="${escape(customer.id)}">${fields}<button class="primary wide">Stundensätze speichern</button></form>`}</section>`;
-  }
-  async function saveCustomerRates(form) {
-    if (!isManager()) throw new Error('Nur die Geschäftsleitung darf Kundensätze ändern.');
-    const rates = {};
-    for (const type of ['meister','monteur','azubi']) {
-      const raw = form.elements[type].value.trim();
-      rates[type] = raw==='' ? null : Number(raw);
-      if (rates[type]!==null && (!Number.isFinite(rates[type]) || rates[type]<0 || rates[type]>100000 || Math.abs(rates[type]*100-Math.round(rates[type]*100))>1e-7)) throw new Error('Bitte gültige Stundensätze mit höchstens zwei Nachkommastellen eingeben.');
-    }
-    await api('/rest/v1/rpc/save_customer_hourly_rates',{method:'POST',body:{p_customer:form.elements.customer_id.value,p_rates:rates}});
-  }
-  function messageRecipients() { return state.rows.recipients || []; }
   function personName(person) { return person?.display_name || person?.username || 'Unbekannt'; }
-  function personRole(person) { return person?.role === 'administrator' ? 'Administrator' : person?.role === 'business' ? 'Geschäftskonto' : 'Mitarbeiter'; }
-  function mailboxView() {
-    const ownId = state.profile?.id || '', recipients = messageRecipients(), all = state.rows.messages || [];
-    const folders = [
-      { key: 'sent', label: 'Gesendet', test: message => !message.deleted_at && same(message.sender_id, ownId) },
-      { key: 'received', label: 'Empfangen', test: message => !message.deleted_at && same(message.recipient_id, ownId) },
-      { key: 'trash', label: 'Papierkorb', test: message => Boolean(message.deleted_at) && same(message.recipient_id, ownId) },
-      { key: 'unread', label: 'Ungelesen', test: message => !message.deleted_at && same(message.recipient_id, ownId) && !message.read_at },
-      { key: 'read', label: 'Gelesen', test: message => !message.deleted_at && same(message.recipient_id, ownId) && Boolean(message.read_at) }
-    ];
-    const active = folders.find(folder => folder.key === state.mailboxFolder) || folders[1];
-    const messages = all.filter(active.test);
-    const tabs = `<div class="actions mailbox-folders">${folders.map(folder => `<button type="button" class="${folder.key === active.key ? 'primary' : 'secondary'} small" data-action="mailbox-folder" data-folder="${folder.key}">${folder.label} (${all.filter(folder.test).length})</button>`).join('')}</div>`;
-    const payroll = isManager() ? '<button type="button" class="secondary" data-action="payslip-template">Lohnabrechnung</button>' : '';
-    const compose = state.composeMessage ? `<section class="panel"><section class="page-head"><div><span class="eyebrow">Neue Nachricht</span><h3>Nachricht schreiben</h3></div><button type="button" class="secondary small" data-action="compose-message">Schließen</button></section>${recipients.length ? `<form data-form="message-send" class="entry-form"><label class="wide">Empfänger<select name="recipient" required><option value="">Bitte auswählen</option>${recipients.map(person => `<option value="${person.id}">${escape(personName(person))} · ${personRole(person)}</option>`).join('')}</select></label><div class="actions wide">${payroll}</div><label class="wide">Betreff<input name="title" maxlength="160" required></label><label class="wide">Nachricht<textarea name="message" rows="6" maxlength="10000" required></textarea></label><label class="wide">Anhänge (PDF, Bilder, Office-Dateien usw.; max. 25 MB je Datei)<input name="attachments" type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.gif,.txt,.csv,.doc,.docx,.xls,.xlsx"></label><button class="primary wide">Nachricht senden</button></form>` : '<p class="empty">Es ist kein zulässiger Empfänger verfügbar.</p>'}</section>` : '';
-    const cards = messages.map(message => {
-      const body = message.body || {}, sender = state.rows.people.find(person => same(person.id, message.sender_id)), recipient = state.rows.people.find(person => same(person.id, message.recipient_id)), attachments = state.rows.attachments.filter(attachment => same(attachment.message_id, message.id));
-      const decision = message.message_type === 'vacation_request' && isManager() && !message.deleted_at ? `<div class="actions"><button type="button" class="primary small" data-action="vacation-decision" data-id="${message.id}" data-request="${escape(body.request_id || '')}" data-status="approved">Genehmigen</button><button type="button" class="secondary small" data-action="vacation-decision" data-id="${message.id}" data-request="${escape(body.request_id || '')}" data-status="rejected">Ablehnen</button></div>` : '';
-      const files = attachments.length ? `<div class="message-actions">${attachments.map(attachment => `<button type="button" class="secondary small" data-action="download-mail-attachment" data-id="${attachment.id}">Anhang: ${escape(attachment.file_name)}</button>`).join('')}</div>` : '';
-      const received = same(message.recipient_id, ownId), sent = same(message.sender_id, ownId), canDelete = !message.deleted_at && (isAdmin() || received), canRestore = Boolean(message.deleted_at) && (isAdmin() || received);
-      const party = sent ? `<p><b>An:</b> ${escape(personName(recipient))}</p>` : message.sender_id ? `<p><b>Von:</b> ${escape(body.sender_name || personName(sender))}</p>` : '';
-      return `<article class="message ${message.read_at ? 'read' : 'unread'}"><header><b>${escape(message.title)}</b><time>${new Intl.DateTimeFormat('de-DE', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(message.created_at))}</time></header>${party}<p>${escape(body.message || body.note || (body.start_date ? `${dateText(body.start_date)} bis ${dateText(body.end_date)}` : ''))}</p>${files}${decision}<div class="message-actions">${!message.read_at && received && !message.deleted_at ? `<button type="button" data-action="read" data-id="${message.id}">Als gelesen markieren</button>` : ''}${canDelete ? `<button type="button" data-action="trash" data-id="${message.id}">Löschen</button>` : ''}${canRestore ? `<button type="button" data-action="restore-mail" data-id="${message.id}">Wiederherstellen</button>` : ''}</div></article>`;
-    }).join('') || `<p class="empty">Keine Nachrichten in „${active.label}“ vorhanden.</p>`;
-    return `<section class="page-head"><div><span class="eyebrow">Persönlich</span><h2>Postfach</h2></div><button type="button" class="primary" data-action="compose-message">Neue Nachricht</button></section>${tabs}${compose}<section class="message-list">${cards}</section>`;
-  }
-
-  function materialEditFields(material) {
-    return (window.WorktimeArticleTools?.html(material)||'')+'<input type="hidden" name="id" value="' + escape(material.id) + '"><label>Artikel<input name="name" required value="' + escape(material.name) + '"></label><label>Preis in €<input name="price" type="number" min="0" step="0.01" value="' + n(material.unit_price) + '"></label>' + unitSelect('unit',materialUnit(material));
-  }
-  function materialsView() {
-    const materials = state.rows.materials.filter(row => same(row.business_id, businessId()) && row.active !== false);
-    const others = materials.filter(row => !isHourlyMaterial(row));
-    const selected = others.find(row => same(row.id, state.materialId));
-    const hourlyByName = new Map();
-    for (const row of materials) { const key = String(row.name || '').trim().toLowerCase(); if (!hourlyByName.has(key)) hourlyByName.set(key, row); }
-    const hourlyCards = HOURLY_MATERIALS.map(name => hourlyByName.get(name.toLowerCase())).map((material,index) => material || {id:'',name:HOURLY_MATERIALS[index],unit_price:0,unit:'H'}).map(material => '<section class="panel"><h3>' + escape(material.name) + '</h3><p>Wird nach der in den Einstellungen hinterlegten Arbeitskraft des Mitarbeiters automatisch in den Arbeitsschein übernommen. Die Position kann nicht gelöscht oder umbenannt werden.</p><form data-form="hourly-price" class="entry-form"><input type="hidden" name="id" value="' + escape(material.id) + '"><input type="hidden" name="name" value="' + escape(material.name) + '"><label>Preis pro ' + escape(material.name) + ' in €<input name="price" type="number" min="0" step="0.01" value="' + n(material.unit_price) + '"></label>' + unitSelect('unit',materialUnit(material)) + '<button class="primary">Preis speichern</button></form></section>').join('');
-    const list = (window.WorktimeMaterialBrowser?.visible?window.WorktimeMaterialBrowser.visible(others):others).map(row => '<article class="row-card"><div><b>' + escape(row.name) + '</b><span>' + n(row.unit_price).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' }) + ' / ' + escape(materialUnit(row)) + '</span></div><div class="actions"><button type="button" class="secondary small" data-action="edit-material" data-id="' + escape(row.id) + '">Bearbeiten</button><button type="button" class="danger small" data-action="delete-material" data-id="' + escape(row.id) + '">Löschen</button></div></article>').join('') || (window.WorktimeMaterialBrowser?'<p class="empty">Wähle eine Gruppe oder suche gezielt nach einem Artikel.</p>':'<p class="empty">Keine weiteren Materialien vorhanden.</p>');
-    const editor = selected
-      ? '<section class="panel"><section class="page-head"><div><span class="eyebrow">Materialliste</span><h3>Material bearbeiten</h3></div><button type="button" class="secondary small" data-action="close-material-edit">Abbrechen</button></section><form data-form="material-edit" class="entry-form">' + materialEditFields(selected) + '<button class="primary wide">Änderungen speichern</button></form><p>Preis- und Namensänderungen werden nur auf offene, noch nicht abgerechnete Arbeitsscheine übertragen.</p></section>'
-      : '';
-    const searchPanel='<section class="list-section">'+(window.WorktimeMaterialBrowser?.view?.()||'<h3>Material suchen</h3>')+list+'</section>';
-    const newMaterialPanel='<section class="panel"><h3>Neues Material</h3><form data-form="material" class="entry-form"><label>Artikel<input name="name" required></label><label>Preis in €<input name="price" type="number" min="0" step="0.01" value="0"></label>'+unitSelect('unit','Stk')+'<button class="primary">Artikel speichern</button></form></section>';
-    return '<section class="page-head"><div><span class="eyebrow">Material</span><h2>Materialliste</h2></div></section>'+searchPanel+editor+'<details class="panel material-administration"><summary>Material anlegen und Stundenpreise verwalten</summary>'+newMaterialPanel+hourlyCards+'</details>';
-  }
   function permissionFields(person) { return [['customers','Kunden'],['orders','Arbeitsscheine'],['calendar','Kalender']].map(([id, title]) => `<label><input type="checkbox" name="perm-${id}" ${person?.menu_permissions?.[id] !== false ? 'checked' : ''}> ${title}</label>`).join(''); }
   function settingsView() {
     if (!isManager()) return `<section class="page-head"><div><span class="eyebrow">Mein Konto</span><h2>Einstellungen</h2></div></section><section class="panel"><p>Benutzername und Passwort werden durch die Geschäftsverwaltung festgelegt.</p><button type="button" class="secondary" data-action="pdf">Daten als PDF drucken</button></section>`;
@@ -847,29 +698,7 @@
     const material = currentMaterialForItem(item, order);
     return !order?.invoiced && material?.name ? material.name : item?.position_name || 'Leistung';
   }
-  async function updateHourlyPrice(form) {
-    const material = form.elements.id.value ? state.rows.materials.find(row => same(row.id, form.elements.id.value) && same(row.business_id, businessId()) && isHourlyMaterial(row)) : (isHourlyMaterial(form.elements.name?.value) ? await ensureHourlyMaterial(form.elements.name.value) : null);
-    if (!material) throw new Error('Die geschützte Stundenposition wurde nicht gefunden.');
-    const price = Math.max(0, n(form.elements.price.value));
-    await write('materials', { unit_price: price, unit: normalizeUnit(form.elements.unit?.value || materialUnit(material),true) }, 'PATCH', 'id=eq.' + material.id);
-    const openOrderIds = new Set(state.rows.orders.filter(order => !order.invoiced).map(order => order.id));
-    for (const item of state.rows.items.filter(item => same(item.material_id, material.id) && openOrderIds.has(item.work_order_id))) await write('work_order_items', { unit_price: customerLaborPrice(state.rows.orders.find(order=>same(order.id,item.work_order_id)),{...material,unit_price:price},price) }, 'PATCH', 'id=eq.' + item.id);
-    await load(); notice('Preis für ' + material.name + ' gespeichert. Offene Arbeitsscheine wurden aktualisiert.'); render();
-  }
-  async function updateMaterial(form) {
-    const material = state.rows.materials.find(row => same(row.id, form.elements.id.value) && same(row.business_id, businessId()));
-    if (!material) throw new Error('Das Material wurde nicht gefunden.');
-    if (isHourlyMaterial(material)) throw new Error('Geschützte Stundenpositionen können nur über ihren Preis bearbeitet werden.');
-    const name = String(form.elements.name.value || '').trim();
-    if (!name) throw new Error('Bitte einen Artikelnamen eingeben.');
-    const price = Math.max(0, n(form.elements.price.value));
-    await write('materials', { name, unit_price: price, unit: normalizeUnit(form.elements.unit?.value || materialUnit(material)) }, 'PATCH', 'id=eq.' + material.id);
-    const openOrderIds = new Set(state.rows.orders.filter(order => !order.invoiced).map(order => order.id));
-    for (const item of state.rows.items.filter(item => same(item.material_id, material.id) && openOrderIds.has(item.work_order_id))) await write('work_order_items', { position_name: name, unit_price: price }, 'PATCH', 'id=eq.' + item.id);
-    state.materialId = '';
-  }
   async function saveDocuments(form, order, employee) {
-    await deviceFeatures?.attachReceipts(form,order);
     for (const file of [...(form.elements.documents?.files || [])]) { const safe = file.name.replace(/[^A-Za-z0-9._-]/g, '_'); const path = `${employee}/${order.id}-${Date.now()}-${safe}`; await upload('work-order-documents', path, file); await write('work_order_documents', { work_order_id: order.id, employee_id: employee, file_path: path, file_name: file.name, mime_type: file.type || null }); }
   }
   async function deleteWorkOrderCompletely(orderId) {
@@ -972,25 +801,6 @@
     await upload('company-logos', path, uploadFile);
     await account('business-logo-update', { businessId: businessId(), logoPath: path });
   }
-  async function sendMailboxMessage(form) {
-    const files = [...(form.elements.attachments?.files || [])];
-    if (files.length > 10) throw new Error('Bitte höchstens zehn Anhänge auf einmal auswählen.');
-    for (const file of files) if (file.size > 25 * 1024 * 1024) throw new Error(`„${file.name}“ ist größer als 25 MB.`);
-    const sent = await api('/functions/v1/mailbox-send', { method: 'POST', body: { action: 'send', recipientId: form.elements.recipient.value, title: form.elements.title.value, message: form.elements.message.value } });
-    const message = sent?.message;
-    if (!message?.id) throw new Error('Die Nachricht konnte nicht erstellt werden.');
-    if (files.length) {
-      const attachments = [];
-      for (const file of files) {
-        const safe = file.name.replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 160) || 'Datei';
-        const path = `${message.id}/${Date.now()}-${crypto.getRandomValues(new Uint32Array(1))[0]}-${safe}`.slice(0, 215);
-        await upload('mailbox-attachments', path, file);
-        attachments.push({ filePath: path, fileName: file.name.slice(0, 180), mimeType: file.type || '', fileSize: file.size });
-      }
-      await api('/functions/v1/mailbox-send', { method: 'POST', body: { action: 'attach', messageId: message.id, attachments } });
-    }
-    state.composeMessage = false;
-  }
   async function saveTime(form) {
     const id = workerId();
     if (locked(id)) throw new Error(lockedText(id));
@@ -1020,13 +830,13 @@
   function pdfPreviewControlStyles() {
     return `#pdf-return-actions{position:fixed;top:0;left:0;right:0;z-index:2147483000;box-sizing:border-box;width:100%;max-width:100vw;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;padding:calc(12px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) 12px max(16px,env(safe-area-inset-left,0px));margin:0;background:#142b35;color:#fff;border-bottom:1px solid #38505a;font:14px/1.4 Arial,sans-serif;box-shadow:0 3px 12px #0002}#pdf-return-actions .pdf-control-copy{min-width:0;overflow-wrap:anywhere}#pdf-return-actions .pdf-control-copy strong{display:block;font-size:14px}#pdf-return-actions .pdf-preview-note{display:block;color:#c7deda;font-size:12px;margin-top:3px}#pdf-return-actions .pdf-control-buttons{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}#pdf-return-actions button{box-sizing:border-box;min-height:48px;min-width:0;width:100%;padding:10px 14px;border:1px solid #6a838b;border-radius:10px;background:#29434c;color:#fff;font:600 14px/1.35 Arial,sans-serif;white-space:normal;cursor:pointer;touch-action:manipulation}#pdf-return-actions button[data-pdf-print]{background:#167964;border-color:#45a28c}#pdf-return-actions button:focus-visible{outline:3px solid #a4e0cc;outline-offset:2px}#pdf-return-actions [data-pdf-print-status]{grid-column:1/-1;margin:0;font-size:12px;color:#d9ece7}#pdf-return-actions [hidden]{display:none!important}body{padding-top:var(--pdf-controls-height,0px)!important}html{scroll-padding-top:var(--pdf-controls-height,0px)}@media(max-width:650px){#pdf-return-actions{grid-template-columns:minmax(0,1fr);gap:8px}#pdf-return-actions .pdf-control-buttons{grid-row:1;grid-column:1}#pdf-return-actions .pdf-control-copy{grid-row:2;grid-column:1}#pdf-return-actions button{padding:10px 8px;font-size:13px}}@media print{#pdf-return-actions,#invoice-preview-actions{display:none!important}body{padding-top:0!important}}`;
   }
-  function addPdfReturnBar(windowRef, invoicePreview = false) {
+  function addPdfReturnBar(windowRef) {
     if (!windowRef) return;
-    if (windowRef.actualPdf) { if (invoicePreview) windowRef.setNote('Rechnungsvorschau: Die Arbeitsscheine bleiben offen und bearbeitbar.'); return; }
+    if (windowRef.actualPdf) return;
     const addBar = () => {
       const doc = windowRef.document; if (!doc?.body) return;
       const existing = doc.getElementById('pdf-return-actions');
-      if (existing) { if (invoicePreview) existing.querySelector('.pdf-preview-note').textContent = 'Rechnungsvorschau: Die Arbeitsscheine bleiben offen und bearbeitbar.'; return; }
+      if (existing) return;
       if (!doc.querySelector('meta[name="viewport"]')) {
         const viewport = doc.createElement('meta'); viewport.name = 'viewport'; viewport.content = 'width=device-width, initial-scale=1, viewport-fit=cover'; doc.head.append(viewport);
       }
@@ -1035,7 +845,7 @@
       bar.id = 'pdf-return-actions';
       bar.setAttribute('aria-label', 'Dokumentvorschau: Zurück und Drucken');
       bar.innerHTML = '<div class="pdf-control-copy"><strong>Dokumentvorschau</strong><span class="pdf-preview-note"></span></div><div class="pdf-control-buttons"><button type="button" data-pdf-back>← Zurück zur App</button><button type="button" data-pdf-print>Drucken / PDF sichern</button></div><p data-pdf-print-status role="status" hidden></p>';
-      bar.querySelector('.pdf-preview-note').textContent = invoicePreview ? 'Rechnungsvorschau: Die Arbeitsscheine bleiben offen und bearbeitbar.' : 'Dokument prüfen und anschließend drucken oder als PDF sichern.';
+      bar.querySelector('.pdf-preview-note').textContent = 'Dokument prüfen und anschließend drucken oder als PDF sichern.';
       bar.querySelector('[data-pdf-back]').addEventListener('click', () => {
         try { windowRef.opener?.focus(); } catch (_) {}
         try { if (windowRef.history.length > 1) { windowRef.history.back(); return; } } catch (_) {}
@@ -1082,14 +892,12 @@
     if (action === 'shift-day') { state.date = addDate(state.date, n(button.dataset.days)); state.month = state.date.slice(0, 7); state.orderId = ''; state.timeEntryId = ''; state.vacationForm = false; render(); return; }
     if (action === 'shift-order-date') { const input = button.closest('label')?.querySelector('input[name="work_date"]'); if (!input) return; input.value = addDate(input.value || state.date, n(button.dataset.days)); input.focus(); return; }
     if (action === 'menu') { if (navigationFeature) navigationFeature.toggle(); else { state.menu = !state.menu; render(); } return; }
-    if (action === 'nav') { state.view = button.dataset.view; state.menu = false; state.vacationForm = false; state.composeMessage = false; state.orderId = ''; state.timeEntryId = ''; state.orderCustomer = ''; state.orderOrigin = 'orders'; render(); window.scrollTo({top:0,behavior:'instant'}); return; }
-    if (action === 'shopping-load') return recoverShopping();
+    if (action === 'nav') { if (!menuItems().some(([view])=>view===button.dataset.view)) return; state.view = button.dataset.view; state.menu = false; state.vacationForm = false; state.composeMessage = false; state.orderId = ''; state.timeEntryId = ''; state.orderCustomer = ''; state.orderOrigin = 'orders'; render(); window.scrollTo({top:0,behavior:'instant'}); return; }
     if (action === 'logout') return logout();
     if (action === 'retry-startup' && (startupStage === 'retry' || startupFailed.size)) return loadApp();
     if (action === 'forgot') return perform('Die zuständige Verwaltung wurde informiert.', () => api('/functions/v1/request-password-help', { method: 'POST', body: { username: root.querySelector('[name="username"]')?.value || '' } }));
     if (action === 'pick-day') { state.date = button.dataset.date; state.month = state.date.slice(0, 7); state.timeEntryId = ''; state.vacationForm = false; render(); return; }
     if (action === 'month') { const date = new Date(`${state.month}-01T12:00:00`); date.setMonth(date.getMonth() + n(button.dataset.value)); state.month = date.toISOString().slice(0, 7); render(); return; }
-    if (action === 'vacation-form') { state.vacationForm = true; render(); return; }
     if (action === 'open-order') { const order = state.rows.orders.find(row => same(row.id, button.dataset.id)); if (!order) return; const person = state.rows.people.find(row => same(row.id, order.employee_id)); if (isAdmin() && person?.business_id) state.businessId = person.business_id; state.employeeId = order.employee_id; state.date = order.work_date; state.month = state.date.slice(0, 7); state.orderId = order.id; state.timeEntryId = ''; state.orderOrigin = ['planning', 'customers'].includes(state.view) ? state.view : 'orders'; state.view = 'order-detail'; state.menu = false; render(); return; }
     if (action === 'open-time') {
       const entry = state.rows.entries.find(row => same(row.id, button.dataset.id));
@@ -1107,23 +915,8 @@
     if (action === 'new-customer') { state.customerId = 'new'; render(); return; }
     if (action === 'customer') { state.customerId = button.dataset.id; render(); revealCustomerProfile(); return; }
     if (action === 'create-order-from-customer') { const customer = state.rows.customers.find(row => same(row.id, button.dataset.id)); if (!customer) { notice('Der ausgewählte Kunde wurde nicht gefunden.', true); render(); return; } state.orderCustomer = customer.name; state.orderId = ''; state.orderOrigin = 'customers'; state.view = 'orders'; render(); return; }
-    if (action === 'edit-material') { state.materialId = button.dataset.id; render(); return; }
-    if (action === 'close-material-edit') { state.materialId = ''; render(); return; }
     if (action === 'pdf') return printPdf();
     if (action === 'order-pdf') return printOrderPdf(button.dataset.id);
-    if (action === 'juprowa-material') return exportJuprowaMaterial(button.dataset.id);
-    if (action === 'compose-message') { state.composeMessage = !state.composeMessage; render(); return; }
-    if (action === 'mailbox-folder') { state.mailboxFolder = button.dataset.folder || 'received'; render(); return; }
-    if (action === 'payslip-template') {
-      const form = button.closest('form[data-form="message-send"]'), recipient = messageRecipients().find(person => same(person.id, form?.elements.recipient?.value));
-      if (!form || !recipient) { notice('Bitte zuerst den Empfänger der Lohnabrechnung auswählen.', true); render(); return; }
-      const date = new Date(), month = new Intl.DateTimeFormat('de-DE', { month: 'long', year: 'numeric' }).format(date), company = managerBusiness()?.company_name || 'Ihre Geschäftsleitung';
-      form.elements.title.value = `Lohnabrechnung – ${month}`;
-      form.elements.message.value = `Guten Tag ${personName(recipient)},\n\nhiermit erhalten Sie Ihre Lohnabrechnung für den Monat ${month}.\n\nMit freundlichen Grüßen\n${company}`;
-      form.elements.message.focus();
-      return;
-    }
-    if (action === 'download-mail-attachment') { const attachment = state.rows.attachments.find(row => same(row.id, button.dataset.id)); if (!attachment) { notice('Der Anhang wurde nicht gefunden.', true); render(); return; } return download('mailbox-attachments', attachment.file_path, attachment.file_name); }
     if (action === 'delete-time') {
       const id = button.dataset.id;
       return confirm('Zeiterfassung wirklich vollständig löschen?') && perform('Zeiterfassung wurde vollständig gelöscht.', async () => {
@@ -1139,13 +932,7 @@
       });
     }
     if (action === 'delete-customer') return confirm('Kunde wirklich löschen?') && perform('Kunde wurde gelöscht.', () => remove('customers', `id=eq.${encodeURIComponent(button.dataset.id)}`));
-    if (action === 'delete-material') { const material = state.rows.materials.find(row => same(row.id, button.dataset.id)); if (isHourlyMaterial(material)) { notice('Diese Stundenposition ist geschützt und kann nicht gelöscht werden.'); render(); return; } return confirm('Material wirklich löschen?') && perform('Material wurde gelöscht.', () => remove('materials', `id=eq.${encodeURIComponent(button.dataset.id)}`)); }
     if (action === 'remove-company-logo') return confirm('Firmenlogo wirklich entfernen?') && perform('Das Firmenlogo wurde entfernt.', () => account('business-logo-update', { businessId: businessId(), logoPath: null }));
-    if (action === 'read') return perform('Nachricht als gelesen markiert.', () => write('mailbox_messages', { read_at: new Date().toISOString() }, 'PATCH', `id=eq.${encodeURIComponent(button.dataset.id)}`));
-    if (action === 'trash') return perform('Nachricht wurde in den Papierkorb verschoben.', () => write('mailbox_messages', { deleted_at: new Date().toISOString() }, 'PATCH', `id=eq.${encodeURIComponent(button.dataset.id)}`));
-    if (action === 'restore-mail') return perform('Nachricht wurde wiederhergestellt.', () => write('mailbox_messages', { deleted_at: null }, 'PATCH', `id=eq.${encodeURIComponent(button.dataset.id)}`));
-    if (action === 'vacation-decision') return perform('Urlaubsantrag wurde entschieden.', async () => { await flow('decide', { requestId: button.dataset.request, status: button.dataset.status }); await write('mailbox_messages', { read_at: new Date().toISOString() }, 'PATCH', `id=eq.${encodeURIComponent(button.dataset.id)}`); });
-    if (action === 'sick') return perform(sick() ? 'Krankheitstag wurde entfernt.' : 'Krankheitstag wurde eingetragen.', async () => { const existing = state.rows.days.find(row => same(row.employee_id, workerId()) && row.work_date === state.date); if (sick()) { if (!isManager()) throw new Error('Krankheitstage können nur durch die Verwaltung entfernt werden.'); if (existing) await remove('work_days', `employee_id=eq.${encodeURIComponent(workerId())}&work_date=eq.${state.date}`); } else await api('/rest/v1/work_days?on_conflict=employee_id,work_date', { method: 'POST', body: { employee_id: workerId(), work_date: state.date, sick: 1, vacation: n(existing?.vacation) }, headers: { Prefer: 'resolution=merge-duplicates,return=representation' } }); });
     if (action === 'delete-employee' || action === 'delete-business') {
       notice('Kontolöschungen sind vorübergehend pausiert. Bestehende Konten bleiben aktiv; es wurden keine Daten geändert.', true); render(); return;
     }
@@ -1183,12 +970,6 @@
     const submitters = {
       login: () => login(form.elements.username.value, form.elements.password.value, form.elements.company.value, form.elements.administrator_login?.checked === true, form.elements.remember_device?.value === 'yes'),
       time: () => saveTime(form), order: () => saveOrder(form), 'order-edit': () => updateOrder(form), customer: () => saveCustomer(form),
-      material: () => { if (isHourlyMaterial(form.elements.name.value)) throw new Error('Diese geschützte Stundenposition ist bereits vorhanden.'); return write('materials', { business_id: businessId(), name: String(form.elements.name.value || '').trim(), unit_price: n(form.elements.price.value), unit: normalizeUnit(form.elements.unit?.value), active: true }); },
-      'hourly-price': () => updateHourlyPrice(form),
-      'customer-rates': () => saveCustomerRates(form),
-      'material-edit': () => updateMaterial(form),
-      vacation: () => flow('request', { employeeId: workerId(), startDate: form.elements.start.value, endDate: form.elements.end.value }),
-      'message-send': () => sendMailboxMessage(form),
       'company-logo': () => saveCompanyLogo(form),
       self: () => account('self-update', { username: form.elements.username.value, password: form.elements.password.value, companyName: form.elements.company?.value, vacationAllowance: n(form.elements.allowance.value) }),
       'employee-new': () => account('employee-create', { businessId: businessId(), username: form.elements.username.value, password: form.elements.password.value, laborType: form.elements.labor_type.value, vacationAllowance: n(form.elements.allowance.value), menuPermissions: permissions(form) }),
@@ -1243,8 +1024,7 @@
     const windowRef = window.open('', '_blank'); if (!windowRef) throw new Error('Bitte Pop-ups erlauben, um die PDF zu erstellen.');
     windowRef.document.write(`<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Zeiterfassungsnachweis</title><style>${pdfStyles()}</style></head><body><main class="pdf-page">${pdfBrandHeader('Zeiterfassungsnachweis', state.date.slice(0, 4))}<section class="pdf-grid"><article class="pdf-card"><span class="pdf-card-label">Mitarbeiter</span><b>${escape(person?.display_name || person?.username || '')}</b></article><article class="pdf-card"><span class="pdf-card-label">Jahresübersicht</span>${h(totalHours)} Arbeitsstunden<br>${h(overtime(id))} Überstunden<br>${vacationLeft(id)} Urlaubstage übrig · ${annualSick(id)} Krankheitstage</article></section><section class="pdf-section"><h2>Erfasste Zeiten</h2><table class="pdf-table"><thead><tr><th>Datum</th><th>Kunde</th><th>Von</th><th>Bis</th><th class="number">Pause</th><th class="number">Stunden</th></tr></thead><tbody>${lines || '<tr><td colspan="6" class="pdf-empty">Keine Zeiterfassungen vorhanden.</td></tr>'}</tbody></table></section><p class="pdf-note">Automatisch aus der Arbeitszeiterfassung erstellt.</p></main><script>window.onload=()=>window.print()<\/script></body></html>`); windowRef.document.close(); addPdfReturnBar(windowRef);
   }
-  const deviceFeatures=window.WorktimeDeviceFeatures?.create({root,state,api,write,allRows,upload,remove,download,render,businessId,workerId,isManager,isAdmin,orderForEmployee,orderHours,dateText,timeText,h,planningMeta,planEmployeeIds,logout,canUse,locked,openPlanningOrder,teamPeriodFields,teamPersonFields,refreshPlanningData,loadTeamContext});
-  function render() { if (!root) return; if (!base || !key) { root.innerHTML = '<main class="login-page"><section class="login-card"><h1>Zeiterfassung</h1><p>Die App-Konfiguration fehlt.</p></section></main>'; return; } if (startupStage && startupStage !== 'data') { root.innerHTML = startupView(); return; } root.innerHTML = state.session && state.profile ? appView() : loginView(); setupCustomerSearch(); setupSignaturePads(); setupPlanningCustomerLookup(); updatePlanningWarnings(root.querySelector('form[data-form="planning"]')); updateAssignmentHint(root.querySelector('form[data-form="time"], form[data-form="order"]')); deviceFeatures?.afterRender(); supplierCart?.afterRender(); }
+  function render() { if (!root) return; if (!base || !key) { root.innerHTML = '<main class="login-page"><section class="login-card"><h1>Zeiterfassung</h1><p>Die App-Konfiguration fehlt.</p></section></main>'; return; } if (startupStage && startupStage !== 'data') { root.innerHTML = startupView(); return; } root.innerHTML = state.session && state.profile ? appView() : loginView(); setupCustomerSearch(); setupSignaturePads(); setupPlanningCustomerLookup(); updatePlanningWarnings(root.querySelector('form[data-form="planning"]')); updateAssignmentHint(root.querySelector('form[data-form="time"], form[data-form="order"]')); }
   window.addEventListener('unhandledrejection', event => { event.preventDefault(); notice('Die Aktion konnte nicht ausgeführt werden. Bitte erneut versuchen.', true); render(); });
   state.session = parse(sessionStorage.getItem(storage) || localStorage.getItem(storage) || localStorage.getItem('zeiterfassung-session-v700'));
   if (state.session?.access_token) loadApp(); else render();
@@ -1305,7 +1085,6 @@
     planningSync.reset();
     const issues = [];
     const load = async (name, table, query = 'select=*') => { try { const data = await allRows(table, query, Boolean(onDataReady)); if (isCurrent()) state.rows[name] = data; } catch { issues.push(name); } finally { if (isCurrent() && name !== 'people') onDataReady?.(name, !issues.includes(name)); } };
-    const loadRecipients = async () => { try { const data = await api('/functions/v1/mailbox-send', { method: 'POST', body: { action: 'recipients' }, signal: onDataReady ? AbortSignal.timeout(10000) : undefined }); if (isCurrent()) state.rows.recipients = data?.recipients || []; } catch { issues.push('recipients'); } finally { if (isCurrent()) onDataReady?.('recipients', !issues.includes('recipients')); } };
     const people = load('people', 'profiles');
     const essential = Promise.all([
       load('entries', 'time_entries', 'select=*&order=work_date.desc,created_at.desc'),
@@ -1315,12 +1094,10 @@
       load('customers', 'customers', 'select=*&order=name.asc'), load('appointments', 'appointments')
     ]);
     const background = Promise.all([
-      load('items', 'work_order_items'), load('messages', 'mailbox_messages', 'select=*&order=created_at.desc'),
-      load('attachments', 'mailbox_attachments', 'select=*&order=created_at.asc'),
+      load('items', 'work_order_items'),
       (!onDataReady && materialLoadState === 'ready'
         ? updateMaterials(isCurrent, false).catch(() => issues.push('materials')) : Promise.resolve()),
-      load('payslips', 'employee_payslips', 'select=*&order=created_at.desc'),
-      load('documents', 'work_order_documents'), loadRecipients(), loadPlanningRequests(isCurrent, Boolean(onDataReady)).then(() => { if (isCurrent()) onDataReady?.('planningRequests'); })
+      load('documents', 'work_order_documents'), loadPlanningRequests(isCurrent, Boolean(onDataReady)).then(() => { if (isCurrent()) onDataReady?.('planningRequests'); })
     ]);
     await people;
     if (!isCurrent()) return;
@@ -1333,8 +1110,7 @@
     })();
     if (!isManager()) { try { const data = await api('/rest/v1/rpc/current_business_branding', { method: 'POST', body: {}, signal: onDataReady ? AbortSignal.timeout(10000) : undefined }); if (!isCurrent()) return; state.businessBrand = data?.[0] || null; } catch { if (!isCurrent()) return; state.businessBrand = null; } } else state.businessBrand = null;
     const teamTask = loadTeamContext().then(() => { if (isCurrent()) onDataReady?.('team'); });
-    const deviceTask = Promise.resolve(deviceFeatures?.load()).then(() => { if (isCurrent()) onDataReady?.('device'); });
-    await Promise.all([essential, background, ratesTask, teamTask, deviceTask]);
+    await Promise.all([essential, background, ratesTask, teamTask]);
     if (!isCurrent()) return;
     if (issues.length) notice('Ein Teil der Daten konnte gerade nicht erneut synchronisiert werden. Bereits geladene Aufträge bleiben sichtbar.', true);
   }
@@ -1355,18 +1131,6 @@
     return [...days].reduce((sum, [date, hours]) => sum + (hasTargets(id,date)?hours - dueHours(date,id):0), 0);
   }
   function reportOvertime(entries,id=workerId()) { const days = new Map(); entries.forEach(row => days.set(row.work_date, n(days.get(row.work_date)) + n(row.executed_hours))); return [...days].reduce((sum, [date, hours]) => sum + (hasTargets(id,date)?hours - dueHours(date,id):0), 0); }
-  function receiptTabs(selected) { return [['fuel','Tankbelege'],['vacations','Urlaubsanträge'],['sick','Krankmeldungen'],['training','Schulungstage']].map(([id,title]) => `<button type="button" class="${id === selected ? 'primary' : 'secondary'} small" data-action="receipt-section" data-section="${id}">${title}</button>`).join(''); }
-  function receiptsView() {
-    const id = workerId(), section = state.receiptSection || 'fuel';
-    const vacations = state.rows.vacations.filter(row => same(row.employee_id, id));
-    const sickDays = state.rows.days.filter(row => same(row.employee_id, id) && n(row.sick) > 0).sort((a,b) => String(b.work_date).localeCompare(String(a.work_date)));
-    const body = section === 'vacations' ? (vacations.map(row => `<article class="row-card"><div class="row-main"><b>${dateText(row.start_date)} bis ${dateText(row.end_date)}</b><span>${escape(row.status === 'approved' ? 'Genehmigt' : row.status === 'requested' ? 'Beantragt' : 'Abgelehnt')} · ${vacationRequestCount(row)} Tage</span></div></article>`).join('') || '<p class="empty">Keine Urlaubsanträge vorhanden.</p>') : section === 'sick' ? (sickDays.map(row => `<article class="row-card"><div class="row-main"><b>${dateText(row.work_date)}</b><span>Krank gemeldet</span></div></article>`).join('') || '<p class="empty">Keine Krankmeldungen vorhanden.</p>') : section === 'training' ? '<p class="empty">Noch keine Schulungstage erfasst.</p>' : '<p class="empty">Noch keine Tankbelege erfasst.</p>';
-    const title = section === 'fuel' ? 'Tankbelege' : section === 'vacations' ? 'Urlaubsanträge' : section === 'sick' ? 'Krankmeldungen' : 'Schulungstage';
-    return `<section class="page-head"><div><span class="eyebrow">Persönliche Nachweise</span><h2>Belege</h2></div></section><section class="panel"><div class="actions">${receiptTabs(section)}</div><h3>${escape(title)}</h3>${body}</section>`;
-  }
-  function planningView() { return '<section class="page-head"><div><span class="eyebrow">Konzeptvorschau</span><h2>Planungsübersicht</h2></div></section><section class="panel"><h3>Planung wird erst nach Freigabe aktiviert</h3><p>Diese Ansicht ändert keine Aufträge und legt keine Termine an. Die vorgeschlagene Umsetzung steht unten als Konzept bereit.</p></section>'; }
-  function menuItems() { return [['home','Übersicht',true],['time','Zeiterfassung',canUse('time')],['orders','Arbeitsscheine',canUse('orders')],['calendar','Kalender',canUse('calendar')],['customers','Kunden',canUse('customers')],['receipts','Belege',true],['planning','Planungsübersicht',true],['mailbox','Postfach',true],['materials','Materialliste',isManager()],['shopping','Einkauf',isManager()||state.profile?.role==='employee'],['shopping-cart','Warenkorb ('+shoppingCartCount()+')',isManager()||state.profile?.role==='employee'],['settings','Einstellungen',true]].filter(([, , yes]) => yes); }
-  function viewHtml() { return ({ home: homeView, time: timeView, orders: ordersView, 'order-detail': orderDetailView, calendar: calendarView, customers: customersView, receipts: receiptsView, planning: planningView, mailbox: mailboxView, materials: materialsView, shopping: shoppingView, settings: settingsView }[state.view] || homeView)(); }
   function reportDateValid(value) {
     return /^\d{4}-\d{2}-\d{2}$/.test(String(value || '')) && Number.isFinite(Date.parse(value+'T12:00:00Z')) && new Date(value+'T12:00:00Z').toISOString().slice(0,10) === value;
   }
@@ -1746,7 +1510,6 @@
     state.customerRatesReady=true;
     state.planningRequestsReady=requests!==null;
     if(requests!==null){state.rows.planningRequests=requests;planningSync.commit(proof);}
-    await deviceFeatures?.refreshLocations();
     return true;
   }
   function revealPlanningDetail() {
@@ -1994,7 +1757,7 @@
   let planningSyncBusy = false;
   async function syncPlanningIfVisible() {
     if (!state.session || state.busy || planningSyncBusy || document.visibilityState === 'hidden') return;
-    if (!['planning', 'time', 'orders', 'order-detail', 'home', 'calendar', 'settings'].includes(state.view)) return;
+    if (!['planning', 'time', 'orders', 'order-detail', 'home', 'settings'].includes(state.view)) return;
     planningSyncBusy = true;
     const orderId = state.orderId;
     const wasBilled = state.rows.orders.find(order => same(order.id, orderId))?.invoiced;
@@ -2011,7 +1774,7 @@
         const form = root.querySelector('form[data-form="planning"]');
         if (form) { updatePlanningWarnings(form); updatePlanningCustomer(form); } else if (!state.menu) render();
       }
-      else if(['home','calendar','settings'].includes(state.view)&&!state.menu&&!document.activeElement?.closest('form')&&!document.activeElement?.matches('input,select,textarea'))render();
+      else if(['home','settings'].includes(state.view)&&!state.menu&&!document.activeElement?.closest('form')&&!document.activeElement?.matches('input,select,textarea'))render();
     } catch { /* Keep the last verified plan during temporary network outages. */ }
     finally { planningSyncBusy = false; }
   }
@@ -2143,16 +1906,13 @@
     const order = Array.isArray(saved) ? saved[0] : saved;
     if (!order?.id) throw new Error('Der gemeinsame Arbeitsschein konnte nicht gespeichert werden.');
     if (!isCurrent()) return savedOrderSynchronized;
-    if (timerId) deviceFeatures?.timerSaved(timerId);
     state.orderCustomer=''; state.planPrefill=null; state.orderId=order.id; state.view='order-detail';
     state.date = order.work_date; state.month = state.date.slice(0, 7);
     // Core data is already committed atomically. A failed file upload never
     // causes the next attempt to create another work order.
-    const hasNewReceipts = JSON.parse(form.dataset.receiptScans || '[]').length > 0;
     try { await saveDocuments(form,order,actor); }
     catch { throw new Error('Der Arbeitsschein und alle Mitarbeiterzeiten sind gespeichert. Ein Dokument konnte nicht hochgeladen werden; bitte hier erneut hinzufügen.'); }
     if (!isCurrent()) return savedOrderSynchronized;
-    if (hasNewReceipts) return; // Device receipt state is refreshed by the existing reload.
     try { await syncSavedTeamOrder(order, planId, isCurrent); }
     catch { return; } // A readback failure falls back to the existing complete refresh.
     return savedOrderSynchronized;
@@ -2238,36 +1998,11 @@
   }
   const settingsBeforeV857=settingsView;
   settingsView=()=>{const html=settingsBeforeV857(),end=html.indexOf('</section>')+10;return html.slice(0,end)+annualDownloadPanel()+html.slice(end);};
-  const offersFeature=window.OffersFeature?.create({state,root,escape,n,same,lower,isManager,businessId,managerBusiness,api,allRows,render:()=>render(),chooseSimilar,normalizeUnit,materialUnit,unitSelect,customers:()=>planningCustomers(businessId()),today,dateText,logoBytes:planningLogoBytes});
-  if(offersFeature){
-    const menusBeforeV857=menuItems,viewBeforeV857=viewHtml,reloadBeforeV857=reload,renderBeforeV857=render;
-    menuItems=()=>{const items=menusBeforeV857();if(isManager())items.splice(items.findIndex(row=>row[0]==='materials'),0,['offers','Angebote',true]);return items;};
-    viewHtml=()=>state.view==='offers'?offersFeature.view():viewBeforeV857();
-    reload=(current, ready)=>loadFeature(reloadBeforeV857,offersFeature,'offers',current,ready);
-    render=()=>{renderBeforeV857();offersFeature.setup();};
-    offersFeature.bind();
-  }
   root.addEventListener('submit',event=>{if(event.target.dataset.form!=='time-account-download')return;event.preventDefault();event.stopImmediatePropagation();downloadAnnualPdf(event.target);},true);
-  const platformFeature=window.WorktimePlatform?.create({root,state,api,render:()=>render(),escape,isAdmin,businessId});
-  if(platformFeature){
-    const menuBeforeV900=menuItems,viewBeforeV900=viewHtml,reloadBeforeV900=reload,settingsBeforeV900=settingsView;
-    menuItems=()=>{const items=menuBeforeV900();if(platformFeature.creator())items.splice(items.findIndex(row=>row[0]==='settings'),0,['platform','Preise & Konten',true]);return items;};
-    viewHtml=()=>state.view==='platform'?platformFeature.view():viewBeforeV900();
-    reload=(current, ready)=>loadFeature(reloadBeforeV900,platformFeature,'platform',current,ready);
-    settingsView=()=>settingsBeforeV900()+platformFeature.settingsPanel();
-  }
-  const legalFeature=window.WorktimeLegal?.create({root,state,api,allRows,render:()=>render(),escape,isManager,businessId,managerBusiness});
-  if(legalFeature){
-    const menuBeforeLegalV900=menuItems,viewBeforeLegalV900=viewHtml,reloadBeforeLegalV900=reload,homeBeforeLegalV900=homeView;
-    menuItems=()=>{const items=menuBeforeLegalV900();items.splice(items.findIndex(row=>row[0]==='settings'),0,['legal','Firmendaten & Unterlagen',true]);return items;};
-    viewHtml=()=>state.view==='legal'?legalFeature.view():viewBeforeLegalV900();
-    reload=(current, ready)=>loadFeature(reloadBeforeLegalV900,legalFeature,'legal',current,ready);
-    homeView=()=>homeBeforeLegalV900();
-  }
   const renderBeforeNavigationV901=render;
   render=()=>{renderBeforeNavigationV901();navigationFeature?.afterRender();};
   // Real PDF snapshots replace the old reflowing HTML popups; no booking/finalization writes.
-  function documentPdfModel(orders,kind='work') {
+  function documentPdfModel(orders) {
     const list=[...orders].sort((a,b)=>String(a.work_date).localeCompare(String(b.work_date))),first=list[0];
     if(!first)throw new Error('Für dieses Dokument sind keine Arbeitsscheine vorhanden.');
     const customer=state.rows.customers.find(row=>same(row.id,first.customer_id))||state.rows.customers.find(row=>lower(row.name)===lower(first.customer_name));
@@ -2280,12 +2015,11 @@
       if(String(order.documentation||'').trim())day.notes.push(personName(teamPerson(order.employee_id))+': '+order.documentation);
       if(order.signature_data)day.signatures.push({image:order.signature_data,signer:order.signed_by});
       const recorded=state.rows.items.filter(item=>same(item.work_order_id,order.id));
-      const source=recorded.length?recorded:kind==='invoice'?[{position_name:order.title||'Arbeitsleistung',quantity:n(order.executed_hours),unit_price:0}]:[];
-      for(const item of source){const line={date:order.work_date,name:invoiceItemName(item,order),quantity:n(item.quantity),unit:itemUnit(item),price:invoiceItemPrice(item,order),description:order.title||'',execution:periods.map(p=>`${p.name}: ${timeText(p.start)} - ${timeText(p.end)}`).join('\n')};items.push(line);day.items.push(line);}
+      for(const item of recorded){const line={date:order.work_date,name:invoiceItemName(item,order),quantity:n(item.quantity),unit:itemUnit(item),price:invoiceItemPrice(item,order),description:order.title||'',execution:periods.map(p=>`${p.name}: ${timeText(p.start)} - ${timeText(p.end)}`).join('\n')};items.push(line);day.items.push(line);}
       days.set(order.work_date,day);
     }
     const company=managerBusiness(),number=`RE-${today().replaceAll('-','')}-${String(first.id||'').replace(/[^a-z0-9]/gi,'').slice(0,8).toUpperCase()||'OFFEN'}`;
-    return {kind,company:company?.company_name||'Zeiterfassung',companyProfile:structuredClone(company||{}),customer:[fields.first_name,name].filter(Boolean).join(' '),address:[[fields.street,fields.house_no].filter(Boolean).join(' '),[fields.postal_code,fields.city].filter(Boolean).join(' '),fields.email].filter(Boolean),number,issued:today(),from:first.work_date,to:list.at(-1).work_date,orderCount:list.length,hours:list.reduce((sum,order)=>sum+orderHours(order),0),total:items.reduce((sum,item)=>sum+item.quantity*item.price,0),days:[...days.values()],items};
+    return {kind:'work',company:company?.company_name||'Zeiterfassung',companyProfile:structuredClone(company||{}),customer:[fields.first_name,name].filter(Boolean).join(' '),address:[[fields.street,fields.house_no].filter(Boolean).join(' '),[fields.postal_code,fields.city].filter(Boolean).join(' '),fields.email].filter(Boolean),number,issued:today(),from:first.work_date,to:list.at(-1).work_date,orderCount:list.length,hours:list.reduce((sum,order)=>sum+orderHours(order),0),total:items.reduce((sum,item)=>sum+item.quantity*item.price,0),days:[...days.values()],items};
   }
   function openDocumentPdf(data,title,filename,creator,note='') {
     if(!window.WorktimePdfViewer||typeof window.DevicePdf?.[creator]!=='function')throw new Error('Die neue PDF-Vorschau ist noch nicht geladen. Bitte die App neu öffnen.');
@@ -2314,51 +2048,11 @@
     if(!weekdays.length||!reportDateValid(effective)){form.querySelector('[data-workweek-result]').textContent='Bitte mindestens einen Arbeitstag und ein gültiges Datum auswählen.';return;}
     const employee=workerId();return perform('Arbeitstage gespeichert. Kalender und Urlaub wurden aktualisiert.',()=>api('/rest/v1/employee_workweeks_v905?on_conflict=employee_id,effective_from',{method:'POST',headers:{Prefer:'resolution=merge-duplicates,return=representation'},body:{employee_id:employee,effective_from:effective,weekdays,updated_at:new Date().toISOString()}}));
   });
-  const businessFeature=window.WorktimeBusiness?.create({root,state,allRows,api,perform,escape,isManager,workerId,worker,workers,businessId,today,h,recordedPeriods,schoolPeriods,notice,render:()=>render()});
-  if(businessFeature){
-    const menusBeforeBusiness=menuItems,renderBeforeBusiness=render,reloadBeforeBusiness=reload,planningBeforeBusiness=refreshPlanningData;
-    menuItems=()=>menusBeforeBusiness().filter(item=>!['time','receipts'].includes(item[0]));
-    settingsView=()=>businessFeature.settings(settingsBeforeWorkweekV905());
-    reload=(current, ready)=>loadFeature(reloadBeforeBusiness,businessFeature,'businessRules',current,ready);
-    refreshPlanningData=async(...args)=>{const result=await planningBeforeBusiness(...args);if(result!==false)await businessFeature.load();return result;};
-    render=()=>{businessFeature.beforeRender();renderBeforeBusiness();businessFeature.mount();};
-    businessFeature.mount();
+  const klarwerkConnection=window.WorktimeKlarwerkConnection?.create({root,state,businessId,isManager,api,escape});
+  if(klarwerkConnection){
+    const baseSettings=settingsView, baseRender=render;
+    settingsView=()=>baseSettings()+klarwerkConnection.settings();
+    render=()=>{baseRender();klarwerkConnection.afterRender();};
   }
-  const mailboxFeature=window.WorktimeMailbox?.create({root,state,api,allRows,upload,render:()=>render(),reload:()=>reload(),escape,isManager,isAdmin,personName,businessId,notice,openPlan:id=>{state.view='planning';state.planId=id;state.planForm=false;render();}});
-  if(mailboxFeature){
-    const reloadBeforeMail=reload,renderBeforeMail=render,refreshBeforeMail=refreshPlanningData;
-    mailboxView=()=>mailboxFeature.view();
-    reload=(current, ready)=>loadFeature(reloadBeforeMail,mailboxFeature,'mailbox',current,ready);
-    refreshPlanningData=async(...args)=>{const result=await refreshBeforeMail(...args);if(result!==false)await mailboxFeature.load();return result;};
-    render=()=>{renderBeforeMail();mailboxFeature.mount();};
-  }
-  const catalogFeature=window.WorktimeCatalog?.create({root,state,api,reload:()=>reload(),render:()=>render(),businessId,isManager,escape});
-  if(catalogFeature){
-    const materialViewBeforeCatalog=materialsView,renderBeforeCatalog=render;
-    materialsView=()=>materialViewBeforeCatalog()+catalogFeature.view();
-    render=()=>{renderBeforeCatalog();catalogFeature.afterRender();};
-  }
-  const catalogWizard=window.WorktimeCatalogWizard?.create({root,state,api,reload:()=>reload(),render:()=>render(),businessId,isManager,escape});
-  shoppingCatalogWizard=catalogWizard;
-  if(catalogWizard){
-    const oldMenu=menuItems,oldView=viewHtml,oldRender=render;
-    menuItems=()=>{const items=oldMenu();return isManager()?[...items,['catalogs','Katalog hinzufügen'],['supplier-catalogs','Fachhändler Kataloge']]:items;};
-    viewHtml=()=>['catalogs','supplier-catalogs'].includes(state.view)&&isManager()?catalogWizard.view():oldView();
-    render=()=>{oldRender();catalogWizard.mount();};
-  }
-  const articleTools=window.WorktimeArticleTools?.create({root,state,businessId,api,selectedNeugartAccount:()=>neugartAccounts?.selectedAccount()||'',shoppingProvider:()=>activeShoppingProvider()});
-  const beforeArticleTools=render;render=()=>{beforeArticleTools();articleTools?.afterRender();};
-  const selectionPhotos=window.WorktimeProductFeatures?.installSelections({root,state,businessId});
-  const flowGuide=window.WorktimeAppFlow?.create({root,state,businessId});if(flowGuide){const renderBeforeFlow=render;render=()=>{renderBeforeFlow();flowGuide.afterRender();selectionPhotos?.afterRender();};flowGuide.afterRender();selectionPhotos?.afterRender();}
-  window.WorktimeGermanProducts?.install({root,state,businessId,render:()=>render()});
-  neugartAccounts=window.WorktimeNeugartAccounts?.create({root,state,api,businessId,render:()=>render(),escape,isManager,catalogSearch:()=>supplierCart?.searchView('neugart')||''});
-  fifAccounts=window.WorktimeFifAccounts?.create({root,state,api,businessId,isManager,render:()=>render(),escape,catalogSearch:()=>supplierCart?.searchView('gautzsch')||'',fallback:options=>supplierCart?.view(options)||''});
-  const viewBeforeNeugart=viewHtml;
-  viewHtml=()=>(state.view==='shopping-cart'?(activeShoppingProvider()==='gautzsch'?fifAccounts?.shopping({cartOnly:true})||'':activeShoppingProvider()==='neugart'?neugartAccounts?.cartView()||'':supplierCart?.view({cartOnly:true})||''):viewBeforeNeugart())+(state.view==='settings'&&isManager()&&neugartAccounts?neugartAccounts.settings():'')+(state.view==='settings'&&isManager()?fifAccounts?.settings()||'':'');
-  initializeShopping();
-  const klarwerkConnection=window.WorktimeKlarwerkConnection?.create({root,state,businessId,isManager,api,upload,download,escape});
-  if(klarwerkConnection){const baseSettings=settingsView,baseView=viewHtml,baseRender=render;settingsView=()=>baseSettings()+klarwerkConnection.settings();viewHtml=()=>baseView()+(state.view==='receipts'?klarwerkConnection.receiptView():'');render=()=>{baseRender();klarwerkConnection.afterRender();};}
   const themeRender=render;render=()=>{themeRender();window.WorktimeKlarwerkTheme?.afterRender(root);};window.WorktimeKlarwerkTheme?.afterRender(root);
-  const supplierStock=window.WorktimeSupplierStock?.create({root,state,businessId,isManager,api,escape,shoppingProvider:()=>activeShoppingProvider()});
-  if(supplierStock){const beforeStockRender=render;render=()=>{beforeStockRender();supplierStock.afterRender();};}
 })();

@@ -23,91 +23,22 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm exec playwright install --with-deps chromium firefox
-      - name: Scoped Klarwerk connection and private originals
+      - name: Scoped operational connection and finance register
         run: |
           node --check klarwerk-connection-v1007.js
           node tests/team/klarwerk-edge-v1007.test.cjs
-          node tests/team/klarwerk-browser-v1007.test.cjs
           node tests/team/klarwerk-bridge-v1007.test.cjs
-          node tests/team/supplier-portal-docs-v1012.test.mjs
-          node tests/team/supplier-portal-database-v1012.test.cjs
-      - name: Navigation and disconnected finance workspace
+      - name: Work-time menus and startup
         run: |
-          node tests/team/navigation-v901.test.cjs
-          node tests/team/finance-v1000.test.cjs
           node tests/team/no-finance-browser-v1003.test.cjs
-      - name: Juprowa work-order material export
-        run: |
-          node tests/team/juprowa-material-browser-v1009.test.cjs
-
-      - name: Invoice and work-order rules in disposable databases
+          node tests/team/login-startup-browser.test.cjs
+          node tests/team/team-browser.test.cjs --save-only
+          node tests/team/session-auth.test.cjs
+      - name: Work-order data, prices and search
         run: |
           node tests/team/work-order-overlaps-v918.test.cjs
           node tests/team/invoice-prices-v919.test.cjs
-          node tests/team/invoice-suppliers-v922.test.cjs
           node tests/team/invoice-fixed-v984.test.cjs
-          node tests/team/invoice-fixed-pdf-v984.test.cjs
-          node tests/team/open-features-activation-v953.test.cjs
-          node tests/team/open-features-activation-v953.test.cjs --existing
-          node tests/team/product-identity-v954.test.cjs
-          node tests/team/supplier-online-database-v955.test.mjs
-      - name: Article search, inventory and verified checkout fixtures
-        run: |
-          node tests/team/supplier-stock-edge-v948.test.mjs
-          node tests/team/supplier-online-edge-v954.test.mjs
-          node tests/team/supplier-online-browser-v954.test.cjs
-          node tests/team/supplier-cart-edge-v949.test.mjs
-          node tests/team/product-display-v930.test.cjs
-          node tests/team/image-sources-v957.test.cjs
-          node tests/team/wago-display-v958.test.cjs
-          node tests/team/manufacturer-display-v960.test.cjs
-          python tests/team/manufacturer-images-v960.test.py
-          node tests/team/search-speed-v958.test.cjs
-          node tests/team/search-responsive-v962.test.cjs
-          node tests/team/search-latency-browser-v962.test.cjs
-          node tests/team/article-intent-v959.test.cjs
-          node tests/team/favorites-database-v959.test.cjs
-          node tests/team/article-tools-browser-v959.test.cjs
-          python tests/team/wago-images-v958.test.py
-          node tests/team/catalog-store-speed-v957.test.cjs
-          node tests/team/catalog-review-v961.test.cjs
-          node tests/team/catalog-review-browser-v961.test.cjs
-          node tests/team/catalog-workflow-browser-v933.test.cjs
-          node tests/team/search-online-catalog-race-v957.test.cjs
-          python tests/team/jung-image-extractor-v957.test.py
           node tests/team/article-search-v999.test.cjs
-          node tests/team/article-search-browser-v947.test.cjs
-          node tests/team/product-series-v935.test.cjs
-          node tests/team/product-assistant-browser-v928.test.cjs
-          node tests/team/supplier-stock-priority-v952.test.cjs
-          node tests/team/purchase-catalog-pages-v952.test.cjs
-          node tests/team/fif-cart-v995.test.mjs
-          node tests/team/fif-accounts-edge-v997.test.mjs
-          node tests/team/fif-accounts-db-v997.test.cjs
-          node tests/team/supplier-cart-browser-v949.test.cjs
-          node tests/team/fif-accounts-browser-v997.test.cjs
-          node tests/team/shopping-admin-v998.test.cjs
-          node tests/team/ui-single-purpose-v1004.test.cjs
-          node tests/team/neugart-search-v975.test.cjs
-          node tests/team/admin-neugart-v984.test.cjs
-      - name: Planning and shared catalog helpers
-        run: |
-          node tests/team/planning.test.cjs
-          node tests/team/time-account-pdf.test.cjs
           node tests/team/catalog-helpers.test.cjs
-      - name: Startup session and scoped work-order readback
-        run: |
-          node tests/team/session-auth.test.cjs
-          node tests/team/login-startup-browser.test.cjs
-          node tests/team/team-browser.test.cjs --save-only
-      - name: Device permissions and account isolation
-        run: node tests/team/device-permissions.test.cjs
-      - name: Large search and navigation in Firefox
-        env:
-          SEARCH_BROWSER: firefox
-        run: node tests/team/search-latency-browser-v962.test.cjs
-      - name: Offer controls and responsive address fields
-        run: |
-          node tests/team/offer-controls-v909.test.cjs
-          node tests/team/admin-view-v984.test.cjs
-          node tests/team/offer-session-recovery.test.cjs
+          node tests/team/time-account-pdf.test.cjs

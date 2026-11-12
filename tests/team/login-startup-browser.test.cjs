@@ -72,7 +72,7 @@ async function main() {
     const selectedDate = await page.locator('[data-date]').inputValue();
     assert.equal(materialReads,0,'login does not download the material catalog');
     await openMenu();
-    await page.locator('[data-view=materials]').click();
+    await page.locator('[data-view=orders]').click();
     await page.waitForFunction(()=>document.querySelector('[data-startup-view-pending]'));
     await page.waitForTimeout(30);
     assert.ok(releaseMaterials);

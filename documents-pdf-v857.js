@@ -143,51 +143,6 @@
     e.lines('Urlaubssummen zählen die individuell festgelegten Arbeitstage ohne NRW-Feiertage und Krankheit. Die Feiertagssumme zählt nur Feiertage an regelmäßigen Arbeitstagen; weitere NRW-Feiertage werden zur Information angezeigt. Krankmeldungen haben Vorrang. Beantragter Urlaub ist noch nicht genehmigt. Tage ohne Arbeitsbuchung erzeugen keine Minusstunden.',{size:8,color:e.colors.muted,gap:12});
     return e.finish();
   }
-  async function createOffer(data){
-    const offer=data.offer,e=await layout(data,offer.status==='draft'?'Angebot - Entwurf':'Angebot',offer.offer_number,'Angebot - keine Rechnung');
-    e.lines('Angebot für',{size:9,color:e.colors.muted});e.lines(offer.customer_name,{size:13,gap:19});
-    const fields=offer.customer_snapshot||{};
-    e.lines([[fields.first_name].filter(Boolean).join(' '),[fields.street,fields.house_no].filter(Boolean).join(' '),[fields.postal_code,fields.city].filter(Boolean).join(' '),fields.email].filter(Boolean).join('\n'),{size:9,gap:13});e.y-=9;
-    e.lines('Datum: '+date(offer.offer_date)+(offer.valid_until?' | Gültig bis: '+date(offer.valid_until):''),{size:9,gap:15});
-    e.heading('Leistungsbeschreibung',80);e.lines(offer.title,{size:10,gap:15});e.y-=9;
-    e.context=offer.offer_number;
-    e.table(['Position','Material / Leistung','Menge','Einheit','Einzelpreis','Gesamt'],offer.items.map((item,index)=>({numeric:[0,2,4,5],cells:[String(index+1),item.name+(item.kind==='labor'?'\nArbeitsstunden':''),count(item.quantity),({stk:'Stk','stk.':'Stk',m:'M',h:'H',pau:'Pau',kg:'Kg'}[String(item.unit||'').trim().toLowerCase()]||(item.kind==='labor'?'H':'Stk')),money(item.unit_price),money(item.line_total)]})),[44,181,48,45,97,100.28],{numericHeaders:[0,2,4,5],lastRowReserve:126});
-    e.offerTotals(offer);
-    e.context='';
-    if(offer.notes){e.heading('Hinweise',70);e.lines(offer.notes,{size:9,gap:14});}
-    return e.finish();
-  }
-  async function createInvoice(data){
-    if(data.invoice_fixed_version===984&&data.tax?.basis!=='net')throw Error('Der Festpreis der Pauschalrechnung muss netto geprüft sein.');
-    if(!data.tax||data.tax.version!==905||data.tax.lines?.length!==data.items.length)throw new Error('Bitte vor der Rechnungserstellung die Umsatzsteuer prüfen.');
-    const cancellation=data.cancellationOf,finalized=data.finalized===true;
-    const e=await layout(data,cancellation?'Stornorechnung':'Rechnung',data.number,finalized?(cancellation?'Stornorechnung':'Rechnung')+' '+data.number:'Rechnungsvorschau - Abrechnung erfolgt separat');
-    if(data.issuer){e.heading('Aussteller',85);e.lines([data.issuer.name,...(data.issuer.address||[]),data.issuer.taxNumber?'Steuernummer: '+data.issuer.taxNumber:'',data.issuer.vatId?'USt-IdNr.: '+data.issuer.vatId:'',[data.issuer.email,data.issuer.phone].filter(Boolean).join(' · ')].filter(Boolean).join('\n'),{size:9,gap:13});}
-    e.heading('Rechnung an',75);e.lines(data.customer,{size:13,gap:18});
-    if(data.address?.length)e.lines(data.address.join('\n'),{gap:13});e.y-=8;
-    e.lines('Ausgestellt am: '+date(data.issued)+' | Leistungszeitraum: '+date(data.from)+(data.to!==data.from?' bis '+date(data.to):''),{size:9,gap:14});
-    if(cancellation)e.lines('Vollständige Stornierung der Rechnung '+(typeof cancellation==='string'?cancellation:cancellation.number)+(cancellation.issued?' vom '+date(cancellation.issued):'')+(data.cancellationReason?'\nGrund: '+data.cancellationReason:''),{size:10,gap:15});
-    e.lines(data.orderCount+' Arbeitsschein(e)',{size:9,gap:14});
-    for(const day of data.invoice_fixed_version===984?[]:data.days){
-      e.context='';e.heading('Ausführung am '+date(day.date),85);e.context=date(day.date);
-      e.table(['Mitarbeiter','Von','Bis','Pause','Stunden'],day.periods.map(p=>({numeric:[3,4],cells:[p.name,time(p.start),time(p.end),hours(p.pause),hours(p.hours)]})),[217.28,75,75,74,74]);
-    }
-    if(data.invoice_fixed_version===984){
-      if(data.fixed_articles?.length){
-        e.context='';e.heading('Verwendete Artikel',90);
-        e.table(['Artikel','Menge','Einheit'],data.fixed_articles.map(item=>({numeric:[1],cells:[item.name,count(item.quantity),item.unit]})),[365.28,80,70],{numericHeaders:[1]});
-      }
-      e.context='';e.heading('Pauschalrechnung · Festpreis',90);e.table(['Leistungsbeschreibung','Festpreis netto'],data.items.map((item,index)=>({numeric:[1],cells:[item.name,money(data.tax.lines[index].net/100)]})),[375.28,140],{numericHeaders:[1],lastRowReserve:100});}else{
-    e.context='';e.heading('Leistungen und Material',90);e.context='Leistungen und Material';
-    e.lines('Einzelpreise '+(data.tax.basis==='net'?'netto':'brutto')+' gemäß Auswahl. Positionsbeträge werden auf Cent gerundet.',{size:8,color:e.colors.muted,gap:12});
-    e.table(['Pos.','Position / Ausführung','Menge','Einheit','Einzelpreis','Gesamt'],data.items.map((item,index)=>{const line=data.tax.lines[index],rule=window.WorktimeInvoiceTax?.rules[line.code];return {numeric:[0,2,4,5],cells:[String(index+1),[item.name,date(item.date),item.execution,item.description,'Steuer: '+(rule?.label||line.rate+' %')].filter(Boolean).join('\n'),count(item.quantity),item.unit,priceMoney(item.price),money((data.tax.basis==='net'?line.net:line.gross)/100)]};}),[32,175,68,44,93,103.28],{numericHeaders:[0,2,4,5],lastRowReserve:100});
-    }
-    e.context='';const summaryRows=2+data.tax.groups.length*(data.tax.groups.length>1?2:1),notesHeight=data.tax.notes.reduce((sum,note)=>sum+32+e.wrap(note.text+'\nRechtsgrundlage: '+note.law+'\nAngabe des Ausstellers: '+note.detail,e.content,9).length*14,0);e.room(Math.min(500,summaryRows*27+48+notesHeight));e.invoiceTotals(data.tax);
-    for(const note of data.tax.notes){e.heading('Steuerhinweis',65);e.lines(note.text+'\nRechtsgrundlage: '+note.law+'\nAngabe des Ausstellers: '+note.detail,{size:9,gap:14});}
-    if(data.issuer?.iban)e.lines('Bankverbindung: '+data.issuer.iban,{size:9,gap:14});
-    e.lines(finalized?(cancellation?'Dieses Dokument storniert die oben bezeichnete Rechnung vollständig. Originalrechnung und Stornorechnung bleiben im Rechnungsregister erhalten.':'Ausgestellte Rechnung. Änderungen erfolgen ausschließlich durch verknüpfte Stornierung und gegebenenfalls eine neue Rechnung.'):'Vorschau / Download schließen die Abrechnung nicht automatisch ab.',{size:8,color:e.colors.muted,gap:12});
-    return e.finish();
-  }
   async function createWorkReport(data){
     const e=await layout(data,'Arbeitsnachweis',data.subtitle||'Arbeit und Material','Arbeitsnachweis');
     e.heading('Kunde',65);e.lines(data.customer,{size:13,gap:18});
@@ -211,5 +166,5 @@
     const url=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'})),link=document.createElement('a');
     link.href=url;link.download=String(filename).replace(/[<>:"/\\|?*\u0000-\u001F]/g,'_');document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
   }
-  window.DevicePdf={createTimeAccount,createOffer,createInvoice,createWorkReport,createTimeAccountBundle,download};
+  window.DevicePdf={createTimeAccount,createWorkReport,createTimeAccountBundle,download};
 })();

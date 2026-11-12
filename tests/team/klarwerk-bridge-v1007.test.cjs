@@ -63,6 +63,24 @@ async function main(){
  const link=await manage(ids.business,ids.business,'pair',{pair_hash:H,label:'Synthetic Klarwerk'});
  await test('one-use exchange and current-authority checks',async()=>{const c=await dispatch(H,'exchange',{token_hash:T,account_label:'Synthetic A'});assert.equal(c.company.id,ids.business);await assert.rejects(dispatch(H,'exchange',{token_hash:U}));await assert.rejects(dispatch(U,'company'));});
  await test('company data stays scoped even when payload requests another company',async()=>{const company=await dispatch(T,'company',{company:ids.otherBusiness});assert.equal(company.company.id,ids.business);const customers=await dispatch(T,'list',{entity:'customers'});assert.ok(customers.every(x=>x.id!==ids.otherCustomer));const orders=await dispatch(T,'list',{entity:'orders'});assert.ok(orders.some(x=>x.id===order.id));});
+ await test('work-sheet projection is scoped and excludes billing values', async()=>{
+  const migration=fs.readdirSync(path.resolve(__dirname,'../../supabase/migrations')).find(name=>name.endsWith('_klarwerk_work_sheets.sql'));
+  await db.exec(migrationSource(migration));
+  const foreign={id:uuid(1500)};
+  await db.query('insert into public.work_orders(id,employee_id,customer_id,work_date,signed_by,signature_data) select $1,$2,$3,work_date,signed_by,signature_data from public.work_orders where id=$4',[foreign.id,ids.otherBusiness,ids.otherCustomer,order.id]);
+  await f.admin();
+  const rows=await dispatch(T,'list',{entity:'work-sheets',company:ids.otherBusiness,ids:[order.id,foreign.id]});
+  assert.deepEqual(rows.map(row=>row.id),[order.id]);
+  const sheet=rows[0];
+  assert.ok(sheet.hours.some(period=>Number(period.hours)>0));
+  assert.ok(sheet.materials.length>0);
+  assert.ok(sheet.materials.every(item=>!('unit_price' in item)&&!('price' in item)&&item.unit.toUpperCase()!=='H'));
+  assert.equal('employee_id' in sheet,false);
+  assert.ok(!JSON.stringify(sheet).includes('unit_price'));
+  assert.deepEqual(await dispatch(T,'list',{entity:'work-sheets',ids:[foreign.id]}),[]);
+  await assert.rejects(dispatch(U,'list',{entity:'work-sheets',ids:[order.id]}));
+  await assert.rejects(dispatch(T,'list',{entity:'work-sheets',ids:[]}));
+ });
  await test('legacy grants require explicit offer scope, with company isolation and revocation', async()=>{
   await db.exec('alter table public.offers add column offer_config jsonb');
   const file=fs.readdirSync(path.resolve(__dirname,'../../supabase/migrations')).find(name=>name.endsWith('_klarwerk_offer_scope_v1009.sql'));

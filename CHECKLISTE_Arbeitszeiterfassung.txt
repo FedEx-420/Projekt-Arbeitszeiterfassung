@@ -402,3 +402,7 @@ KLARWERK-ABRECHNUNG v1011
 [x] In der Arbeitszeiterfassung entfallen Abrechnungslisten, Rechnungserstellung, DATEV und Steuerformulare. Arbeitsscheine bleiben für die Erfassung im jeweiligen Arbeitsbereich bearbeitbar. Angebote werden als Nettoentwürfe gespeichert.
 [x] Klarwerk übernimmt unter Exporte den bisherigen DATEV-Dateiweg, die gespeicherte Exporthistorie, die Firmen-/Steuerangaben und die Verfahrensdokumentation. Betriebsgrenzen, unveränderte Exportdatei und Rechnungsabschluss mit Testdaten geprüft.
 [ ] Koordinierte Bereitstellung von Datenbank, Klarwerk und Arbeitszeiterfassung vollständig bestätigen. Keine Live-Rechnung und kein DATEV-Import zu Prüfzwecken.
+
+GROSSHÄNDLERBELEGE UND KLARWERK
+[x] Rechnungs- und Lieferschein-PDFs über die gespeicherten Neugart- und FiF-Webportalzugänge abrufen. Abruf nur bei aktiver Firmenverbindung, Originaldateien privat speichern und Wiederholungen anhand von Portalreferenz und Dateihash erkennen. Isoliert und mit vorhandenen Händleroriginalen geprüft.
+[ ] Klarwerk-Ansicht für Liefernachweise und weitere Originale auf der Produktionswebsite veröffentlichen. Rechnungen erscheinen bereits im bestehenden Klarwerk-Belegeingang. Die erweiterte Ansicht und die Zuordnung sind im isolierten Browsertest geprüft.

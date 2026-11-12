@@ -14,24 +14,30 @@ function invoiceTotals(row) {
   return {net, tax, gross, rate:row.salesTaxPercent};
 }
 
-function invoices(response) {
+function invoices(response, issues) {
   if (response?.type !== 'Success' || !Array.isArray(response.data)) throw fault('portal');
-  return response.data.map(row => {
+  const docs = [];
+  for (const row of response.data) {
     const number = reference(row.invoiceNumber);
-    const date = portalDate(row.date);
-    if (!number || date.replaceAll('-','') !== row.dateString || !['S','H'].includes(row.typeShort)) throw fault('document');
-    return {
+    let date;
+    try { date = portalDate(row.date); } catch { date = null; }
+    if (!number || !date || date.replaceAll('-','') !== row.dateString || !['S','H'].includes(row.typeShort)) {
+      issues['invoice-metadata'] = (issues['invoice-metadata'] || 0) + 1;
+      continue;
+    }
+    docs.push({
       document_key:'invoice:' + number + ':' + row.dateString,
       document_type:row.typeShort === 'H' ? 'credit_note' : 'invoice',
       number, date,
       year:row.dateString,
       file_name:(row.typeShort === 'H' ? 'Gutschrift-' : 'Rechnung-') + number + '-' + date + '.pdf',
       totals:row.typeShort === 'S' ? invoiceTotals(row) : null
-    };
-  });
+    });
+  }
+  return docs;
 }
 
-function deliveryNotes(response) {
+function deliveryNotes(response, issues) {
   const list = response?.data?.orders;
   if (response?.type !== 'Success' || !Array.isArray(list) || response.data.ordersCount !== list.length) throw fault('portal');
   const delivery = new Map();
@@ -39,7 +45,10 @@ function deliveryNotes(response) {
     if (!row.hasDeliveryNumber) continue;
     const number = reference(row.deliveryNumber);
     const year = String(row.deliveryDateYear);
-    if (!number || !/^\d{4}$/.test(year)) throw fault('document');
+    if (!number || !/^(?:19|20)\d{2}$/.test(year)) {
+      issues['delivery-metadata'] = (issues['delivery-metadata'] || 0) + 1;
+      continue;
+    }
     const key = 'delivery:' + number + ':' + year;
     const invoice = row.hasInvoiceNumber ? reference(row.invoiceNumber) : null;
     const known = delivery.get(key);
@@ -70,8 +79,9 @@ export async function connectFif(credentials, {fetch = globalThis.fetch} = {}) {
         merchant.searchDocuments(session, 'invoice', startDe, endDe),
         merchant.searchDocuments(session, 'delivery_note', startDe, endDe)
       ]);
-      const unique = new Map([...invoices(invoice), ...deliveryNotes(delivery)].map(doc => [doc.document_key, doc]));
-      return {rows:[...unique.values()], more:end + day <= Date.parse(to)};
+      const issues = {};
+      const unique = new Map([...invoices(invoice,issues), ...deliveryNotes(delivery,issues)].map(doc => [doc.document_key, doc]));
+      return {rows:[...unique.values()], more:end + day <= Date.parse(to), issues};
     },
     async documents(row) { return [row]; },
     async download(doc) {

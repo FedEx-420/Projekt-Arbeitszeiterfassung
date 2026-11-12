@@ -70,7 +70,7 @@ async function run(job:Job) {
   } catch (error) {
     return {provider:job.provider, result:resultCode(error), added:0};
   }
-  return {provider:job.provider, result:summary.result, added:summary.added};
+  return {provider:job.provider, result:summary.result, added:summary.added, ...('issues' in summary ? {issues:summary.issues} : {})};
 }
 
 Deno.serve(async request => {

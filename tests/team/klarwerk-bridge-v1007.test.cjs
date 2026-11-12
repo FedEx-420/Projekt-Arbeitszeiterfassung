@@ -118,10 +118,26 @@ async function main(){
   assert.equal(row.offer_config.tax_pending,true);assert.equal(row.offer_config.tax,undefined);assert.equal(Number(row.subtotal),100);assert.equal(Number(row.total),100);
   await f.admin();
  });
+ await test('Core connection rejects offers and receipts and ordinary clients cannot issue invoices',async()=>{
+  await db.exec(`create schema cron; create table cron.job(jobid bigint,jobname text,active boolean);
+    create function cron.alter_job(jobid bigint,active boolean) returns void language plpgsql as $$ begin
+      update cron.job j set active=alter_job.active where j.jobid=alter_job.jobid;
+    end $$;
+    insert into cron.job values(7,'klarwerk-supplier-portals',true);`);
+  await db.exec(migrationSource('20261112160000_worktime_core_scope_v1013.sql'));
+  assert.equal((await db.query("select active from cron.job")).rows[0].active,false);
+  for(const entity of ['offers','receipts'])await assert.rejects(dispatch(T,'list',{entity}));
+  await assert.rejects(dispatch(T,'receipt-file',{id:uuid(1400)}));
+  assert.ok((await dispatch(T,'list',{entity:'orders'})).every(row=>row.company_id===ids.business));
+  await f.actor('business');
+  await assert.rejects(db.query('select * from public.invoice_batches_v908'),/permission denied/);
+  await assert.rejects(db.query('select public.prepare_invoice_batch_v922($1,$2)',[ids.business,JSON.stringify([order.id])]),/permission denied/);
+  await f.admin();
+ });
  let prepared=await dispatch(T,'rpc',{name:'prepare_invoice_batch_v922',args:{p_company:ids.otherBusiness,p_order_ids:[order.id],p_prices:{},p_sources:{}}});
  const args={p_id:uuid(1007),p_company:ids.otherBusiness,p_issued:'2026-10-17',p_selection:prepared.selection,p_tax:taxFor(prepared.document),p_parties:parties,p_prices:{},p_sources:{},p_engine:922};let saved;
  await test('native finalization keeps source prices, numbering and invoice locks, with exact retries',async()=>{saved=await dispatch(T,'rpc',{name:'issue_invoice_auto_v934',args});assert.equal(saved.company_id,ids.business);assert.equal((await dispatch(T,'rpc',{name:'issue_invoice_auto_v934',args})).id,saved.id);await assert.rejects(dispatch(T,'rpc',{name:'issue_invoice_auto_v934',args:{...args,p_id:uuid(1008)}}));assert.equal((await db.query('select invoiced from work_orders where id=$1',[order.id])).rows[0].invoiced,true);});
- await test('employee receipt keeps its owner and company and is unreadable before original upload',async()=>{const r=await manage(ids.anna,ids.business,'receipt-create',{id:uuid(1100),supplier:'Synthetic Supplier',date:'2026-11-08',extension:'pdf',mime:'application/pdf',name:'invoice.pdf'});await assert.rejects(manage(ids.anna,ids.business,'receipt-complete',{id:r.id}));await db.query('insert into storage.objects(bucket_id,name) values($1,$2)',['purchase-receipts-v1007',r.path]);await manage(ids.anna,ids.business,'receipt-complete',{id:r.id});assert.equal((await dispatch(T,'receipt-file',{id:r.id})).path,r.path);const other=await manage(ids.felix,ids.otherBusiness,'receipt-create',{id:uuid(1101),supplier:'Other Supplier',date:'2026-11-08',extension:'pdf',mime:'application/pdf',name:'other.pdf'});await db.query('insert into storage.objects(bucket_id,name) values($1,$2)',['purchase-receipts-v1007',other.path]);await manage(ids.felix,ids.otherBusiness,'receipt-complete',{id:other.id});await assert.rejects(dispatch(T,'receipt-file',{id:other.id}));assert.equal((await dispatch(T,'list',{entity:'receipts'})).length,1);});
+ await test('employee receipt keeps its owner and company and is unreadable before original upload',async()=>{const r=await manage(ids.anna,ids.business,'receipt-create',{id:uuid(1100),supplier:'Synthetic Supplier',date:'2026-11-08',extension:'pdf',mime:'application/pdf',name:'invoice.pdf'});await assert.rejects(manage(ids.anna,ids.business,'receipt-complete',{id:r.id}));await db.query('insert into storage.objects(bucket_id,name) values($1,$2)',['purchase-receipts-v1007',r.path]);await manage(ids.anna,ids.business,'receipt-complete',{id:r.id});await assert.rejects(dispatch(T,'receipt-file',{id:r.id}));const other=await manage(ids.felix,ids.otherBusiness,'receipt-create',{id:uuid(1101),supplier:'Other Supplier',date:'2026-11-08',extension:'pdf',mime:'application/pdf',name:'other.pdf'});await db.query('insert into storage.objects(bucket_id,name) values($1,$2)',['purchase-receipts-v1007',other.path]);await manage(ids.felix,ids.otherBusiness,'receipt-complete',{id:other.id});await assert.rejects(dispatch(T,'receipt-file',{id:other.id}));await assert.rejects(dispatch(T,'list',{entity:'receipts'}));});
  await test('RPC is not callable with ordinary user credentials and role changes revoke existing access',async()=>{await f.actor('anna');await assert.rejects(dispatch(T,'company'));await f.admin();await db.query("update profiles set role='employee' where id=$1",[ids.business]);await assert.rejects(dispatch(T,'company'));await db.query("update profiles set role='business' where id=$1",[ids.business]);});
  await test('revocation immediately blocks reads and writes',async()=>{await manage(ids.business,ids.business,'revoke',{id:link.id});await assert.rejects(dispatch(T,'company'));await assert.rejects(dispatch(T,'rpc',{name:'issue_invoice_auto_v934',args}));});
  console.log(JSON.stringify({passed,productionWrites:0}));await db.close();

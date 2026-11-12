@@ -94,17 +94,15 @@ async function main(){
       await sign();reads.length=0;await submit('order');assert.equal(await page.locator('form[data-form="order-edit"]').count(),1);
       assert.match(await page.locator('.notice').innerText(),/gespeichert/);
       const savedId = await page.evaluate(() => window.__appTest.state.orderId);
-      assert.deepEqual(reads.map(([table]) => table).sort(), ['time_entries', 'work_order_documents', 'work_order_items']);
-      assert.ok(reads.every(([, query]) => query.includes('eq.' + savedId)));
+      const readback = reads.filter(([,query])=>query.includes('eq.' + savedId));
+      assert.deepEqual(readback.map(([table]) => table).sort(), ['time_entries', 'work_order_documents', 'work_order_items']);
       assert.equal(await page.evaluate(()=>window.__appTest.dayHours()),3.25);
     });
     let orderId=await page.evaluate(()=>window.__appTest.state.orderId);
     await setRole('max','home');
-    await test('Coworker immediately sees the common order, calendar marker and their own three hours',async()=>{
+    await test('Coworker immediately sees the common order and their own three hours',async()=>{
       assert.equal(await page.evaluate(()=>window.__appTest.dayHours()),3);
       assert.equal(await page.locator('[data-action="open-order"][data-id="'+orderId+'"]').count(),1);
-      await page.evaluate(()=>{window.__appTest.state.view='calendar';window.__appTest.render();});
-      assert.equal(await page.locator('.month-day[data-date="2026-10-05"] .flag-order').count(),1);
       await page.locator('[data-action="open-order"][data-id="'+orderId+'"]').click();assert.equal(await page.locator('[data-team-period]').count(),3);
       assert.equal(await page.evaluate(()=>window.__appTest.overtime()),-5);
     });

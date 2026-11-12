@@ -1,82 +1,46 @@
-const CACHE = 'worktime-v1011';
-const FILES = ['./','./index.html','./styles-v700.css','./responsive-v701.css','./navigation-v710.css','./menu-v720.css','./calendar-v800.css?v=2','./home-v827.css?v=3','./signature-v828.css?v=2','./planned-orders-v855.css','./offers-v857.css?v=908','./material-units-v860.css','./vendor/pdf-lib-1.17.1.min.js','./planning-pdf.js?v=854','./documents-pdf-v857.js?v=908','./offers-v857.js?v=908','./app-v800.js?v=908','./receipt-pdf-v863-1.js','./arrival-timer-v865.js?v=875','./iphone-shortcuts-v870.js','./iphone-shortcuts-v870.css','./owntracks-v871.js?v=908','./owntracks-v871.css?v=906','./device-features-v863.js?v=964','./device-features-v863.css?v=873','./config.js?v=875','./manifest.webmanifest','./icon.svg'];
-FILES.push('./presentation-v900.css','./platform-v900.js','./guidance-v900.js?v=907','./help-topics-v900.js','./navigation-v901.js?v=908','./navigation-v901.css');
-FILES.push('./legal-templates-v900.js','./legal-v900.js');
-FILES.push('./safe-area-v902.css');
-FILES.push('./datev-format-v907.js','./datev-v907.js','./datev-v907.css','./help-topics-v900.js?v=907');
-FILES.push('./billing-selection-v906.js','./billing-selection-v906.css','./business-readiness-v906.js','./business-readiness-v906.css','./legal-v900.js?v=906');
-FILES.push('./business-rules-v908.js','./business-v908.js','./business-v908.css','./mailbox-rules-v908.js','./mailbox-v908.js','./mailbox-v908.css','./catalog-format-v908.js','./catalog-ui-v908.js','./catalog-ui-v908.css','./invoice-ledger-ui-v908.js','./invoice-ledger-ui-v908.css','./offer-model-v908.js','./offer-pdf-v908.js');
-FILES.push('./invoice-tax-v905.js','./invoice-tax-v905.css','./pdf-viewer-v904.js','./pdf-viewer-v904.css','./vendor/pdfjs-6.4.299/pdf.mjs','./vendor/pdfjs-6.4.299/pdf.worker.mjs');
-FILES.push(...['LiberationSans-Regular.ttf','LiberationSans-Bold.ttf','LiberationSans-Italic.ttf','LiberationSans-BoldItalic.ttf'].map(name=>'./vendor/pdfjs-6.4.299/standard_fonts/'+name));
-// Keep the previous shared assets, but cache the exact v909 invoice entry points.
-for(let index=0;index<FILES.length;index++){
-  const file=FILES[index];
-  if(/^\.\/(app-v800|invoice-tax-v905|legal-v900|invoice-ledger-ui-v908)\.js(?:\?.*)?$/.test(file))FILES[index]=file.replace(/\?.*$/,'')+'?v=909';
-}
-FILES.push('./catalog-import-v909.js?v=920','./catalog-import-ui-v910.js?v=920');
-for(let index=0;index<FILES.length;index++)if(/^\.\/(app-v800|offers-v857|offer-model-v908|catalog-ui-v908)\.(js|css)(?:\?.*)?$/.test(FILES[index]))FILES[index]=FILES[index].replace(/\?.*$/,'')+'?v=910';
-for(let index=0;index<FILES.length;index++)if(/^\.\/catalog-ui-v908\.css(?:\?.*)?$/.test(FILES[index]))FILES[index]='./catalog-ui-v908.css?v=920';
-for(let index=0;index<FILES.length;index++)if(/^\.\/catalog-ui-v908\.js(?:\?.*)?$/.test(FILES[index]))FILES[index]='./catalog-ui-v908.js?v=920';
-for(let index=0;index<FILES.length;index++)if(FILES[index].includes('invoice-ledger-ui-v908.'))FILES[index]=FILES[index].replace(/\?.*$/,'')+'?v=920';
-FILES.push('./catalog-products-v921.js');
-for(let index=0;index<FILES.length;index++)if(/^\.\/(catalog-format-v908|catalog-import-v909|catalog-import-ui-v910|catalog-ui-v908)\.js(?:\?.*)?$/.test(FILES[index]))FILES[index]=FILES[index].replace(/\?.*$/,'')+'?v=921';
-for(let index=0;index<FILES.length;index++)if(/^\.\/(offers-v857|invoice-ledger-ui-v908)\.js(?:\?.*)?$/.test(FILES[index]))FILES[index]=FILES[index].replace(/\?.*$/,'')+'?v=922';
-for(let index=0;index<FILES.length;index++)if(/^\.\/catalog-ui-v908\.css(?:\?.*)?$/.test(FILES[index]))FILES[index]='./catalog-ui-v908.css?v=922';
-for(let index=0;index<FILES.length;index++)if(/^\.\/(catalog-import-ui-v910|catalog-ui-v908)\.(js|css)(?:\?.*)?$/.test(FILES[index]))FILES[index]=FILES[index].replace(/\?.*$/,'')+'?v=923';
-for(let index=0;index<FILES.length;index++)if(/^\.\/(catalog-format-v908|catalog-import-ui-v910)\.js(?:\?.*)?$/.test(FILES[index])||/^\.\/catalog-ui-v908\.css(?:\?.*)?$/.test(FILES[index]))FILES[index]=FILES[index].replace(/\?.*$/,'')+'?v=924';
-FILES.push('./catalog-classify-v925.js','./catalog-management-v925.js');
-for(let index=0;index<FILES.length;index++)if(/^\.\/(catalog-import-v909|catalog-import-ui-v910|catalog-ui-v908|catalog-products-v921)\.(js|css)(?:\?.*)?$/.test(FILES[index]))FILES[index]=FILES[index].replace(/\?.*$/,'')+'?v=925';
-FILES.push('./material-browser-v926.js');
-for(let index=0;index<FILES.length;index++)if(/^\.\/(app-v800|catalog-import-ui-v910|catalog-ui-v908)\.(js|css)(?:\?.*)?$/.test(FILES[index]))FILES[index]=FILES[index].replace(/\?.*$/,'')+'?v=926';
-FILES.push('./product-features-v928.js','./app-flow-v928.js');
-for(let index=0;index<FILES.length;index++)if(/^\.\/(app-v800|material-browser-v926|catalog-import-v909|catalog-import-ui-v910|catalog-ui-v908)\.(js|css)(?:\?.*)?$/.test(FILES[index]))FILES[index]=FILES[index].replace(/\?.*$/,'')+'?v=928';
-for(let index=0;index<FILES.length;index++)if(/^\.\/(product-features-v928|material-browser-v926|catalog-import-ui-v910)\.js(?:\?.*)?$/.test(FILES[index]))FILES[index]=FILES[index].replace(/\?.*$/,'')+'?v=929';
-FILES.push('./product-display-v930.js?v=933','./catalog-image-index.json');
-for(let i=0;i<FILES.length;i++)if(/^\.\/(product-features-v928|material-browser-v926|catalog-products-v921|catalog-import-ui-v910)\.js(?:\?.*)?$/.test(FILES[i])||/^\.\/catalog-ui-v908\.css(?:\?.*)?$/.test(FILES[i]))FILES[i]=FILES[i].replace(/\?.*$/,'')+'?v=930';
-for(let i=0;i<FILES.length;i++)if(/^\.\/(catalog-import-v909|catalog-import-ui-v910)\.js(?:\?.*)?$/.test(FILES[i]))FILES[i]=FILES[i].replace(/\?.*$/,'')+'?v=931';
-for(let i=0;i<FILES.length;i++)if(/^\.\/catalog-import-ui-v910\.js(?:\?.*)?$/.test(FILES[i]))FILES[i]='./catalog-import-ui-v910.js?v=932';
-FILES.push('./catalog-store-v933.js?v=933','./catalog-workflow-v933.js?v=933');
-for(let i=0;i<FILES.length;i++)if(/^\.\/(app-v800|catalog-import-v909|catalog-ui-v908|navigation-v901)\.(js|css)(?:\?.*)?$/.test(FILES[i]))FILES[i]=FILES[i].startsWith('./app-v800.js')?'./app-v800.js?v=933':FILES[i].replace(/\?.*$/,'')+'?v=933';
-// Keep the exact unversioned stylesheet URL used by the current HTML offline.
-FILES.push('./navigation-v901.css');
-FILES.push('./open-order-tools-v934.js?v=934');
-for(let i=0;i<FILES.length;i++)if(/^\.\/app-v800\.js(?:\?.*)?$/.test(FILES[i]))FILES[i]='./app-v800.js?v=934';else if(/^\.\/billing-selection-v906\.js(?:\?.*)?$/.test(FILES[i]))FILES[i]='./billing-selection-v906.js?v=934';
-for(let i=0;i<FILES.length;i++)if(/^\.\/invoice-ledger-ui-v908\.js(?:\?.*)?$/.test(FILES[i]))FILES[i]='./invoice-ledger-ui-v908.js?v=934';
-for(let i=0;i<FILES.length;i++)if(/^\.\/product-features-v928\.js(?:\?.*)?$/.test(FILES[i]))FILES[i]='./product-features-v928.js?v=934';
-for(let i=0;i<FILES.length;i++)if(/^\.\/(product-features-v928|material-browser-v926|catalog-products-v921)\.js(?:\?.*)?$/.test(FILES[i]))FILES[i]=FILES[i].replace(/\?.*$/,'')+'?v=935';
-FILES.push('./german-products-v936.js?v=936','./catalog-de-evidence.json');
-for(let i=0;i<FILES.length;i++)if(/^\.\/(app-v800|material-browser-v926|offers-v857|catalog-workflow-v933)\.js(?:\?.*)?$/.test(FILES[i]))FILES[i]=FILES[i].replace(/\?.*$/,'')+'?v=936';
-for(let i=0;i<FILES.length;i++)if(/^\.\/(german-products-v936|material-browser-v926|catalog-workflow-v933)\.js(?:\?.*)?$/.test(FILES[i]))FILES[i]=FILES[i].replace(/\?.*$/,'')+'?v=937';
-FILES.push('./supplier-cart-v938.js?v=938','./supplier-cart-ui-v938.js?v=938','./supplier-cart-v938.css?v=938','./ids-return-v938.html','./ids-return-v938.js');
-for(let i=0;i<FILES.length;i++)if(/^\.\/(app-v800|navigation-v901)\.js(?:\?.*)?$/.test(FILES[i]))FILES[i]=FILES[i].replace(/\?.*$/,'')+'?v=938';
-FILES.push('./purchase-search-v939.js?v=939');
-for(let i=0;i<FILES.length;i++)if(/^\.\/(app-v800|app-flow-v928|product-features-v928|catalog-workflow-v933|catalog-store-v933|supplier-cart-ui-v938)\.js(?:\?.*)?$/.test(FILES[i])||/^\.\/supplier-cart-v938\.css(?:\?.*)?$/.test(FILES[i]))FILES[i]=FILES[i].replace(/\?.*$/,'')+'?v=939';
-for(let i=0;i<FILES.length;i++)if(/^\.\/supplier-cart-ui-v938\.js(?:\?.*)?$/.test(FILES[i]))FILES[i]='./supplier-cart-ui-v938.js?v=940';
-for(let i=0;i<FILES.length;i++)if(/^\.\/supplier-cart(?:-ui)?-v938\.js(?:\?.*)?$/.test(FILES[i])||/^\.\/supplier-cart-v938\.css(?:\?.*)?$/.test(FILES[i]))FILES[i]=FILES[i].replace(/\?.*$/,'')+'?v=941';
-for(let i=0;i<FILES.length;i++)if(/^\.\/supplier-cart(?:-ui)?-v938\.js(?:\?.*)?$/.test(FILES[i]))FILES[i]=FILES[i].replace(/\?.*$/,'')+'?v=943';
-FILES.push('./supplier-direct-upload-v944.js?v=945','./shop-opening-v944.html','./shop-opening-v944.js');
-for(let i=0;i<FILES.length;i++)if(/^\.\/supplier-cart-ui-v938\.js(?:\?.*)?$/.test(FILES[i]))FILES[i]='./supplier-cart-ui-v938.js?v=944';
-for(let i=0;i<FILES.length;i++)if(/^\.\/(supplier-cart-v938|supplier-cart-ui-v938|purchase-search-v939|supplier-direct-upload-v944)\.js(?:\?.*)?$/.test(FILES[i]))FILES[i]=FILES[i].replace(/\?.*$/,'')+'?v=946';
-for(let i=0;i<FILES.length;i++)if(/^\.\/app-v800\.js(?:\?.*)?$/.test(FILES[i]))FILES[i]='./app-v800.js?v=946';
-for(let i=0;i<FILES.length;i++)if(/^\.\/app-v800\.js(?:\?.*)?$/.test(FILES[i]))FILES[i]='./app-v800.js?v=947';
-FILES.push('./article-search-v947.js?v=947');
-for(let i=0;i<FILES.length;i++)if(/^\.\/(material-browser-v926|purchase-search-v939|app-flow-v928|catalog-ui-v908)\.js(?:\?.*)?$/.test(FILES[i])||/^\.\/supplier-cart-v938\.css(?:\?.*)?$/.test(FILES[i]))FILES[i]=FILES[i].replace(/\?.*$/,'')+'?v=947';
-for(let i=0;i<FILES.length;i++)if(/^\.\/material-browser-v926\.js(?:\?.*)?$/.test(FILES[i]))FILES[i]='./material-browser-v926.js?v=948';
-FILES.push('./supplier-stock-v948.js?v=948');
-for(let i=0;i<FILES.length;i++)if(/^\.\/app-v800\.js(?:\?.*)?$/.test(FILES[i]))FILES[i]='./app-v800.js?v=948';else if(/^\.\/supplier-cart-v938\.css(?:\?.*)?$/.test(FILES[i]))FILES[i]='./supplier-cart-v938.css?v=948';
-for(let i=FILES.length-1;i>=0;i--)if(/supplier-direct-upload-v944|shop-opening-v944/.test(FILES[i]))FILES.splice(i,1);
-for(let i=0;i<FILES.length;i++)if(/^\.\/(article-search-v947|supplier-cart-ui-v938|supplier-stock-v948|app-v800)\.js(?:\?.*)?$/.test(FILES[i])||/^\.\/supplier-cart-v938\.css(?:\?.*)?$/.test(FILES[i]))FILES[i]=FILES[i].replace(/\?.*$/,'')+'?v=949';
-for(let i=0;i<FILES.length;i++)if(/^\.\/(supplier-cart-ui-v938|purchase-search-v939)\.js(?:\?.*)?$/.test(FILES[i]))FILES[i]=FILES[i].replace(/\?.*$/,'')+'?v=950';
-for(let i=0;i<FILES.length;i++)if(/^\.\/supplier-stock-v948\.js(?:\?.*)?$/.test(FILES[i]))FILES[i]='./supplier-stock-v948.js?v=951';
-for(let i=0;i<FILES.length;i++)if(/^\.\/article-search-v947\.js(?:\?.*)?$/.test(FILES[i]))FILES[i]='./article-search-v947.js?v=951';
-for(let i=0;i<FILES.length;i++)if(/^\.\/(article-search-v947|material-browser-v926|catalog-products-v921|purchase-search-v939|supplier-stock-v948)\.js(?:\?.*)?$/.test(FILES[i]))FILES[i]=FILES[i].replace(/\?.*$/,'')+'?v=952';
-FILES.push('./product-identity-v954.js?v=955');
-for(let i=0;i<FILES.length;i++)if(/^\.\/(catalog-import-v909|catalog-workflow-v933|material-browser-v926|catalog-products-v921|purchase-search-v939|supplier-stock-v948)\.js(?:\?.*)?$/.test(FILES[i]))FILES[i]=FILES[i].replace(/\?.*$/,'')+'?v=954';
-for(let i=0;i<FILES.length;i++)if(/^\.\/(purchase-search-v939|supplier-stock-v948)\.js(?:\?.*)?$/.test(FILES[i]))FILES[i]=FILES[i].replace(/\?.*$/,'')+'?v=955';
-for(let i=0;i<FILES.length;i++)if(/^\.\/(purchase-search-v939|material-browser-v926|catalog-store-v933|product-display-v930)\.js(?:\?.*)?$/.test(FILES[i]))FILES[i]=FILES[i].replace(/\?.*$/,'')+'?v=957';
-for(let i=0;i<FILES.length;i++)if(/^\.\/(article-search-v947|product-display-v930|material-browser-v926|purchase-search-v939)\.js(?:\?.*)?$/.test(FILES[i]))FILES[i]=FILES[i].replace(/\?.*$/,'')+'?v=958';
-FILES.push('./klarwerk-theme-v1000.js?v=1000','./klarwerk-theme-v1000.css?v=1000');
-for(let i=0;i<FILES.length;i++)if(/^\.\/app-v800\.js(?:\?.*)?$/.test(FILES[i]))FILES[i]='./app-v800.js?v=1000';
+const CACHE = 'worktime-v1013';
+const FILES = [
+  "./",
+  "./index.html",
+  "./manifest.webmanifest",
+  "./icon.svg",
+  "./help-topics-v900.js?v=907",
+  "./styles-v700.css",
+  "./responsive-v701.css",
+  "./navigation-v710.css",
+  "./menu-v720.css",
+  "./calendar-v800.css?v=2",
+  "./home-v827.css?v=3",
+  "./signature-v828.css?v=2",
+  "./planned-orders-v855.css",
+  "./material-units-v860.css",
+  "./presentation-v900.css",
+  "./navigation-v901.css",
+  "./safe-area-v902.css",
+  "./pdf-viewer-v904.css",
+  "./klarwerk-theme-v1000.css?v=1000",
+  "./neutral-theme-v1002.css?v=1002",
+  "./config.js?v=875",
+  "./vendor/pdf-lib-1.17.1.min.js",
+  "./planning-pdf.js?v=854",
+  "./documents-pdf-v857.js?v=984",
+  "./pdf-viewer-v904.js",
+  "./navigation-v901.js?v=1011",
+  "./business-rules-v908.js",
+  "./catalog-classify-v925.js",
+  "./app-flow-v928.js?v=947",
+  "./article-search-v947.js?v=999",
+  "./product-identity-v954.js?v=955",
+  "./catalog-products-v921.js?v=954",
+  "./german-products-v936.js?v=984",
+  "./klarwerk-theme-v1000.js?v=1000",
+  "./klarwerk-connection-v1007.js?v=1013",
+  "./app-v800.js?v=1013",
+  "./guidance-v900.js?v=907",
+  "./vendor/pdfjs-6.4.299/pdf.mjs",
+  "./vendor/pdfjs-6.4.299/pdf.worker.mjs"
+];
+
 self.addEventListener('install', event => { event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(FILES))); self.skipWaiting(); });
 self.addEventListener('activate', event => { event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => (key.startsWith('arbeitszeit-neu-') || key.startsWith('worktime-v')) && key !== CACHE).map(key => caches.delete(key))))); self.clients.claim(); });
 // Never persist authenticated API responses, uploaded receipts or other firms'
@@ -86,103 +50,3 @@ self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET' || requestUrl.origin !== self.location.origin || !['http:','https:'].includes(requestUrl.protocol)) return;
   event.respondWith(fetch(event.request).then(response => { if (response.ok) caches.open(CACHE).then(cache => cache.put(event.request, response.clone())); return response; }).catch(() => caches.match(event.request).then(hit => hit || (event.request.mode === 'navigate' ? caches.match('./index.html') : Response.error()))));
 });
-self.addEventListener('push',event=>{
-  let payload={};try{payload=event.data?.json()||{};}catch{}
-  event.waitUntil(self.registration.showNotification('Zeiterfassung',{body:payload.body||'Eine Terminerinnerung ist verfügbar. Bitte die App öffnen.',tag:payload.tag||'worktime-reminder',icon:new URL('./icon.svg',self.location.href).href,data:{view:payload.data?.view==='home'?'home':'planning'}}));
-});
-self.addEventListener('notificationclick',event=>{
-  event.notification.close();
-  const view=event.notification.data?.view==='home'?'home':'planning';
-  const url=new URL('./?open='+view,self.location.href).href;
-  event.waitUntil(self.clients.matchAll({type:'window',includeUncontrolled:true}).then(async clients=>{
-    const client=clients.find(item=>item.url.startsWith(new URL('./',self.location.href).href));
-    if(client){client.postMessage({type:view==='home'?'WORKTIME_OPEN_VIEW':'WORKTIME_OPEN_PLANNING',view});return client.focus();}
-    return self.clients.openWindow(url);
-  }));
-});
-
-for(const file of ["article-search-v947.js", "purchase-search-v939.js", "material-browser-v926.js", "product-features-v928.js", "app-v800.js", "catalog-ui-v908.js", "catalog-import-ui-v910.js", "catalog-workflow-v933.js", "supplier-cart-ui-v938.js", "invoice-ledger-ui-v908.js", "article-tools-v959.js", "article-tools-v959.css", "offers-v857.js"]){const i=FILES.findIndex(url=>url.split('?')[0]==='./'+file);if(i>=0)FILES[i]='./'+file+'?v=959';else FILES.push('./'+file+'?v=959');}
-
-for(let i=0;i<FILES.length;i++)if(/^\.\/product-display-v930\.js(?:\?.*)?$/.test(FILES[i]))FILES[i]='./product-display-v930.js?v=968';
-
-FILES.push('./catalog-review-v961.js?v=961','./catalog-review-v961.css?v=961');
-for(let i=0;i<FILES.length;i++)if(/^\.\/catalog-workflow-v933\.js(?:\?.*)?$/.test(FILES[i]))FILES[i]='./catalog-workflow-v933.js?v=966';
-
-for(const file of ["article-search-v947.js", "product-features-v928.js", "material-browser-v926.js", "purchase-search-v939.js", "supplier-stock-v948.js"]){for(let i=0;i<FILES.length;i++)if(FILES[i].split('?')[0]==='./'+file)FILES[i]='./'+file+'?v=962';}
-
-for(let i=0;i<FILES.length;i++)if(/^\.\/app-v800\.js(?:\?.*)?$/.test(FILES[i]))FILES[i]='./app-v800.js?v=976';
-FILES.push('./neugart-accounts-v971.js?v=982');
-for(let i=0;i<FILES.length;i++)if(FILES[i].split('?')[0]==='./navigation-v901.js')FILES[i]='./navigation-v901.js?v=976';
-for(let i=0;i<FILES.length;i++)if(/^\.\/(product-display-v930|product-features-v928)\.js(?:\?.*)?$/.test(FILES[i]))FILES[i]=FILES[i].split('?')[0]+'?v=974';
-for(let i=0;i<FILES.length;i++)if(FILES[i].split('?')[0]==='./article-tools-v959.js')FILES[i]='./article-tools-v959.js?v=982';
-for(let i=0;i<FILES.length;i++)if(FILES[i].split('?')[0]==='./supplier-cart-ui-v938.js')FILES[i]='./supplier-cart-ui-v938.js?v=977';
-
-for(let i=0;i<FILES.length;i++)if(FILES[i].split('?')[0]==='./material-browser-v926.js')FILES[i]='./material-browser-v926.js?v=963';
-
-for(let i=0;i<FILES.length;i++)if(['article-tools-v959.js','material-browser-v926.js','purchase-search-v939.js'].includes(FILES[i].split('?')[0].replace('./','')))FILES[i]=FILES[i].split('?')[0]+'?v=982';
-
-for(let i=0;i<FILES.length;i++)if(['article-tools-v959.css','supplier-cart-ui-v938.js'].includes(FILES[i].split('?')[0].replace('./','')))FILES[i]=FILES[i].split('?')[0]+'?v=982';
-
-for(let i=0;i<FILES.length;i++)if(['offers-v857.js','product-features-v928.js'].includes(FILES[i].split('?')[0].replace('./','')))FILES[i]=FILES[i].split('?')[0]+'?v=982';
-
-// Exact entry points for the reviewed v984 release.
-for(let i=0;i<FILES.length;i++)if(["catalog-review-v961.css", "neugart-accounts-v971.js", "app-v800.js", "article-tools-v959.css", "article-tools-v959.js", "catalog-ui-v908.js", "documents-pdf-v857.js", "german-products-v936.js", "invoice-ledger-ui-v908.js", "offers-v857.js", "product-features-v928.js", "purchase-search-v939.js", "supplier-stock-v948.js"].includes(FILES[i].slice(2).split('?')[0]))FILES[i]=FILES[i].replace(/\?.*$/,'')+'?v=984';
-
-for(let i=0;i<FILES.length;i++)if(FILES[i].startsWith('./neugart-accounts-v971.js?'))FILES[i]='./neugart-accounts-v971.js?v=985';
-
-for(let i=0;i<FILES.length;i++)if(["app-v800.js","article-tools-v959.js","article-tools-v959.css","neugart-accounts-v971.js"].includes(FILES[i].slice(2).split("?")[0]))FILES[i]=FILES[i].split("?")[0]+"?v=987";
-
-for(let i=0;i<FILES.length;i++)if(["./supplier-cart-v938.js","./supplier-cart-ui-v938.js"].includes(FILES[i].split("?")[0]))FILES[i]=FILES[i].split("?")[0]+"?v=988";
-
-for(let i=0;i<FILES.length;i++)if(["./supplier-cart-v938.js","./article-tools-v959.js"].includes(FILES[i].split("?")[0]))FILES[i]=FILES[i].split("?")[0]+"?v=989";
-
-for(let i=0;i<FILES.length;i++)if(["./supplier-cart-v938.js","./supplier-cart-ui-v938.js"].includes(FILES[i].split("?")[0]))FILES[i]=FILES[i].split("?")[0]+"?v=990";
-
-for(let i=0;i<FILES.length;i++)if(["./app-v800.js","./neugart-accounts-v971.js","./purchase-search-v939.js","./supplier-cart-ui-v938.js"].includes(FILES[i].split("?")[0]))FILES[i]=FILES[i].split("?")[0]+"?v=991";
-
-for(let i=0;i<FILES.length;i++)if(["./app-v800.js","./article-tools-v959.js","./supplier-cart-ui-v938.js"].includes(FILES[i].split("?")[0]))FILES[i]=FILES[i].split("?")[0]+"?v=992";
-
-for(let i=0;i<FILES.length;i++)if(FILES[i].split("?")[0]==="./supplier-cart-ui-v938.js")FILES[i]="./supplier-cart-ui-v938.js?v=993";
-
-for(let i=0;i<FILES.length;i++)if(["./supplier-cart-ui-v938.js","./supplier-cart-v938.js"].includes(FILES[i].split("?")[0]))FILES[i]=FILES[i].split("?")[0]+"?v=994";
-
-for(let i=0;i<FILES.length;i++)if(["./supplier-cart-ui-v938.js","./supplier-cart-v938.js"].includes(FILES[i].split("?")[0]))FILES[i]=FILES[i].split("?")[0]+"?v=996";
-
-FILES.push('./fif-accounts-v997.js?v=997');
-for(let i=0;i<FILES.length;i++)if(FILES[i].startsWith('./app-v800.js?'))FILES[i]='./app-v800.js?v=997';
-for(let i=0;i<FILES.length;i++)if(FILES[i].startsWith('./article-tools-v959.js?'))FILES[i]='./article-tools-v959.js?v=997';
-
-for(let i=0;i<FILES.length;i++)if(["./app-v800.js","./neugart-accounts-v971.js","./fif-accounts-v997.js","./supplier-cart-ui-v938.js","./purchase-search-v939.js"].includes(FILES[i].split("?")[0]))FILES[i]=FILES[i].split("?")[0]+"?v=998";
-
-for(let i=0;i<FILES.length;i++)if(["./app-v800.js", "./article-search-v947.js", "./product-features-v928.js", "./supplier-stock-v948.js", "./supplier-cart-ui-v938.js", "./purchase-search-v939.js", "./fif-accounts-v997.js"].includes(FILES[i].split("?")[0]))FILES[i]=FILES[i].split("?")[0]+"?v=999";
-
-// Keep the final v1000 entry points after older version mappings.
-for(let i=0;i<FILES.length;i++)if(['./app-v800.js','./material-browser-v926.js'].includes(FILES[i].split('?')[0]))FILES[i]=FILES[i].split('?')[0]+'?v=1000';
-
-FILES.push('./neutral-theme-v1002.css?v=1002');
-
-for(let i=0;i<FILES.length;i++)if(FILES[i].startsWith('./navigation-v901.js'))FILES[i]='./navigation-v901.js?v=1002';
-
-for(let i=0;i<FILES.length;i++)if(FILES[i].startsWith('./app-v800.js?'))FILES[i]='./app-v800.js?v=1003';
-
-for(let i=0;i<FILES.length;i++)if(["./app-v800.js", "./datev-v907.js", "./fif-accounts-v997.js", "./invoice-ledger-ui-v908.js", "./legal-v900.js", "./navigation-v901.js", "./purchase-search-v939.js"].includes(FILES[i].split("?")[0]))FILES[i]=FILES[i].split("?")[0]+"?v=1004";
-
-for(let i=FILES.length-1;i>=0;i--)if(/business-readiness-v906\.(js|css)/.test(FILES[i]))FILES.splice(i,1);
-for(let i=0;i<FILES.length;i++)if(["./app-v800.js", "./catalog-workflow-v933.js", "./datev-v907.js", "./legal-v900.js", "./purchase-search-v939.js", "./supplier-cart-ui-v938.js"].includes(FILES[i].split("?")[0]))FILES[i]=FILES[i].split("?")[0]+"?v=1005";
-
-for(let i=0;i<FILES.length;i++)if(FILES[i].split('?')[0]==='./platform-v900.js')FILES[i]='./platform-v900.js?v=1005';
-
-for(let i=0;i<FILES.length;i++)if(['./app-v800.js','./fif-accounts-v997.js','./neugart-accounts-v971.js','./supplier-cart-ui-v938.js','./navigation-v901.js'].includes(FILES[i].split('?')[0]))FILES[i]=FILES[i].split('?')[0]+'?v=1006';
-
-FILES.push('./klarwerk-connection-v1007.js?v=1010');
-for(let i=0;i<FILES.length;i++)if(FILES[i].startsWith('./app-v800.js?'))FILES[i]='./app-v800.js?v=1009';
-FILES.push('./juprowa-ugl-v1009.js?v=1009');
-
-for (let i = FILES.length - 1; i >= 0; i--) {
-  const path = FILES[i].split('?')[0];
-  if (/\/(?:datev-v907|datev-format-v907|invoice-ledger-ui-v908|billing-selection-v906|open-order-tools-v934|invoice-tax-v905)\.(?:css|js)$/.test(path)) FILES.splice(i, 1);
-  else if (/\/(?:app-v800|legal-v900|navigation-v901|offers-v857)\.js$/.test(path)) FILES[i] = path + '?v=1011';
-}
-
-// Used only to preserve the net conversion of historically gross-priced offers.
-FILES.push('./invoice-tax-v905.js?v=909');

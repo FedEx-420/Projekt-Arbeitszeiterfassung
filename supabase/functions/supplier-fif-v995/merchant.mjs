@@ -5,6 +5,8 @@ const decode=s=>s.replace(/&(?:amp|quot|apos|lt|gt);/g,x=>({'&amp;':'&','&quot;'
 function attrs(tag){return Object.fromEntries([...tag.matchAll(/([\w:-]+)\s*=\s*(["'])(.*?)\2/gs)].map(m=>[m[1].toLowerCase(),decode(m[3])]));}
 function csrf(html){for(const tag of html.match(/<input\b[^>]*>/gi)||[]){const a=attrs(tag);if(a.name==='__RequestVerificationToken'&&a.value&&a.value.length<12000)return a.value;}throw fail('FIF_FORM','Das sichere FiF-Anmeldeformular konnte nicht gelesen werden.');}
 const allowed=path=>path==='/'||/^\/(?:Login|Manage|Warenkorb(?:\/(?:Create|Add|\d+))?|Cart\/Scan2FiFRead|Product\/[^/?#]+\/1|Error(?:\/Forbidden)?)$/.test(path);
+const documentListing = {invoice:'/Belege/Rechnungen', delivery_note:'/Belege/Auftr%C3%A4ge'};
+const documentDownload = {invoice:'/Belege/DownloadInvoice', delivery_note:'/Belege/DownloadDeliveryNote'};
 export const cartId=data=>String(data?.activeCart?.cartId??data?.activeCart?.id??'');
 const validId=id=>/^[1-9]\d{0,14}$/.test(String(id));
 export function collectProducts(value,skus){
@@ -21,19 +23,23 @@ export function collectProducts(value,skus){
  }visit(value,0);return found;
 }
 export function createFifMerchant({fetch=globalThis.fetch,now=Date.now,report=()=>{}}={}){
- async function request(s,path,{data,json=false}={}){
-  let url=new URL(path,origin);if(url.origin!==origin||url.username||url.password||!allowed(url.pathname))throw fail('FIF_ROUTE','Ungültiger FiF-Aufruf.');
+ async function request(s,path,{data,json=false,document=false,binary=false}={}){
+  const permitted = p => document
+   ? [...Object.values(documentListing), ...Object.values(documentDownload)].includes(p)
+   : allowed(p);
+  let url=new URL(path,origin);if(url.origin!==origin||url.username||url.password||!permitted(url.pathname))throw fail('FIF_ROUTE','Ungültiger FiF-Aufruf.');
   for(let hop=0;hop<6;hop++){
-   const headers={Accept:json?'application/json':'text/html','Accept-Language':'de-DE',...(Object.keys(s.cookies).length?{Cookie:Object.entries(s.cookies).map(([k,v])=>k+'='+v).join('; ')}:{})};
+   const headers={Accept:binary?'application/pdf':json?'application/json':'text/html','Accept-Language':'de-DE',...(Object.keys(s.cookies).length?{Cookie:Object.entries(s.cookies).map(([k,v])=>k+'='+v).join('; ')}:{})};
    let body;if(data!==undefined){body=new URLSearchParams(data);if(s.csrf){body.set('__RequestVerificationToken',s.csrf);headers.RequestVerificationToken=s.csrf;}headers['Content-Type']='application/x-www-form-urlencoded; charset=UTF-8';headers['X-Requested-With']='XMLHttpRequest';}
    const response=await fetch(url.href,{method:data===undefined?'GET':'POST',headers,body,redirect:'manual',signal:AbortSignal.timeout(25000)});
    for(const cookie of response.headers.getSetCookie?.()||[]){const part=cookie.split(';')[0],i=part.indexOf('=');if(i<1)continue;const name=part.slice(0,i),value=part.slice(i+1);if(!/^[A-Za-z0-9_.-]{1,100}$/.test(name)||/[\r\n;]/.test(value)||value.length>20000)continue;if(/max-age=0\b/i.test(cookie))delete s.cookies[name];else s.cookies[name]=value;}
    if([301,302,303,307,308].includes(response.status)){
-    const next=new URL(response.headers.get('location')||'',url);if(next.origin!==origin||next.username||next.password||!allowed(next.pathname))throw fail('FIF_REDIRECT','FiF verlangt einen zusätzlichen Schritt im Händlerportal.');
+    const next=new URL(response.headers.get('location')||'',url);if(document||next.origin!==origin||next.username||next.password||!permitted(next.pathname))throw fail('FIF_REDIRECT','FiF verlangt einen zusätzlichen Schritt im Händlerportal.');
     if(data!==undefined&&[307,308].includes(response.status))throw fail('FIF_REDIRECT','FiF hat die Anmeldung nicht eindeutig angenommen.');
     url=next;data=undefined;continue;
    }
    report({stage:path.split('?')[0].replace(/^\/Product\/[^/]+\/1$/,'/Product/:sku/1').replace(/\/\d+/g,'/:id'),status:response.status});
+   if(binary)return response;
    if(!response.ok)throw fail('FIF_HTTP','FiF hat die Anfrage nicht angenommen (HTTP '+response.status+').',response.status===401?401:502);
    const text=await response.text();if(text.length>3000000)throw fail('FIF_SIZE','Die FiF-Antwort ist zu groß.');
    if(!json)return text;
@@ -65,5 +71,18 @@ export function createFifMerchant({fetch=globalThis.fetch,now=Date.now,report=()
  async function create(s){const data=await request(s,'/Warenkorb/Create',{data:{},json:true}),id=cartId(data);report({stage:'create_schema',keys:Object.keys(data?.activeCart||{}).slice(0,60)});if(!validId(id)||!Array.isArray(data?.activeCart?.products)||data.activeCart.products.length)throw fail('FIF_CREATE','FiF hat keinen eindeutig leeren neuen Warenkorb bestätigt.');return id;}
  async function add(s,id,lines){if(!validId(id))throw fail('FIF_CART','Ungültiger FiF-Warenkorb.');for(let offset=0;offset<lines.length;offset+=100){const body={cartId:String(id)};lines.slice(offset,offset+100).forEach((l,i)=>{body['insertProducts['+i+'][productId]']=l.productId;body['insertProducts['+i+'][quantity]']=(l.cents/100).toFixed(2).replace('.',',');body['insertProducts['+i+'][offerId]']='';body['insertProducts['+i+'][offerPosition]']='';body['insertProducts['+i+'][isSpecialItem]']='false';});await request(s,'/Warenkorb/Add',{data:body,json:true});}}
  async function read(s,id){if(!validId(id))throw fail('FIF_CART','Ungültiger FiF-Warenkorb.');const data=await request(s,'/Warenkorb/'+id,{data:{},json:true});report({stage:'cart_schema',keys:Object.keys(data?.activeCart||{}).slice(0,60),product_keys:Object.keys(data?.activeCart?.products?.[0]||{}).filter(k=>/unit|quantity|number|^id$|productid/i.test(k)).slice(0,80)});if(cartId(data)!==String(id))throw fail('FIF_CART','Die FiF-Antwort gehört zu einem anderen Warenkorb.');return data.activeCart.products;}
- return {connect,products,create,add,read};
+ async function searchDocuments(s, kind, from, to){
+  if(!Object.hasOwn(documentListing,kind))throw fail('FIF_ROUTE','Ungültige Belegart.');
+  return request(s,documentListing[kind],{document:true,json:true,data:{
+   'Filter.StartDate':from,'Filter.EndDate':to,autoLoadResults:'true',
+   ...(kind==='invoice'?{'Filter.InvoiceType':''}:{'Filter.ShowAllOutstandingOrders':'false'})
+  }});
+ }
+ async function downloadDocument(s,kind,number,year){
+  const validDate = kind === 'invoice' ? /^[0-9]{8}$/ : /^[0-9]{4}$/;
+  if(!Object.hasOwn(documentDownload,kind)||!/^[0-9]{1,30}$/.test(number)||!validDate.test(year))throw fail('FIF_ROUTE','Ungültiger Belegverweis.');
+  const query=new URLSearchParams({number,year});
+  return request(s,documentDownload[kind]+'?'+query,{document:true,binary:true});
+ }
+ return {connect,products,create,add,read,searchDocuments,downloadDocument};
 }

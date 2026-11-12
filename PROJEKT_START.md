@@ -436,3 +436,9 @@ Eine bestehende Verbindung erhält Angebotszugriff über „Angebote für Klarwe
 - „Exporte → DATEV-Export“ in Klarwerk nutzt die bisherigen betrieblichen Einstellungen, Buchungsentwürfe und gespeicherten Exportdateien. Im Reiter „Verfahrensdokumentation“ liegen auch die Firmen- und Steuerangaben. Der Export erzeugt eine DATEV-Datei zur Weitergabe.
 - Angebotsentwürfe aus der Arbeitszeiterfassung behalten Netto-Einzelpreise und Pauschalkategorien. Die Steuerprüfung und Freigabe erfolgen in Klarwerk, wenn die Verbindung für Angebote freigegeben ist. Gespeicherte Originale werden nicht neu berechnet.
 - Beim Release zuerst Datenbankmigrationen und Bridge aktualisieren, danach Klarwerk veröffentlichen und die Arbeitszeiterfassung auf v1011 anheben. Prüfungen mit synthetischen Konten und Belegen durchführen.
+
+## Großhändlerbelege in Klarwerk
+
+Der geplante Abruf in Supabase Primary nutzt die gespeicherten Firmenzugänge im Vault und die regulären Webportale von Neugart und H. Gautzsch. Ein berechtigter, bestätigter Klarwerk-Link ist bei jedem Abruf und bei der Übernahme erforderlich. Der erste Suchzeitraum umfasst rund 45 Tage. Danach gleicht der Dienst den Zeitraum alle drei Stunden erneut ab und verarbeitet größere Listen in Teilabrufen. Die PDFs verbleiben in einem privaten Originalspeicher. Die abgesicherte Klarwerk-Brücke reicht Bestandsrechnungen bereits zur Prüfung durch. Die erweiterte Klarwerk-Ansicht nutzt zusätzlich den Abrufparameter `supplier_documents` für Lieferscheine und weitere Originale und ordnet sie nur bei eindeutiger Referenz im selben Händlerkonto zu.
+
+Lokale Prüfbefehle sind `node tests/team/supplier-portal-docs-v1012.test.mjs` und `node tests/team/supplier-portal-database-v1012.test.cjs`. Der Abrufpfad wurde mit vorhandenen Originalen beider Portale geprüft. Der lokale Klarwerk-Stand mit erweiterter Ansicht muss über das bestehende Sites-Projekt veröffentlicht werden.

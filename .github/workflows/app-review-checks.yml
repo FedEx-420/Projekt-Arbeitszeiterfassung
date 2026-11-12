@@ -29,6 +29,8 @@ jobs:
           node tests/team/klarwerk-edge-v1007.test.cjs
           node tests/team/klarwerk-browser-v1007.test.cjs
           node tests/team/klarwerk-bridge-v1007.test.cjs
+          node tests/team/supplier-portal-docs-v1012.test.mjs
+          node tests/team/supplier-portal-database-v1012.test.cjs
       - name: Navigation and disconnected finance workspace
         run: |
           node tests/team/navigation-v901.test.cjs

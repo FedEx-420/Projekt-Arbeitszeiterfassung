@@ -2,7 +2,7 @@ import {createMerchant} from '../supplier-cart-v949/merchant.mjs';
 
 const efgOrigin = 'https://efgonlineplus.de';
 const pdfLimit = 10 * 1024 * 1024;
-export const fault = code => Object.assign(new Error(code), {code});
+export const fault = (code, reason) => Object.assign(new Error(code), {code,reason});
 const efgId = v => /^[A-Za-z0-9_.:-]{1,150}$/.test(String(v ?? ''));
 const number = v => /^[0-9]{1,30}$/.test(String(v ?? '')) && /[1-9]/.test(String(v)) ? String(v) : null;
 
@@ -19,7 +19,9 @@ export function portalDate(value) {
 export async function readPortalPdf(response) {
   if (response.status !== 200 || !response.body) {
     await response.body?.cancel().catch(() => {});
-    throw fault(response.status === 401 || response.status === 403 ? 'permission' : 'document');
+    if (response.status === 401 || response.status === 403) throw fault('permission');
+    if (response.status >= 500 || response.status === 429) throw fault('portal');
+    throw fault('document', 'pdf-http-' + response.status);
   }
   const reader = response.body.getReader();
   const chunks = [];
@@ -29,7 +31,7 @@ export async function readPortalPdf(response) {
       const {done, value} = await reader.read();
       if (done) break;
       size += value.length;
-      if (size > pdfLimit) throw fault('document');
+      if (size > pdfLimit) throw fault('document', 'pdf-too-large');
       chunks.push(value);
     }
   } finally {
@@ -42,7 +44,7 @@ export async function readPortalPdf(response) {
     offset += chunk.length;
   }
   if (new TextDecoder().decode(pdf.subarray(0, 5)) !== '%PDF-'
-    || !new TextDecoder().decode(pdf.subarray(Math.max(0, size - 1024))).includes('%%EOF')) throw fault('document');
+    || !new TextDecoder().decode(pdf.subarray(Math.max(0, size - 1024))).includes('%%EOF')) throw fault('document', 'invalid-pdf');
   return pdf;
 }
 

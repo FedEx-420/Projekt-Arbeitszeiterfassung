@@ -20,6 +20,7 @@ ZEICHEN
 Ein erfolgreicher Test mit Beispieldaten ist kein Live-Test jedes Geschäftskontos.
 
 ALS NÄCHSTES
+[x] v1014: Gespeichertes Firmenlogo in Einstellungen anzeigen und in seinem gespeicherten Bildformat herunterladen.
 [ ] Arbeitszeit-App auf Kunden, Arbeitsscheine und Zeiterfassung reduzieren. Klarwerk ausschließlich Kunden, Arbeitsscheine und zugehöriges Material / Arbeitsstunden bereitstellen. Rechnungen und Buchhaltung in Klarwerk führen. Altdaten vor endgültiger Bereinigung anhand ihrer Verwendung prüfen. Steuerdialog entfernt. Klarwerk übernimmt neue Arbeitsscheinrechnungen im eigenen Formular. Alte Angebotsfreigabe und automatischer Großhändlerabruf abgeschaltet. Weitere Funktions- und Datenbereinigung offen.
 [x] v997: gespeicherte FiF-Konten mit Vault, serverseitigen Firmen-/Mitarbeitergrenzen, ausdrücklicher Freigabe und Widerruf implementiert; SQL-, Dienst- und vollständige App-Fixtures bestanden. Veröffentlicht; echter Zugang vom Nutzer gespeichert, noch keine Mitarbeiter freigegeben.
 [x] v997 veröffentlicht (PR #46, erfolgreiche App-Prüfung und Pages-Bereitstellung). Echter gespeicherter Zugang und automatische Browser-Erstanmeldung ohne erneute Kennworteingabe live bestätigt. Eigener Testwarenkorb mit genauer Artikelnummer, Menge und Einheit sichtbar; Testposition entfernt, keine Bestellung.

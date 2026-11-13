@@ -1,23 +1,128 @@
-/* Explicit company-scoped connection grants and original purchase invoices. */
-(()=>{'use strict';window.WorktimeKlarwerkConnection={create({root,state,businessId,isManager,api,upload,download,escape:esc}){
- let scope='',serial=0,links=[],receipts=[],linksLoaded=false,receiptsLoaded=false,pending=false,error='',pair=null;
- const identity=()=>state.profile?.id&&businessId()?state.profile.id+':'+businessId():'';
- const call=(action,data={})=>api('/functions/v1/klarwerk-bridge-v1007',{method:'POST',body:{action,company:businessId(),data}});
- function sync(){if(scope===identity())return;scope=identity();serial++;links=[];receipts=[];linksLoaded=receiptsLoaded=pending=false;error='';pair=null;}
- function settings(){sync();if(!scope||!isManager())return '';return `<section class="panel" data-klarwerk-settings><h3>Klarwerk verknüpfen</h3><p>Ein Klarwerk-Konto kann diesen Betrieb für Kundenabgleich, offene Arbeitsscheine, Rechnungen, Einkaufsbelege und Angebote verknüpfen. Angebote werden in Klarwerk abschließend steuerlich geprüft und für den E-Mail-Entwurf freigegeben. Beide Apps bleiben eigenständig.</p><form data-klarwerk-form="pair" class="entry-form"><label class="wide">Name der Verbindung<input name="label" maxlength="80" value="Meine Buchhaltung" required></label><label class="wide invoice-ledger-check"><input name="klarwerk_consent" type="checkbox" required> Ich gebe die genannten Betriebsdaten frei. Klarwerk darf Rechnungen über den bestehenden Rechnungsabschluss erstellen und stornieren; dabei werden zugehörige Arbeitsscheine gesperrt beziehungsweise im Korrekturverfahren wieder geöffnet.</label><button class="primary">Freigabecode erzeugen</button></form><div data-klarwerk-pair></div><p data-klarwerk-status role="status"></p><div data-klarwerk-links></div><button type="button" class="secondary" data-klarwerk-action="refresh">Verbindungen aktualisieren</button></section>`}
- function receiptView(){sync();if(!scope)return '';return `<section class="panel" data-klarwerk-receipts><h3>Einkaufsrechnungen & Originalbelege</h3><p>Großhandelsrechnung aus Neugart, FiF oder einem anderen Portal als Originaldatei hochladen. Sie ist für die Geschäftsleitung und ein verknüpftes Klarwerk-Konto verfügbar. Eine Warenkorbübertragung ist noch keine Rechnung; ein Portalabruf findet hier nicht automatisch statt.</p><form data-klarwerk-form="receipt" class="entry-form"><label>Großhändler / Lieferant<input name="supplier" required maxlength="150"></label><label>Rechnungsnummer<input name="number" maxlength="100"></label><label>Rechnungsdatum<input name="date" type="date" value="${new Date().toISOString().slice(0,10)}" required></label><label class="wide">Originalrechnung (max. 10 MB)<input name="file" type="file" required accept=".pdf,.xml,.png,.jpg,.jpeg,.webp"></label><button class="primary">Originalbeleg hochladen</button></form><p data-klarwerk-status role="status"></p><div data-klarwerk-receipt-list></div><button type="button" class="secondary" data-klarwerk-action="refresh-receipts">Belege aktualisieren</button></section>`}
- function paint(){const s=root.querySelector('[data-klarwerk-status]');if(s)s.textContent=pending?'Bitte warten …':error;const target=root.querySelector('[data-klarwerk-pair]');if(target)target.innerHTML=pair?`<div class="notice"><b>Einmaliger Freigabecode · gültig bis ${esc(new Date(pair.expires).toLocaleTimeString('de-DE'))}</b><p>In Klarwerk unter „Einstellungen → Verbindung zur Arbeitszeiterfassung“ im gewünschten Konto einfügen. Nicht an Unbefugte weitergeben.</p><textarea readonly aria-label="Klarwerk-Freigabecode">${esc(pair.code)}</textarea><button type="button" data-klarwerk-action="copy">Code kopieren</button></div>`:'';const list=root.querySelector('[data-klarwerk-links]');if(list)list.innerHTML=links.map(x=>`<article class="row-card"><div><b>${esc(x.label)}</b><span>${esc(x.account_label||'Noch nicht verknüpft')} · ${x.revoked_at?'Widerrufen':x.claimed_at?'Verknüpft':new Date(x.pair_expires)<new Date()?'Code abgelaufen':'Code wartet auf Verknüpfung'}</span></div>${x.claimed_at&&!x.revoked_at?`<button type="button" class="secondary" data-klarwerk-action="offer-scope" data-id="${esc(x.id)}" data-enabled="${!x.offers_allowed}">${x.offers_allowed?'Angebotsfreigabe zurücknehmen':'Angebote für Klarwerk freigeben'}</button>`:''}${!x.revoked_at?`<button type="button" class="danger" data-klarwerk-action="revoke" data-id="${esc(x.id)}">Widerrufen</button>`:''}</article>`).join('')||(linksLoaded?'<p>Noch keine Verbindungen.</p>':'');const r=root.querySelector('[data-klarwerk-receipt-list]');if(r)r.innerHTML=receipts.map(x=>`<article class="row-card"><div><b>${esc(x.supplier)} · ${esc(x.invoice_number||x.file_name)}</b><span>${esc(x.invoice_date)} · ${x.status==='ready'?'Original vorhanden':'Upload noch nicht abgeschlossen'}</span></div>${x.status==='ready'?`<button type="button" class="secondary" data-klarwerk-action="download" data-id="${esc(x.id)}">Original herunterladen</button>`:''}</article>`).join('')||(receiptsLoaded?'<p>Keine Originalbelege vorhanden.</p>':'');window.WorktimeKlarwerkTheme?.afterRender(root)}
- async function load(which){sync();if(pending||!scope||!/^[a-f0-9-]{36}$/i.test(String(businessId())))return;const stamp=scope,generation=serial;pending=true;paint();try{const data=which==='links'?await call('links'):await api('/rest/v1/purchase_receipts_v1007?company_id=eq.'+businessId()+'&select=*&order=created_at.desc&limit=1000');if(scope!==stamp||generation!==serial)return;if(!Array.isArray(data))throw Error('Daten konnten nicht bestätigt werden.');if(which==='links'){links=data;linksLoaded=true}else{receipts=data;receiptsLoaded=true}error=''}catch(e){if(scope===stamp&&serial===generation){error=e.message;which==='links'?linksLoaded=true:receiptsLoaded=true}}finally{if(scope===stamp&&serial===generation){pending=false;paint()}}}
- function afterRender(){sync();if(root.querySelector('[data-klarwerk-settings]')){paint();if(!linksLoaded)load('links')}if(root.querySelector('[data-klarwerk-receipts]')){paint();if(!receiptsLoaded)load('receipts')}}
- root.addEventListener('submit',async e=>{const form=e.target.closest('[data-klarwerk-form]');if(!form)return;e.preventDefault();e.stopImmediatePropagation();sync();if(pending||!form.reportValidity())return;const stamp=scope,generation=serial,company=businessId(),values=new FormData(form);pending=true;error='';paint();const check=()=>{if(scope!==stamp||generation!==serial||identity()!==stamp)throw Error('Betrieb oder Anmeldung geändert. Bitte erneut öffnen.')};try{if(form.dataset.klarwerkForm==='pair'){if(!values.has('klarwerk_consent'))throw Error('Freigabe bestätigen.');const data=await call('pair',{label:values.get('label'),offers_allowed:true});check();pair=data;linksLoaded=false}else{const file=values.get('file');if(!file?.size||file.size>10485760)throw Error('Bitte Originaldatei bis 10 MB wählen.');let extension=file.name.split('.').pop().toLowerCase();if(extension==='jpeg')extension='jpg';const types={pdf:'application/pdf',xml:'application/xml',png:'image/png',jpg:'image/jpeg',webp:'image/webp'},mime=file.type||types[extension];const meta=await call('receipt-create',{supplier:values.get('supplier'),number:values.get('number'),date:values.get('date'),name:file.name,extension,mime});check();await upload('purchase-receipts-v1007',meta.path,file.type?file:new File([file],file.name,{type:mime}));check();await api('/functions/v1/klarwerk-bridge-v1007',{method:'POST',body:{action:'receipt-complete',company,data:{id:meta.id}}});check();form.reset();receiptsLoaded=false;error='Originalbeleg gespeichert.'}}catch(e){if(scope===stamp&&serial===generation)error=e.message}finally{if(scope===stamp&&serial===generation){pending=false;paint();afterRender()}}},true);
- root.addEventListener('click',async e=>{const b=e.target.closest('[data-klarwerk-action]');if(!b)return;e.preventDefault();sync();if(pending)return;const action=b.dataset.klarwerkAction;if(action==='copy'){try{await navigator.clipboard.writeText(pair?.code||'')}catch{root.querySelector('[data-klarwerk-pair] textarea')?.select()}return}if(action==='refresh'){linksLoaded=false;return load('links')}if(action==='refresh-receipts'){receiptsLoaded=false;return load('receipts')}if(action==='download'){const x=receipts.find(x=>x.id===b.dataset.id);if(x)return download('purchase-receipts-v1007',x.file_path,x.file_name)}if(action==='offer-scope'){
-  const enabled=b.dataset.enabled==='true',stamp=scope;
-  if(enabled&&!confirm('Gespeicherte Angebote dieses Betriebs für die Steuerprüfung und Weiterleitung in Klarwerk freigeben?'))return;
-  pending=true;error='';paint();
-  try{await call('offer-scope',{id:b.dataset.id,enabled});if(scope===stamp)linksLoaded=false;}
-  catch(e){if(scope===stamp)error=e.message;}
-  finally{if(scope===stamp){pending=false;paint();afterRender();}}
-  return;
- }if(action==='revoke'){const stamp=scope;try{await call('revoke',{id:b.dataset.id});if(scope===stamp){if(pair?.id===b.dataset.id)pair=null;linksLoaded=false;load('links')}}catch(e){error=e.message;paint()}}});
- return {settings,receiptView,afterRender};
-}}})();
+/* Company-scoped Klarwerk connection for customers, work sheets, material and time. */
+(() => {
+  'use strict';
+  window.WorktimeKlarwerkConnection = {create({root,state,businessId,isManager,api,escape:esc}) {
+    let scope = '', generation = 0, links = [], loaded = false, pending = false, error = '', pair = null;
+    const identity = () => state.profile?.id && businessId() ? state.profile.id + ':' + businessId() : '';
+    const call = (action, data = {}) => api('/functions/v1/klarwerk-bridge-v1007', {
+      method:'POST', body:{action, company:businessId(), data}
+    });
+
+    function sync() {
+      const current = identity();
+      if (scope === current) return;
+      scope = current;
+      generation++;
+      links = [];
+      loaded = pending = false;
+      error = '';
+      pair = null;
+    }
+
+    function settings() {
+      sync();
+      if (!scope || !isManager()) return '';
+      return `<section class="panel" data-klarwerk-settings><h3>Klarwerk verknüpfen</h3>
+        <p>Der verbundene Betrieb stellt Klarwerk Kundendaten und Arbeitsscheine mit Material und Arbeitsstunden bereit. Rechnungen werden in Klarwerk erstellt.</p>
+        <form data-klarwerk-form class="entry-form">
+          <label class="wide">Name der Verbindung<input name="label" maxlength="80" value="Meine Buchhaltung" required></label>
+          <label class="wide"><input name="klarwerk_consent" type="checkbox" required> Ich gebe diese Arbeitsschein- und Kundendaten für Klarwerk frei.</label>
+          <button class="primary">Freigabecode erzeugen</button>
+        </form><div data-klarwerk-pair></div><p data-klarwerk-status role="status"></p><div data-klarwerk-links></div>
+        <button type="button" class="secondary" data-klarwerk-action="refresh">Verbindungen aktualisieren</button>
+      </section>`;
+    }
+
+    function paint() {
+      const panel = root.querySelector('[data-klarwerk-settings]');
+      if (!panel) return;
+      panel.querySelector('[data-klarwerk-status]').textContent = pending ? 'Bitte warten …' : error;
+      panel.querySelector('[data-klarwerk-pair]').innerHTML = pair ? `<div class="notice">
+        <b>Einmaliger Freigabecode · gültig bis ${esc(new Date(pair.expires).toLocaleTimeString('de-DE'))}</b>
+        <p>In Klarwerk unter „Einstellungen → Verbindung zur Arbeitszeiterfassung“ im gewünschten Konto einfügen.</p>
+        <textarea readonly aria-label="Klarwerk-Freigabecode">${esc(pair.code)}</textarea>
+        <button type="button" data-klarwerk-action="copy">Code kopieren</button></div>` : '';
+      panel.querySelector('[data-klarwerk-links]').innerHTML = links.map(link => {
+        const status = link.revoked_at ? 'Widerrufen' : link.claimed_at ? 'Verknüpft' :
+          new Date(link.pair_expires) < new Date() ? 'Code abgelaufen' : 'Code wartet auf Verknüpfung';
+        const revoke = link.revoked_at ? '' :
+          `<button type="button" class="danger" data-klarwerk-action="revoke" data-id="${esc(link.id)}">Widerrufen</button>`;
+        return `<article class="row-card"><div><b>${esc(link.label)}</b>
+          <span>${esc(link.account_label || 'Noch nicht verknüpft')} · ${status}</span></div>${revoke}</article>`;
+      }).join('') || (loaded ? '<p>Noch keine Verbindungen.</p>' : '');
+      window.WorktimeKlarwerkTheme?.afterRender(root);
+    }
+
+    async function perform(action, data, accept) {
+      sync();
+      if (pending || !scope || !isManager()) return;
+      const stamp = generation;
+      const current = () => stamp === generation && scope === identity() && isManager();
+      pending = true;
+      error = '';
+      paint();
+      try {
+        const result = await call(action, data);
+        if (current()) accept(result);
+      } catch (e) {
+        if (current()) error = e.message;
+      } finally {
+        if (current()) {
+          pending = false;
+          paint();
+          if (action !== 'links' && !loaded) afterRender();
+        }
+      }
+    }
+
+    function load() {
+      loaded = true;
+      return perform('links', {}, result => {
+        if (!Array.isArray(result)) throw Error('Verbindungen konnten nicht bestätigt werden.');
+        links = result;
+      });
+    }
+
+    function afterRender() {
+      sync();
+      if (!root.querySelector('[data-klarwerk-settings]')) return;
+      paint();
+      if (!loaded && !pending) load();
+    }
+
+    root.addEventListener('submit', event => {
+      const form = event.target.closest('[data-klarwerk-form]');
+      if (!form) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (!form.reportValidity()) return;
+      return perform('pair', {label:new FormData(form).get('label')}, result => {
+        pair = result;
+        loaded = false;
+      });
+    }, true);
+
+    root.addEventListener('click', async event => {
+      const button = event.target.closest('[data-klarwerk-action]');
+      if (!button) return;
+      event.preventDefault();
+      switch (button.dataset.klarwerkAction) {
+        case 'copy':
+          try { await navigator.clipboard.writeText(pair?.code || ''); }
+          catch { root.querySelector('[data-klarwerk-pair] textarea')?.select(); }
+          break;
+        case 'refresh':
+          await load();
+          break;
+        case 'revoke':
+          await perform('revoke', {id:button.dataset.id}, () => {
+            if (pair?.id === button.dataset.id) pair = null;
+            loaded = false;
+          });
+          break;
+      }
+    });
+
+    return {settings, afterRender};
+  }};
+})();

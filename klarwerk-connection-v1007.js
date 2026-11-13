@@ -55,7 +55,7 @@
 
     async function perform(action, data, accept) {
       sync();
-      if (pending || !scope || !isManager()) return;
+      if (pending || !scope || !isManager() || !/^[a-f0-9-]{36}$/i.test(String(businessId()))) return;
       const stamp = generation;
       const current = () => stamp === generation && scope === identity() && isManager();
       pending = true;

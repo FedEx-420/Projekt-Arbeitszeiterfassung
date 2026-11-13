@@ -4,7 +4,7 @@
   const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const definitions = [
     ['home', 'Übersicht', 'Dein Arbeitstag auf einen Blick', 'home', ['home']],
-    ['work', 'Aufträge & Zeiten', 'Arbeitsscheine, Zeiten und Belege', 'work', ['orders', 'time', 'receipts']],
+    ['work', 'Aufträge & Zeiten', 'Arbeitsscheine und Zeiten', 'work', ['orders', 'time']],
     ['customers', 'Kunden', 'Kontaktdaten und Kundenaufträge', 'customers', ['customers']],
     ['planning', 'Planung & Kalender', 'Termine, Urlaub und Krankheit', 'calendar', ['planning', 'calendar']],
     ['office', 'Büro', 'Angebote, Materialliste und Postfach', 'office', ['offers', 'materials', 'mailbox']],

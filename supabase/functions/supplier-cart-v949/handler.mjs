@@ -161,7 +161,7 @@ export function createHandler({fetch=globalThis.fetch,env,md5,crypto=globalThis.
    const confirmed=!!items&&items.every(x=>x.confirmed),receipt={company,supplier,request_id:id,confirmed,cart_url:shops[shop]+'/p/cart/'+ref+'/positions',items:items||[],checked_at:new Date(now()).toISOString(),message:confirmed?'Alle Artikel und Mengen wurden im Händlerwarenkorb bestätigt.':'Der Händlerwarenkorb wurde nicht vollständig bestätigt. Es wird nichts erneut gesendet.'};
    await db('PATCH',where,{state:confirmed?'confirmed':'uncertain',receipt,updated_at:new Date(now()).toISOString()});
    // Normal shop sign-in handoff, transient only: never saved with the receipt.
-   const token=confirmed?await merchant.handoffToken(session,{username,password:secret}):'';
+   const token=await merchant.handoffToken(session,{username,password:secret});
    secret='';
    return json({...receipt,...(typeof token==='string'&&token.length>8&&token.length<20000?{handoff:{action:receipt.cart_url+'?login=true',token}}:{})});
   }catch(e){return json({code:e.code||'UNAVAILABLE',message:e.code?e.message:'Die Übertragung konnte nicht bestätigt werden. Bitte den Händlerwarenkorb prüfen; es wird nichts automatisch erneut gesendet.'},e.status||502);}finally{secret='';}

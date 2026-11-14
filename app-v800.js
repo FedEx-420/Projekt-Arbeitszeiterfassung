@@ -617,7 +617,7 @@
     return `<section class="page-head"><div><span class="eyebrow">Kalender von ${escape(worker()?.username || '')}</span><h2>${dateText(state.date)}</h2></div><label class="date-field">Tag<input type="date" data-date value="${state.date}"></label></section><section class="stat-grid"><article><span>Überstunden</span><strong>${dayEntries(id).length ? h(dayHours(id) - dueHours(state.date)) : '—'}</strong></article><article><span>Urlaub</span><strong>${vacation(id) ? 'Genehmigt' : '—'}</strong></article><article><span>Krank</span><strong>${sick(id) ? 'Ja' : '—'}</strong></article></section><section class="panel calendar-panel"><div class="calendar-head"><button type="button" aria-label="Vorheriger Monat" data-action="month" data-value="-1">‹</button><h3>${monthText(state.month)}</h3><button type="button" aria-label="Nächster Monat" data-action="month" data-value="1">›</button></div><div class="calendar-legend"><span class="legend-order">Arbeitsschein</span><span class="legend-requested">Urlaub beantragt</span><span class="legend-approved">Urlaub genehmigt</span><span class="legend-sick">Krankheitstag</span><span class="legend-holiday">Feiertag NRW</span></div><div class="month-grid"><span class="weekday">Mo</span><span class="weekday">Di</span><span class="weekday">Mi</span><span class="weekday">Do</span><span class="weekday">Fr</span><span class="weekday">Sa</span><span class="weekday">So</span>${grid}</div><div class="actions"><button type="button" class="secondary" data-action="sick">${sick(id) ? 'Krankheitstag entfernen' : 'Krank melden'}</button><button type="button" class="primary" data-action="vacation-form">Urlaub beantragen</button></div></section>${state.vacationForm ? `<section class="panel"><h3>Urlaub beantragen</h3><form data-form="vacation" class="entry-form"><label>Von<input name="start" type="date" required value="${state.date}"></label><label>Bis<input name="end" type="date" required value="${state.date}"></label><button class="primary">Antrag senden</button></form></section>` : ''}<section class="list-section"><h3>Durchgeführt</h3>${nrwHoliday(state.date) ? `<p class="locked">${escape(nrwHoliday(state.date))} in NRW</p>` : ''}${recordCards}</section>`;
   }
 
-  function customerFields(customer) { const fields = customer?.custom_fields || {}; return `<input type="hidden" name="id" value="${customer?.id || ''}"><label>Firmenname<input name="name" required value="${escape(customer?.name || '')}"></label><label>Vorname<input name="first_name" value="${escape(fields.first_name || '')}"></label><label>Straße<input name="street" value="${escape(fields.street || '')}"></label><label>Hausnummer<input name="house_no" value="${escape(fields.house_no || '')}"></label><label>Ort<input name="city" value="${escape(fields.city || '')}"></label><label>Postleitzahl<input name="postal_code" value="${escape(fields.postal_code || '')}"></label><label>Telefon privat<input name="phone_private" value="${escape(fields.phone_private || '')}"></label><label>Telefon mobil<input name="phone_mobile" value="${escape(fields.phone_mobile || '')}"></label><label class="wide">E-Mail-Adresse<input name="email" type="email" value="${escape(fields.email || '')}"></label><label class="wide">Zusätzliche Angaben (eine Zeile je Feld)<textarea name="extra" rows="3">${escape(Object.entries(fields).filter(([name]) => name.startsWith('extra_')).map(([, value]) => value).join('\n'))}</textarea></label>`; }
+  function customerFields(customer) { const fields = customer?.custom_fields || {}; return `<input type="hidden" name="id" value="${customer?.id || ''}"><input type="hidden" name="customerUpdatedAt" value="${escape(customer?.updated_at || '')}"><label>Firmenname<input name="name" required value="${escape(customer?.name || '')}"></label><label>Vorname<input name="first_name" value="${escape(fields.first_name || '')}"></label><label>Straße<input name="street" value="${escape(fields.street || '')}"></label><label>Hausnummer<input name="house_no" value="${escape(fields.house_no || '')}"></label><label>Ort<input name="city" value="${escape(fields.city || '')}"></label><label>Postleitzahl<input name="postal_code" value="${escape(fields.postal_code || '')}"></label><label>Land<input name="country" maxlength="120" autocomplete="country-name" value="${escape(fields.country || '')}"></label><label>Telefon privat<input name="phone_private" value="${escape(fields.phone_private || '')}"></label><label>Telefon mobil<input name="phone_mobile" value="${escape(fields.phone_mobile || '')}"></label><label class="wide">E-Mail-Adresse<input name="email" type="email" value="${escape(fields.email || '')}"></label><label class="wide">Zusätzliche Angaben (eine Zeile je Feld)<textarea name="extra" rows="3">${escape(Object.entries(fields).filter(([name]) => name.startsWith('extra_')).map(([, value]) => value).join('\n'))}</textarea></label>`; }
   function customerSearchKey(value) { return lower(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replaceAll('ß', 'ss'); }
   function customerSearchText(customer) { return customerSearchKey([customer?.name || '', ...Object.values(customer?.custom_fields || {})].join(' ')); }
   function setupCustomerSearch() {
@@ -1009,7 +1009,27 @@
   async function saveOrder(form) { const id = workerId(); if (locked(id)) throw new Error(lockedText(id)); const customer = await ensureCustomer(form.elements.customer.value, id); const value = timeValues(form), signature = signatureValues(form); const created = await write('work_orders', { employee_id: id, work_date: state.date, customer_id: customer.id, customer_name: customer.name, title: String(form.elements.title.value || '').trim(), start_time: value.start, end_time: value.end, pause_hours: value.pause, executed_hours: value.hours, calculation_mode: 'end_time', documentation: String(form.elements.documentation.value || ''), ...signature }); const order = created?.[0]; if (!order) throw new Error('Der Arbeitsschein konnte nicht gespeichert werden.'); await saveMaterials(form, order); await saveHourlyMaterial(order, value.hours); await saveDocuments(form, order, id); state.orderCustomer = ''; }
   async function updateOrder(form) { if (teamEnabled() || state.rows.orders.find(row => same(row.id, form.elements.id.value))?.team_periods?.length) return saveTeamOrder(form, state.rows.orders.find(row => same(row.id, form.elements.id.value))); const order = state.rows.orders.find(row => same(row.id, form.elements.id.value)); if (!order) throw new Error('Der Arbeitsschein wurde nicht gefunden.'); const id = order.employee_id, workDate = form.elements.work_date.value || order.work_date; if (workDate !== order.work_date && locked(id, workDate)) throw new Error(lockedText(id, workDate)); const customer = await ensureCustomer(form.elements.customer.value, id), value = timeValues(form), signature = signatureValues(form); const changes = { customer_id: customer.id, customer_name: customer.name, title: String(form.elements.title.value || '').trim(), start_time: value.start, end_time: value.end, pause_hours: value.pause, executed_hours: value.hours, calculation_mode: 'end_time', documentation: String(form.elements.documentation.value || ''), ...signature }; if (workDate !== order.work_date) changes.work_date = workDate; await write('work_orders', changes, 'PATCH', `id=eq.${encodeURIComponent(order.id)}`); await saveMaterials(form, order, true); await saveHourlyMaterial(order, value.hours); await saveDocuments(form, order, id); state.orderId = ''; state.view = state.orderOrigin || 'orders'; }
   function permissions(form) { return {time:form.dataset.form==='employee-permissions'?worker()?.menu_permissions?.time!==false:true,...Object.fromEntries(['customers', 'orders', 'calendar'].map(name => [name, form.elements[`perm-${name}`]?.checked !== false]))}; }
-  async function saveCustomer(form) { const id = String(form.elements.id.value || ''); const custom = Object.fromEntries(['first_name','street','house_no','city','postal_code','phone_private','phone_mobile','email'].map(name => [name, String(form.elements[name].value || '').trim()])); String(form.elements.extra.value || '').split('\n').map(value => value.trim()).filter(Boolean).forEach((value, index) => { custom[`extra_${index + 1}`] = value; }); const data = { name: String(form.elements.name.value || '').trim(), custom_fields: custom }; if (!data.name) throw new Error('Bitte einen Kundennamen eingeben.'); if (id) await write('customers', data, 'PATCH', `id=eq.${encodeURIComponent(id)}`); else await write('customers', { ...data, employee_id: workerId() }); state.customerId = ''; }
+  async function saveCustomer(form) {
+    const id = form.elements.id.value;
+    const current = state.rows.customers.find(customer => same(customer.id,id));
+    const custom = {...current?.custom_fields};
+    for (const key of Object.keys(custom)) if (key.startsWith('extra_')) delete custom[key];
+    for (const key of ['first_name','street','house_no','city','postal_code','country','phone_private','phone_mobile','email']) {
+      custom[key] = String(form.elements[key].value || '').trim();
+    }
+    String(form.elements.extra.value || '').split('\n').map(value=>value.trim()).filter(Boolean)
+      .forEach((value,index) => { custom['extra_'+(index+1)] = value; });
+    const name = form.elements.name.value.trim();
+    if (!name) throw new Error('Bitte einen Kundennamen eingeben.');
+    const data = {name, custom_fields:custom};
+    if (id) {
+      const stamp = form.elements.customerUpdatedAt.value;
+      const filter = 'id=eq.'+encodeURIComponent(id)+(stamp ? '&updated_at=eq.'+encodeURIComponent(stamp) : '');
+      const updated = await write('customers',data,'PATCH',filter);
+      if (!updated?.length) throw new Error('Der Kunde wurde inzwischen geändert. Öffne ihn erneut und prüfe die aktuellen Angaben.');
+    } else await write('customers',{...data,employee_id:workerId()});
+    state.customerId = '';
+  }
 
   function revealCustomerProfile() {
     const move = () => {
@@ -1457,7 +1477,7 @@
   // Notizfeld abgelegt, damit keine vorhandenen Daten oder Datenbankregeln
   // geändert werden müssen.
   const PLAN_PREFIX = 'ZE-PLAN-1:';
-  const PLAN_CUSTOMER_FIELDS = [['first_name', 'Vorname'], ['street', 'Straße'], ['house_no', 'Hausnummer'], ['postal_code', 'Postleitzahl'], ['city', 'Ort'], ['phone_private', 'Telefon privat'], ['phone_mobile', 'Telefon mobil'], ['email', 'E-Mail-Adresse']];
+  const PLAN_CUSTOMER_FIELDS = [['first_name', 'Vorname'], ['street', 'Straße'], ['house_no', 'Hausnummer'], ['postal_code', 'Postleitzahl'], ['city', 'Ort'], ['country', 'Land'], ['phone_private', 'Telefon privat'], ['phone_mobile', 'Telefon mobil'], ['email', 'E-Mail-Adresse']];
   function planningCustomerSnapshot(customer) {
     if (!customer || typeof customer !== 'object') return null;
     const fields = customer.custom_fields && typeof customer.custom_fields === 'object' && !Array.isArray(customer.custom_fields) ? customer.custom_fields : {};
@@ -1998,7 +2018,7 @@
   let planningSyncBusy = false;
   async function syncPlanningIfVisible() {
     if (!state.session || state.busy || planningSyncBusy || document.visibilityState === 'hidden') return;
-    if (!['planning', 'time', 'orders', 'order-detail', 'home', 'calendar', 'settings'].includes(state.view)) return;
+    if (!['planning', 'time', 'orders', 'order-detail', 'home', 'calendar', 'settings', 'customers'].includes(state.view)) return;
     planningSyncBusy = true;
     const orderId = state.orderId;
     const wasBilled = state.rows.orders.find(order => same(order.id, orderId))?.invoiced;
@@ -2015,7 +2035,7 @@
         const form = root.querySelector('form[data-form="planning"]');
         if (form) { updatePlanningWarnings(form); updatePlanningCustomer(form); } else if (!state.menu) render();
       }
-      else if(['home','calendar','settings'].includes(state.view)&&!state.menu&&!document.activeElement?.closest('form')&&!document.activeElement?.matches('input,select,textarea'))render();
+      else if(['home','calendar','settings','customers'].includes(state.view)&&!state.menu&&!document.activeElement?.closest('form')&&!document.activeElement?.matches('input,select,textarea'))render();
     } catch { /* Keep the last verified plan during temporary network outages. */ }
     finally { planningSyncBusy = false; }
   }

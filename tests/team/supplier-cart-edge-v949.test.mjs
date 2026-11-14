@@ -94,7 +94,7 @@ assert.equal((await request({},false)).status,401);role='employee';assert.equal(
 let r=await request(),data=await r.json();assert.equal(r.status,200);assert.equal(data.confirmed,true);assert.equal(data.items[0].actual_quantity,2.5);assert.match(data.cart_url,/SYNTHETIC_CART_REFERENCE\/positions$/);assert.equal(data.handoff.action,data.cart_url+'?login=true');assert.equal(data.handoff.token,'SYNTHETIC_REDIRECT_TOKEN');assert.equal(adds,1);assert.equal(creates,1);
 for(const secret of ['TEST_PASSWORD','PRIVATE_COOKIE','CSRF','SYNTHETIC_TRANSIENT_HANDOFF','SYNTHETIC_REDIRECT_TOKEN'])assert.ok(!JSON.stringify([...jobs]).includes(secret),'receipt cannot persist '+secret);
 data=await(await request()).json();assert.equal(data.confirmed,true);assert.equal(adds,1,'repeated request reads existing cart and never adds again');assert.equal(creates,1);
-actual=1;data=await(await request()).json();assert.equal(data.confirmed,false);assert.equal(adds,1,'partial cart must not trigger automatic resend');
+actual=1;data=await(await request()).json();assert.equal(data.confirmed,false);assert.equal(data.handoff.token,'SYNTHETIC_REDIRECT_TOKEN');assert.equal(adds,1,'partial cart must not trigger automatic resend');
 actual=2.5;throwAfterAdd=true;data=await(await request({...body,request_id:'40000000-0000-4000-8000-000000000002'})).json();assert.equal(data.confirmed,true,'lost add reply is recovered by exact cart readback');assert.equal(adds,2);
 assert.equal(checkCart({},[]),null);assert.equal(checkCart({cart:{cartPositions:[{product:{productNumber:'wrong'},quantity:2.5}]}},[{sku:'000123',cents:250,material_ids:[article]}])[0].confirmed,false);
 role='employee';

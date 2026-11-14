@@ -9,12 +9,13 @@
     function sync() {
       if(scope===identity())return;
       searchSerial++;searching=false;searched=false;
-      scope=identity();accounts=null;accountId='';results=[];basket=[];status='';pending=false;query='';manufacturer='';category='';cartName='';onlyAvailable=false;attempt=null;shared=state.profile?.role==='administrator';
+      scope=identity();review=null;accounts=null;accountId='';results=[];basket=[];status='';pending=false;query='';manufacturer='';category='';cartName='';onlyAvailable=false;attempt=null;shared=state.profile?.role==='administrator';
     }
     const shopUrl='https://efgonlineplus.de/';
     const shopLink=()=>`<a href="${shopUrl}" target="_blank" rel="noopener noreferrer">Neugart-Shop direkt öffnen</a>`;
     const accountButton=(id,label='Neugart-Konto öffnen')=>`<button type="button" class="secondary" data-ng-action="check-login" data-id="${esc(id)}" ${pending?'disabled':''}>${label}</button>`;
-    const feedback=()=>status?`<p role="status">${esc(status)}</p>`:'';
+    let review = null;
+    const feedback=()=>status?`<p role="status">${esc(status)}</p>${review ? '<button type="button" class="secondary" data-ng-action="review-cart">Warenkorb bei GC Online prüfen</button>' : ''}`:'';
     async function run(task) {
       sync();
       if(!scope||pending)return;
@@ -72,7 +73,7 @@
       sessionStorage.setItem(basketKey(),JSON.stringify({basket:rows,cartName}));
     }
     function restoreBasket() {
-      basket=[];cartName='';attempt=null;
+      basket=[];cartName='';attempt=null;review=null;
       if(!scope||!accountId)return;
       try {
         const draft=JSON.parse(sessionStorage.getItem(basketKey())||'null');
@@ -173,6 +174,11 @@
       if(!button||pending)return;
       capture();
       const {ngAction,id}=button.dataset;
+      if(ngAction==='review-cart' && review){
+        try { openCart(review); }
+        catch(error) { status=error.message; render(); }
+        return;
+      }
       if(ngAction==='cart'||ngAction==='search'){
         searchSerial++;searching=false;
         state.view=ngAction==='cart'?'shopping-cart':'shopping';render();return;
@@ -234,9 +240,16 @@
           if(attempt&&attempt.fingerprint!==fingerprint)throw Error('Bitte zuerst die vorherige Übertragung mit derselben Auswahl prüfen.');
           attempt=attempt||{fingerprint,id:crypto.randomUUID()};
           sessionStorage.setItem(key,JSON.stringify(attempt));
+          review=null;
           const data=await call('transfer',{...body,request_id:attempt.id});
           if(!current())return;
-          if(data.confirmed!==true||data.request_id!==attempt.id||data.company!==body.company||data.supplier!==body.supplier)throw Error(data.message||'Der Händlerwarenkorb konnte nicht bestätigt werden.');
+          if(data.request_id!==attempt.id||data.company!==body.company||data.supplier!==body.supplier)throw Error('Der Händlerwarenkorb konnte nicht eindeutig zugeordnet werden.');
+          if(data.confirmed!==true){
+            const differences=(data.items||[]).filter(item=>!item.confirmed).map(item=>item.sku+': '+item.quantity+' angefordert, '+item.actual_quantity+' im Shop');
+            review=data.cart_url ? data : null;
+            status=[data.message||'Der Händlerwarenkorb konnte nicht bestätigt werden.',...differences].join(' ');
+            return;
+          }
           attempt.confirmed=true;sessionStorage.setItem(key,JSON.stringify(attempt));saveBasket();
           status='Alle Artikel und Mengen wurden beim Großhändler bestätigt. Der Warenkorb wird geöffnet.';
           openCart(data);

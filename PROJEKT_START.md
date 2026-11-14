@@ -37,6 +37,10 @@ Private Kataloge, Einkaufspreise, Kundendaten, Chatprotokolle und Zugangsdaten w
 
 - [Reaktionsfähige Suche mit 30.000 Testartikeln](docs/Pruefstand_v962.md)
 
+## Stundensätze für Klarwerk
+
+Klarwerk liest die aktiven Netto-Verrechnungssätze des verknüpften Betriebs und bei der Abrechnung die Kundensätze. Für Helfer gilt der Satz „Aushilfsstunde“ aus der Materialliste. Eigene Vorgaben können im Klarwerk-Konto gespeichert werden.
+
 ## Kundenanschriften mit Klarwerk
 
 Verknüpfte Kunden werden anhand ihrer Kunden-ID abgeglichen. Die Verbindung darf ausschließlich die fünf Adressfelder des verknüpften Betriebs ändern. Klarwerk übernimmt Adressänderungen beim automatischen Abgleich. Bei parallelen Änderungen prüft der Nutzer in Klarwerk beide Stände. Bereits ausgestellte Rechnungen verwenden weiterhin ihre gespeicherte Anschrift.

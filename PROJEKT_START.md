@@ -464,3 +464,7 @@ Die Arbeitsscheine speichern Objektbezeichnung und abweichende Anschrift optiona
 Der Adressabgleich verwendet weiterhin die bestätigte Klarwerk-Verbindung und dieselbe Kundenzuordnung. Die Migration `20261115160500_fast_customer_address_sync.sql` aktualisiert bei Kundenänderungen eine interne Version des Betriebs. Geöffnete Apps prüfen sie alle zwei Sekunden. Erst bei einer Änderung rufen sie die Kundenliste ab. Klarwerk sendet gespeicherte Änderungen über die autorisierte Bridge, unabhängig vom Abgleich der Rechnungen und Belege.
 
 Die bestehende Prüfung auf zwischenzeitliche Änderungen schützt parallele Bearbeitungen. Klarwerk zeigt den Abgleich im Kundenmenü an. Die Browser- und Datenbankprüfungen verwenden ausschließlich fiktive Kunden und Betriebe.
+
+## Mehrere Zeitabschnitte in Klarwerk-Fahrten
+
+Die Migration `20261115172500_klarwerk_fleet_work_period_days.sql` gibt für einen Arbeitsschein jeden Einsatztag im gewählten Monat mit den tatsächlichen Mitarbeitern und Startzeiten der Zeitabschnitte aus. Klarwerk unterscheidet die Fahrzeugprüfung und manuell erfasste Fahrten nach Arbeitsschein und Einsatztag. Aufeinanderfolgende Zeitabschnitte am gleichen Ziel erzeugen in der automatischen Route keinen zusätzlichen Stopp. Wenn zwischen zwei Abschnitten ein anderes Ziel liegt, berücksichtigt Klarwerk die Rückkehr. Die Abrechnung liest die bereits separat ausgegebenen Zeitabschnitte und deren Datum.

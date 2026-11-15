@@ -450,3 +450,9 @@ Eine bestehende Verbindung erhält Angebotszugriff über „Angebote für Klarwe
 Der geplante Abruf in Supabase Primary nutzt die gespeicherten Firmenzugänge im Vault und die regulären Webportale von Neugart und H. Gautzsch. Ein berechtigter, bestätigter Klarwerk-Link ist bei jedem Abruf und bei der Übernahme erforderlich. Der erste Suchzeitraum umfasst rund 45 Tage. Danach gleicht der Dienst den Zeitraum alle drei Stunden erneut ab und verarbeitet größere Listen in Teilabrufen. Die PDFs verbleiben in einem privaten Originalspeicher. Die abgesicherte Klarwerk-Brücke reicht Bestandsrechnungen bereits zur Prüfung durch. Die erweiterte Klarwerk-Ansicht nutzt zusätzlich den Abrufparameter `supplier_documents` für Lieferscheine und weitere Originale und ordnet sie nur bei eindeutiger Referenz im selben Händlerkonto zu.
 
 Lokale Prüfbefehle sind `node tests/team/supplier-portal-docs-v1012.test.mjs` und `node tests/team/supplier-portal-database-v1012.test.cjs`. Der Abrufpfad wurde mit vorhandenen Originalen beider Portale geprüft. Der lokale Klarwerk-Stand mit erweiterter Ansicht muss über das bestehende Sites-Projekt veröffentlicht werden.
+
+## Ausführungsort im Kundenarbeitsschein
+
+Die Arbeitsscheine speichern Objektbezeichnung und abweichende Anschrift optional in `work_orders.service_location`. Der vorhandene Speichervorgang übernimmt die Felder auch bei Team- und Timerbuchungen. Die Klarwerk-Abfragen für offene Arbeitsscheine und Fahrten lesen den Ausführungsort mit der bestehenden Betriebsfreigabe. Klarwerk verwendet bei leerer Objektanschrift die Hauptanschrift des Kunden und führt den Ausführungsort auf Rechnungen separat auf.
+
+`node tests/team/klarwerk-bridge-v1007.test.cjs` prüft mit fiktiven Daten die Speicherung, den Abgleich über beide Abfragen, die Firmenabgrenzung und das Entfernen der abweichenden Anschrift.

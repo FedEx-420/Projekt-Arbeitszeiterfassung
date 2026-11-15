@@ -456,3 +456,5 @@ Lokale Prüfbefehle sind `node tests/team/supplier-portal-docs-v1012.test.mjs` u
 Die Arbeitsscheine speichern Objektbezeichnung und abweichende Anschrift optional in `work_orders.service_location`. Der vorhandene Speichervorgang übernimmt die Felder auch bei Team- und Timerbuchungen. Die Klarwerk-Abfragen für offene Arbeitsscheine und Fahrten lesen den Ausführungsort mit der bestehenden Betriebsfreigabe. Klarwerk verwendet bei leerer Objektanschrift die Hauptanschrift des Kunden und führt den Ausführungsort auf Rechnungen separat auf.
 
 `node tests/team/klarwerk-bridge-v1007.test.cjs` prüft mit fiktiven Daten die Speicherung, den Abgleich über beide Abfragen, die Firmenabgrenzung und das Entfernen der abweichenden Anschrift.
+
+- Objektanschrift pro Kundenarbeitsschein: unter **Arbeitsscheine → Neuer Arbeitsschein** oder beim Bearbeiten direkt nach der Kundenauswahl. Timer und Planung verwenden dasselbe Auftragsformular. Bei leerer Objektanschrift gilt die Hauptanschrift.

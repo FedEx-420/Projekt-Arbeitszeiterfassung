@@ -20,6 +20,7 @@ ZEICHEN
 Ein erfolgreicher Test mit Beispieldaten ist kein Live-Test jedes Geschäftskontos.
 
 ALS NÄCHSTES
+[x] v1021: Arbeitsschein auf dem Desktop über die gesamte Inhaltsbreite mit festen Spalten für Arbeitszeiten und Material.
 [x] Arbeitsschein: feste Bereiche für Zeit und Material, gespeicherte Auftragsorte je Kunde und Teamkalender nach Auftragsort.
 [x] Netto-Stundensätze des verknüpften Betriebs für Klarwerk bereitstellen. Standard- und Kundensätze, ein hinterlegter Nullsatz und die Betriebsgrenzen wurden mit Testdaten geprüft.
 [x] Neugart: Bei abweichenden Mengen Händlerwarenkorb zur Prüfung öffnen, Soll-/Ist-Mengen anzeigen und Wiederholung auf Rücklesen beschränken.

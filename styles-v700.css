@@ -40,3 +40,25 @@
   font-size: .78rem;
   overflow-wrap: anywhere;
 }
+
+[data-form="order"] > .order-input-layout,
+[data-form="order-edit"] > .order-input-layout {
+  grid-column: 1 / -1;
+  grid-template-areas: "time" "material";
+}
+.order-time-section { grid-area: time; }
+.order-material-section { grid-area: material; }
+@media (min-width: 1100px) {
+  .content:has([data-form="order"], [data-form="order-edit"]) {
+    width: 100%;
+    max-width: none;
+  }
+  [data-form="order"] > .order-input-layout,
+  [data-form="order-edit"] > .order-input-layout {
+    grid-template-areas: "time material";
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  }
+  .order-material-section .material-row {
+    grid-template-columns: minmax(0, 2fr) minmax(4.5rem, 1fr) minmax(5rem, 1fr);
+  }
+}

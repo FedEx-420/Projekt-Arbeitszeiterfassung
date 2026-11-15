@@ -432,6 +432,7 @@
   function selector() {
     if (!isManager()) return '';
     const businessesHtml = isAdmin() ? `<label>Firma ansehen<select data-select="business"><option value="">Firma auswählen</option>${businesses().map(person => `<option value="${person.id}" ${same(person.id, businessId()) ? 'selected' : ''}>${escape(person.company_name || person.username)}</option>`).join('')}</select></label>` : '';
+    if (state.view === 'calendar') return businessesHtml ? '<div class="selectors">'+businessesHtml+'</div>' : '';
     return `<div class="account-selector">${businessesHtml}<label>Arbeitskonto ansehen<select data-select="employee">${workers().map(person => `<option value="${person.id}" ${same(person.id, workerId()) ? 'selected' : ''}>${escape(person.username)}</option>`).join('')}</select></label></div>`;
   }
   function appView() {
@@ -580,12 +581,62 @@
     ['label','Objektbezeichnung',160], ['street','Straße',120], ['house_no','Hausnummer',40],
     ['postal_code','Postleitzahl',24], ['city','Ort',120], ['country','Land',80]
   ];
-  function serviceLocationFields(order) {
-    const location=order?.service_location;
+
+  function siteAddress(site) {
+    return [site.street,site.house_no,site.postal_code,site.city,site.country].filter(Boolean).join(' ');
+  }
+  function customerSites(customer) {
+    const sites = customer?.custom_fields?.service_locations;
+    return Array.isArray(sites) ? sites.filter(site=>site && typeof site==='object' && site.street) : [];
+  }
+  function siteOptions(name) {
+    const customer = state.rows.customers.find(row=>lower(row.name)===lower(name || ''));
+    return '<option value="">Auftragsort auswählen</option>' + customerSites(customer).map((site,index)=>
+      '<option value="'+index+'">'+escape([site.label,siteAddress(site)].filter(Boolean).join(' · '))+'</option>').join('');
+  }
+  function customerSiteRow(site = {}) {
+    return '<fieldset class="entry-form" data-site-row><legend>Auftragsort</legend>' +
+      serviceLocationInputs.map(([key,label,max])=>'<label>'+label+'<input data-site-key="'+key+'" maxlength="'+max+'" value="'+escape(site[key] || '')+'"></label>').join('') +
+      '<button type="button" class="secondary" data-remove-site>Auftragsort entfernen</button></fieldset>';
+  }
+  function customerSiteFields(customer) {
+    return '<section class="wide" data-customer-sites><h4>Auftragsorte</h4><div data-site-list>'+
+      customerSites(customer).map(customerSiteRow).join('')+'</div><button type="button" class="secondary" data-add-site>Auftragsort hinzufügen</button></section>';
+  }
+  root.addEventListener('click', event => {
+    const button = event.target.closest('[data-add-site], [data-remove-site]');
+    if (button?.hasAttribute('data-add-site')) button.closest('[data-customer-sites]').querySelector('[data-site-list]').insertAdjacentHTML('beforeend',customerSiteRow());
+    if (button?.hasAttribute('data-remove-site')) button.closest('[data-site-row]').remove();
+  });
+  root.addEventListener('input', event => {
+    const input = event.target, form = input.closest?.('form[data-form="order"],form[data-form="order-edit"]');
+    const dropdown = form?.querySelector('[data-order-site]');
+    if (dropdown && input.name==='customer') {
+      dropdown.innerHTML = siteOptions(input.value);
+      if (!dropdown.dataset.filled) return;
+      for (const [key] of serviceLocationInputs) form.elements['service_'+key].value = '';
+      delete dropdown.dataset.filled;
+    }
+  });
+  root.addEventListener('change', event => {
+    const dropdown = event.target;
+    if (!dropdown.matches('[data-order-site]') || dropdown.value==='') return;
+    const form = dropdown.form;
+    const customer = state.rows.customers.find(row=>lower(row.name)===lower(form.elements.customer.value));
+    const site = customerSites(customer)[Number(dropdown.value)];
+    if (!site) return;
+    for (const [key] of serviceLocationInputs) form.elements['service_'+key].value = site[key] || '';
+    dropdown.dataset.filled = '1';
+  });
+
+
+  function serviceLocationFields(order,customerName) {
+    const location=order?.service_location || (!order && !state.planPrefill ? state.orderSite : null);
     return `<fieldset class="wide" data-service-location aria-describedby="service-location-help" style="margin:0;padding:14px;border:1px solid #b6cbc0;border-radius:10px;min-width:0;background:#f7faf8"
       ${order?.invoiced?'disabled':''} ${order?.work_kind&&order.work_kind!=='customer'?'hidden':''}>
       <legend><strong>Ausführungsort / Objekt (optional)</strong></legend>
       <p id="service-location-help">Hier kannst du für diesen Arbeitsschein eine andere Immobilie oder Baustelle angeben. Ohne Objektanschrift gilt die Hauptanschrift des Kunden.</p>
+      <label>Gespeicherter Auftragsort<select data-order-site ${location && !order ? 'data-filled' : ''}>${siteOptions(customerName || order?.customer_name)}</select></label>
       <div class="entry-form">${serviceLocationInputs.map(([key,label,max])=>
         `<label ${key==='label'?'class="wide"':''}>${label}<input type="text" name="service_${key}" autocomplete="off" maxlength="${max}" ${key==='label'?'placeholder="z. B. Mehrfamilienhaus Gartenstraße"':''} value="${escape(location?.[key]||'')}"></label>`
       ).join('')}</div>
@@ -608,14 +659,14 @@
     const documents = state.rows.documents.filter(document => same(document.work_order_id, order.id));
     const rows = items.length ? items.map(materialRow).join('') : materialRow();
     const billingStatus = order.invoiced ? '<span class="badge">Bereits abgerechnet</span>' : '';
-    return `<section class="panel"><div class="page-head"><div><span class="eyebrow">Arbeitsschein bearbeiten</span><h3>${escape(order.customer_name || 'Ohne Kunde')}</h3></div><div class="actions">${billingStatus}${items.length && canExportJuprowaMaterial(order) ? `<button type="button" class="secondary small" data-action="juprowa-material" data-id="${escape(order.id)}">Juprowa-Materialdatei</button>` : ''}<button type="button" class="secondary small" data-action="order-pdf" data-id="${order.id}">PDF drucken / speichern</button><button type="button" class="danger small" data-action="delete-order" data-id="${order.id}">Arbeitsschein löschen</button><button type="button" class="secondary small" data-action="close-order">Schließen</button></div></div><form data-form="order-edit" class="entry-form"><input type="hidden" name="id" value="${order.id}">${orderDatePicker(order.work_date)}<label class="wide">Kunde<input name="customer" required list="customers" value="${escape(order.customer_name || '')}"></label>${serviceLocationFields(order)}<label class="wide">Beschreibung<input name="title" value="${escape(order.title || '')}"></label><div class="wide" id="material-lines">${rows}</div><button type="button" class="secondary wide" data-action="more-material">Weiteres Material</button>${teamEnabled() ? '' : `<p class="wide">Arbeitsstunden werden beim Speichern automatisch als <b>${escape(hourlyNameForEmployee(order.employee_id))}</b> mit dem Preis aus der Materialliste ergänzt.</p>`}${teamOrderTimeFields(order.employee_id,orderPeriods(order),`<label>Arbeitsbeginn${timeInput('start', order.start_time?.slice(0, 5))}</label><label>Arbeitsende${timeInput('end', order.end_time?.slice(0, 5))}</label><label>Pause in Stunden<input name="pause" type="number" min="0" step="0.25" value="${n(order.pause_hours)}"></label><label>Ausgeführte Stunden<input name="hours" type="number" min="0.25" step="0.25" value="${n(order.executed_hours)}" required></label>`)}${noteTemplates()}<label class="wide">Notiz / Dokumentation<textarea name="documentation" rows="4">${escape(order.documentation || '')}</textarea></label><label class="wide">Weitere Dokumente hochladen<input name="documents" type="file" multiple accept="image/*,.pdf,.doc,.docx"></label>${documents.length ? `<p class="wide">Vorhandene Dokumente: ${documents.map(document => escape(document.file_name)).join(', ')}</p>` : ''}${signatureFields(order)}<button class="primary wide" data-signature-submit>Änderungen speichern</button></form>${customerList()}${materialList()}</section>`;
+    return `<section class="panel"><div class="page-head"><div><span class="eyebrow">Arbeitsschein bearbeiten</span><h3>${escape(order.customer_name || 'Ohne Kunde')}</h3></div><div class="actions">${billingStatus}${items.length && canExportJuprowaMaterial(order) ? `<button type="button" class="secondary small" data-action="juprowa-material" data-id="${escape(order.id)}">Juprowa-Materialdatei</button>` : ''}<button type="button" class="secondary small" data-action="order-pdf" data-id="${order.id}">PDF drucken / speichern</button><button type="button" class="danger small" data-action="delete-order" data-id="${order.id}">Arbeitsschein löschen</button><button type="button" class="secondary small" data-action="close-order">Schließen</button></div></div><form data-form="order-edit" class="entry-form"><input type="hidden" name="id" value="${order.id}">${orderDatePicker(order.work_date)}<label class="wide">Kunde<input name="customer" required list="customers" value="${escape(order.customer_name || '')}"></label>${serviceLocationFields(order)}<label class="wide">Beschreibung<input name="title" value="${escape(order.title || '')}"></label><div class="wide order-input-layout"><section class="order-time-section entry-form"><h4 class="wide">Arbeitszeiten</h4>${teamEnabled() ? '' : `<p class="wide">Arbeitsstunden werden beim Speichern automatisch als <b>${escape(hourlyNameForEmployee(order.employee_id))}</b> mit dem Preis aus der Materialliste ergänzt.</p>`}${teamOrderTimeFields(order.employee_id,orderPeriods(order),`<label>Arbeitsbeginn${timeInput('start', order.start_time?.slice(0, 5))}</label><label>Arbeitsende${timeInput('end', order.end_time?.slice(0, 5))}</label><label>Pause in Stunden<input name="pause" type="number" min="0" step="0.25" value="${n(order.pause_hours)}"></label><label>Ausgeführte Stunden<input name="hours" type="number" min="0.25" step="0.25" value="${n(order.executed_hours)}" required></label>`)}</section><section class="order-material-section"><h4>Material</h4><div class="wide" id="material-lines">${rows}</div><button type="button" class="secondary wide" data-action="more-material">Weiteres Material</button></section></div>${noteTemplates()}<label class="wide">Notiz / Dokumentation<textarea name="documentation" rows="4">${escape(order.documentation || '')}</textarea></label><label class="wide">Weitere Dokumente hochladen<input name="documents" type="file" multiple accept="image/*,.pdf,.doc,.docx"></label>${documents.length ? `<p class="wide">Vorhandene Dokumente: ${documents.map(document => escape(document.file_name)).join(', ')}</p>` : ''}${signatureFields(order)}<button class="primary wide" data-signature-submit>Änderungen speichern</button></form>${customerList()}${materialList()}</section>`;
   }
   function orderDetailView() { const order = state.rows.orders.find(row => same(row.id, state.orderId)); return order ? orderEditor(order) : `<section class="panel"><h2>Arbeitsschein nicht gefunden</h2><p>Der Arbeitsschein ist nicht mehr verfügbar.</p><button type="button" class="secondary" data-action="close-order">Zurück</button></section>`; }
   function ordersView() {
     const id = workerId(), list = state.rows.orders.filter(row => orderForEmployee(row,id,state.date));
     const previous = dayEntries(id).at(-1)?.end_time?.slice(0, 5) || '07:30';
     const selected = list.find(row => same(row.id, state.orderId));
-    const newOrder = locked(id) ? `<div class="locked">${escape(lockedText(id))}</div>` : `<section class="panel"><h3>Neuer Arbeitsschein</h3><form data-form="order" class="entry-form"><label class="wide">Kunde<input name="customer" required list="customers" value="${escape(state.orderCustomer || '')}"></label><label class="wide">Beschreibung<input name="title" placeholder="Ausgeführte Arbeiten"></label><div class="wide" id="material-lines">${materialRow()}</div><button type="button" class="secondary wide" data-action="more-material">Weiteres Material</button><p class="wide">Arbeitsstunden werden beim Speichern automatisch als <b>${escape(hourlyNameForEmployee(id))}</b> mit dem Preis aus der Materialliste ergänzt.</p><label>Arbeitsbeginn${timeInput('start', previous)}</label><label>Arbeitsende${timeInput('end', '')}</label><label>Pause in Stunden<input name="pause" type="number" min="0" step="0.25" value="0"></label><label>Ausgeführte Stunden<input name="hours" type="number" min="0.25" step="0.25" required></label>${noteTemplates()}<label class="wide">Notiz / Dokumentation<textarea name="documentation" rows="4"></textarea></label><label class="wide">Dokumente hochladen<input name="documents" type="file" multiple accept="image/*,.pdf,.doc,.docx"></label>${signatureFields()}<button class="primary wide" data-signature-submit>Arbeitsschein speichern</button></form>${customerList()}${materialList()}</section>`;
+    const newOrder = locked(id) ? `<div class="locked">${escape(lockedText(id))}</div>` : `<section class="panel"><h3>Neuer Arbeitsschein</h3><form data-form="order" class="entry-form"><label class="wide">Kunde<input name="customer" required list="customers" value="${escape(state.orderCustomer || '')}"></label><label class="wide">Beschreibung<input name="title" placeholder="Ausgeführte Arbeiten"></label><div class="wide order-input-layout"><section class="order-time-section entry-form"><h4 class="wide">Arbeitszeiten</h4><p class="wide">Arbeitsstunden werden beim Speichern automatisch als <b>${escape(hourlyNameForEmployee(id))}</b> mit dem Preis aus der Materialliste ergänzt.</p><label>Arbeitsbeginn${timeInput('start', previous)}</label><label>Arbeitsende${timeInput('end', '')}</label><label>Pause in Stunden<input name="pause" type="number" min="0" step="0.25" value="0"></label><label>Ausgeführte Stunden<input name="hours" type="number" min="0.25" step="0.25" required></label></section><section class="order-material-section"><h4>Material</h4><div class="wide" id="material-lines">${materialRow()}</div><button type="button" class="secondary wide" data-action="more-material">Weiteres Material</button></section></div>${noteTemplates()}<label class="wide">Notiz / Dokumentation<textarea name="documentation" rows="4"></textarea></label><label class="wide">Dokumente hochladen<input name="documents" type="file" multiple accept="image/*,.pdf,.doc,.docx"></label>${signatureFields()}<button class="primary wide" data-signature-submit>Arbeitsschein speichern</button></form>${customerList()}${materialList()}</section>`;
     return `<section class="page-head"><div><span class="eyebrow">Arbeitsscheine von ${escape(worker()?.username || '')}</span><h2>${dateText(state.date)}</h2></div>${dayPicker()}</section>${selected ? orderEditor(selected) : newOrder}<section class="list-section"><h3>Arbeitsscheine des ausgewählten Tages</h3>${list.map(row => `<article class="row-card"><button type="button" class="row-main" data-action="open-order" data-id="${row.id}"><b>${escape(row.customer_name || 'Ohne Kunde')}</b><span>${dateText(row.work_date)} · ${escape(row.title || '')}${row.service_location?.label || row.service_location?.street ? ' · Objekt: '+escape(row.service_location.label || row.service_location.street) : ''} · ${orderEmployeeTimeText(row,id,state.date)} · ${h(orderHours(row,id,state.date))} · Öffnen</span></button><button type="button" class="danger small" data-action="delete-order" data-id="${row.id}">Löschen</button></article>`).join('') || '<p class="empty">Keine Arbeitsscheine für diesen Tag vorhanden.</p>'}</section>`;
   }
 
@@ -623,7 +674,38 @@
     const start = new Date(`${state.month}-01T12:00:00`), first = new Date(start); first.setDate(1 - ((start.getDay() + 6) % 7));
     return Array.from({ length: 42 }, (_, index) => { const value = new Date(first); value.setDate(first.getDate() + index); return value.toISOString().slice(0, 10); });
   }
+  function companyCalendarView() {
+    const people = new Map(workers().map(person => [String(person.id), personName(person)]));
+    const dates = monthDays();
+    const days = new Map(dates.map(date => [date,new Map()]));
+    const customers = new Map(state.rows.customers.map(customer=>[String(customer.id),customer]));
+    for (const order of state.rows.orders) {
+      const customer = customers.get(String(order.customer_id));
+      const location = order.service_location || customer?.custom_fields || {};
+      const address = siteAddress(location);
+      const label = address || location.label || '';
+      const name = order.customer_name || order.title || 'Interne Tätigkeit';
+      const key = address ? lower(address).replace(/\s+/g,' ') : JSON.stringify([order.customer_id || name,lower(label)]);
+      for (const period of orderPeriods(order)) {
+        const groups = days.get(period.work_date);
+        if (!groups || !people.has(String(period.employee_id))) continue;
+        if (!groups.has(key)) groups.set(key,{name,address:label,people:new Map(),orders:new Set()});
+        const group = groups.get(key);
+        group.people.set(String(period.employee_id),people.get(String(period.employee_id)));
+        group.orders.add(order);
+      }
+    }
+    const colors = ['#d9f2e6','#dbeafe','#ffe5c2','#f4dff7','#fbefae','#d9f2f2','#f9dce3','#e1e4fa'];
+    const grid = dates.map(day => {
+      const groups = [...days.get(day).values()];
+      return `<button type="button" class="month-day company-calendar-day ${day===state.date?'selected':''} ${day.slice(0,7)===state.month?'':'outside'}" data-action="pick-day" data-date="${day}"><b>${Number(day.slice(-2))}</b>${groups.map((group,index)=>`<span class="calendar-work-site" style="--site-color:${colors[index%colors.length]}"><strong>${escape(group.name)}</strong>${group.address ? `<small>${escape(group.address)}</small>` : ''}<span>${escape([...group.people.values()].sort().join(', '))}</span></span>`).join('')}</button>`;
+    }).join('');
+    const detail = [...(days.get(state.date)?.values() || [])].map(group => `<article class="panel"><h4>${escape(group.name)}</h4>${group.address ? `<p>${escape(group.address)}</p>` : ''}<p>${escape([...group.people.values()].sort().join(', '))}</p><div class="actions">${[...group.orders].map(order=>`<button type="button" class="secondary" data-action="open-order" data-id="${escape(order.id)}">${escape(order.title || 'Arbeitsschein öffnen')}</button>`).join('')}</div></article>`).join('');
+    return `<section class="page-head"><div><h2>Teamkalender</h2><p>${escape(managerBusiness()?.company_name || '')}</p></div><label class="date-field">Tag<input type="date" data-date value="${state.date}"></label></section><section class="panel calendar-panel"><div class="calendar-head"><button type="button" aria-label="Vorheriger Monat" data-action="month" data-value="-1">‹</button><h3>${monthText(state.month)}</h3><button type="button" aria-label="Nächster Monat" data-action="month" data-value="1">›</button></div><div class="company-calendar-scroll"><div class="month-grid company-calendar-grid">${['Mo','Di','Mi','Do','Fr','Sa','So'].map(day=>`<span class="weekday">${day}</span>`).join('')}${grid}</div></div></section><section class="list-section"><h3>${dateText(state.date)}</h3>${detail || '<p class="empty">Keine Arbeitsscheine für diesen Tag.</p>'}</section>`;
+  }
+
   function calendarView() {
+    if (isManager()) return companyCalendarView();
     const id = workerId();
     const grid = monthDays().map(date => {
       const holiday = nrwHoliday(date), isSick = sick(id, date), isApproved = Boolean(vacation(id, date));
@@ -681,7 +763,7 @@
       return '<article class="row-card" data-customer-search-item data-customer-search="' + escape(customerSearchText(row)) + '"><button type="button" class="row-main" data-action="customer" data-id="' + escape(row.id) + '"><b>' + escape(row.name) + '</b><span>' + h(total) + ' gesamt</span></button>' + removeButton + '</article>';
     }).join('') || '<p class="empty">Noch keine Kunden angelegt.</p>';
     const edit = selected || state.customerId === 'new'
-      ? '<section class="panel" id="customer-profile" tabindex="-1"><h3>' + (selected ? 'Kunde bearbeiten' : 'Neuer Kunde') + '</h3><form data-form="customer" class="entry-form">' + customerFields(selected) + '<button class="primary wide">Kunde speichern</button></form>' + (selected ? '<button type="button" class="secondary wide" data-action="create-order-from-customer" data-id="' + escape(selected.id) + '">Arbeitsschein erstellen</button>' : '') + '</section>'
+      ? '<section class="panel" id="customer-profile" tabindex="-1"><h3>' + (selected ? 'Kunde bearbeiten' : 'Neuer Kunde') + '</h3><form data-form="customer" class="entry-form">' + customerFields(selected) + (isManager() ? customerSiteFields(selected) : '') + '<button class="primary wide">Kunde speichern</button></form>' + (selected ? '<button type="button" class="secondary wide" data-action="create-order-from-customer" data-id="' + escape(selected.id) + '">Arbeitsschein erstellen</button>' + customerSites(selected).map((site,index) => '<article class="row-card"><span>' + escape(site.label ? site.label+' · '+siteAddress(site) : siteAddress(site)) + '</span><button type="button" class="secondary" data-action="create-order-from-customer" data-id="' + escape(selected.id) + '" data-site="' + index + '">Arbeitsschein für diesen Ort</button></article>').join('') : '') + '</section>'
       : '';
     return '<section class="page-head"><div><span class="eyebrow">Gemeinsame Daten</span><h2>Kundenliste</h2></div><button type="button" class="secondary" data-action="new-customer">Kunde hinzufügen</button></section>' + edit + customerRatesView(selected) + '<section class="list-section"><label>Kunden suchen<input type="search" data-customer-search value="' + escape(state.customerSearch) + '" placeholder="Name, Ort, Adresse, Telefon oder E-Mail"></label><p class="empty" data-customer-search-empty style="display:none">Kein passender Kunde gefunden.</p>' + list + '</section>';
   }
@@ -1032,7 +1114,7 @@
       calculation_mode: 'end_time', custom_fields: notes ? { notes } : {}
     });
   }
-  async function saveOrder(form) { const id = workerId(); if (locked(id)) throw new Error(lockedText(id)); const customer = await ensureCustomer(form.elements.customer.value, id); const value = timeValues(form), signature = signatureValues(form); const created = await write('work_orders', { employee_id: id, work_date: state.date, customer_id: customer.id, customer_name: customer.name, title: String(form.elements.title.value || '').trim(), start_time: value.start, end_time: value.end, pause_hours: value.pause, executed_hours: value.hours, calculation_mode: 'end_time', documentation: String(form.elements.documentation.value || ''), ...signature }); const order = created?.[0]; if (!order) throw new Error('Der Arbeitsschein konnte nicht gespeichert werden.'); await saveMaterials(form, order); await saveHourlyMaterial(order, value.hours); await saveDocuments(form, order, id); state.orderCustomer = ''; }
+  async function saveOrder(form) { const id = workerId(); if (locked(id)) throw new Error(lockedText(id)); const customer = await ensureCustomer(form.elements.customer.value, id); const value = timeValues(form), signature = signatureValues(form); const created = await write('work_orders', { employee_id: id, work_date: state.date, customer_id: customer.id, customer_name: customer.name, title: String(form.elements.title.value || '').trim(), start_time: value.start, end_time: value.end, pause_hours: value.pause, executed_hours: value.hours, calculation_mode: 'end_time', documentation: String(form.elements.documentation.value || ''), ...signature }); const order = created?.[0]; if (!order) throw new Error('Der Arbeitsschein konnte nicht gespeichert werden.'); await saveMaterials(form, order); await saveHourlyMaterial(order, value.hours); await saveDocuments(form, order, id); state.orderCustomer = ''; state.orderSite = null; }
   async function updateOrder(form) { if (teamEnabled() || state.rows.orders.find(row => same(row.id, form.elements.id.value))?.team_periods?.length) return saveTeamOrder(form, state.rows.orders.find(row => same(row.id, form.elements.id.value))); const order = state.rows.orders.find(row => same(row.id, form.elements.id.value)); if (!order) throw new Error('Der Arbeitsschein wurde nicht gefunden.'); const id = order.employee_id, workDate = form.elements.work_date.value || order.work_date; if (workDate !== order.work_date && locked(id, workDate)) throw new Error(lockedText(id, workDate)); const customer = await ensureCustomer(form.elements.customer.value, id), value = timeValues(form), signature = signatureValues(form); const changes = { customer_id: customer.id, customer_name: customer.name, service_location:readServiceLocation(form, order.work_kind || 'customer'), title: String(form.elements.title.value || '').trim(), start_time: value.start, end_time: value.end, pause_hours: value.pause, executed_hours: value.hours, calculation_mode: 'end_time', documentation: String(form.elements.documentation.value || ''), ...signature }; if (workDate !== order.work_date) changes.work_date = workDate; await write('work_orders', changes, 'PATCH', `id=eq.${encodeURIComponent(order.id)}`); await saveMaterials(form, order, true); await saveHourlyMaterial(order, value.hours); await saveDocuments(form, order, id); state.orderId = ''; state.view = state.orderOrigin || 'orders'; }
   function permissions(form) { return {time:form.dataset.form==='employee-permissions'?worker()?.menu_permissions?.time!==false:true,...Object.fromEntries(['customers', 'orders', 'calendar'].map(name => [name, form.elements[`perm-${name}`]?.checked !== false]))}; }
   async function saveCustomer(form) {
@@ -1047,6 +1129,15 @@
       .forEach((value,index) => { custom['extra_'+(index+1)] = value; });
     const name = form.elements.name.value.trim();
     if (!name) throw new Error('Bitte einen Kundennamen eingeben.');
+    if (form.querySelector('[data-customer-sites]')) {
+      custom.service_locations = [...form.querySelectorAll('[data-site-row]')].map(row => {
+        return Object.fromEntries(serviceLocationInputs.flatMap(([key]) => {
+          const value = row.querySelector('[data-site-key='+key+']').value.trim();
+          return value ? [[key,value]] : [];
+        }));
+      }).filter(location => Object.keys(location).length);
+      if (custom.service_locations.some(location=>!['street','postal_code','city','country'].every(key=>location[key]))) throw new Error('Bitte für jeden Auftragsort Straße, PLZ, Ort und Land eingeben.');
+    }
     const data = {name, custom_fields:custom};
     if (id) {
       const stamp = form.elements.customerUpdatedAt.value;
@@ -1132,7 +1223,7 @@
     if (action === 'shift-day') { state.date = addDate(state.date, n(button.dataset.days)); state.month = state.date.slice(0, 7); state.orderId = ''; state.timeEntryId = ''; state.vacationForm = false; render(); return; }
     if (action === 'shift-order-date') { const input = button.closest('label')?.querySelector('input[name="work_date"]'); if (!input) return; input.value = addDate(input.value || state.date, n(button.dataset.days)); input.focus(); return; }
     if (action === 'menu') { if (navigationFeature) navigationFeature.toggle(); else { state.menu = !state.menu; render(); } return; }
-    if (action === 'nav') { state.view = button.dataset.view; state.menu = false; state.vacationForm = false; state.composeMessage = false; state.orderId = ''; state.timeEntryId = ''; state.orderCustomer = ''; state.orderOrigin = 'orders'; render(); window.scrollTo({top:0,behavior:'instant'}); return; }
+    if (action === 'nav') { state.view = button.dataset.view; state.menu = false; state.vacationForm = false; state.composeMessage = false; state.orderId = ''; state.timeEntryId = ''; state.orderCustomer = ''; state.orderSite = null; state.orderOrigin = 'orders'; render(); window.scrollTo({top:0,behavior:'instant'}); return; }
     if (action === 'shopping-load') return recoverShopping();
     if (action === 'logout') return logout();
     if (action === 'retry-startup' && (startupStage === 'retry' || startupFailed.size)) return loadApp();
@@ -1156,7 +1247,7 @@
     if (action === 'more-material') { document.getElementById('material-lines')?.insertAdjacentHTML('beforeend', materialRow()); return; }
     if (action === 'new-customer') { state.customerId = 'new'; render(); return; }
     if (action === 'customer') { state.customerId = button.dataset.id; render(); revealCustomerProfile(); return; }
-    if (action === 'create-order-from-customer') { const customer = state.rows.customers.find(row => same(row.id, button.dataset.id)); if (!customer) { notice('Der ausgewählte Kunde wurde nicht gefunden.', true); render(); return; } state.orderCustomer = customer.name; state.orderId = ''; state.orderOrigin = 'customers'; state.view = 'orders'; render(); return; }
+    if (action === 'create-order-from-customer') { const customer = state.rows.customers.find(row => same(row.id, button.dataset.id)); if (!customer) { notice('Der ausgewählte Kunde wurde nicht gefunden.', true); render(); return; } state.orderCustomer = customer.name; state.orderSite = customerSites(customer)[Number(button.dataset.site)] || null; state.orderId = ''; state.orderOrigin = 'customers'; state.view = 'orders'; render(); return; }
     if (action === 'edit-material') { state.materialId = button.dataset.id; render(); return; }
     if (action === 'close-material-edit') { state.materialId = ''; render(); return; }
     if (action === 'pdf') return printPdf();
@@ -1777,7 +1868,7 @@
     state.date = appointment.event_date; state.month = state.date.slice(0, 7); state.employeeId = isManager() ? appointment.employee_id : state.profile.id;
     state.orderOrigin = 'planning'; state.menu = false;
     state.planPrefill = { id: appointment.id, employeeId: workerId(), ownerId: appointment.employee_id, participants: planEmployeeIds(appointment), date: appointment.event_date, customerName: customerDetails?.name || appointment.customer_name, customerDetails, title: appointment.title, details: meta.details, start: meta.start, end: meta.end, confirmed: meta.status === 'confirmed' };
-    state.orderCustomer = state.planPrefill.customerName; state.orderId = ''; state.view = 'orders';
+    state.orderCustomer = state.planPrefill.customerName; state.orderSite = null; state.orderId = ''; state.view = 'orders';
   }
   async function refreshPlanningData({ifChanged=false}={}) {
     const actor = state.profile?.id;
@@ -1925,13 +2016,13 @@
     if (planId) {
       if (appointment) await write('appointments', { notes: planningNotes({ ...planningMeta(appointment), status: 'completed', workOrderId: order.id }) }, 'PATCH', `id=eq.${encodeURIComponent(planId)}`);
     }
-    state.orderCustomer = ''; state.planPrefill = null;
+    state.orderCustomer = ''; state.orderSite = null; state.planPrefill = null;
   }
   function ordersView() {
     const id = workerId(), list = state.rows.orders.filter(row => orderForEmployee(row,id,state.date)), selected = list.find(row => same(row.id, state.orderId)), prefill = same(state.planPrefill?.employeeId, id) && state.planPrefill?.date === state.date ? state.planPrefill : null;
     const previous = prefill?.start || dayEntries(id).at(-1)?.end_time?.slice(0, 5) || '07:30';
     const prefillEnd = prefill?.end || '';
-    const newOrder = locked(id) ? `<div class="locked">${escape(lockedText(id))}</div>` : `<section class="panel"><h3>Neuer Arbeitsschein</h3>${prefill ? `<p class="plan-alert">Übernahme aus der Planung: ${escape(prefill.title)} · ${escape(prefill.start)} – ${escape(prefill.end)} Uhr</p>` : ''}<form data-form="order" class="entry-form"><input type="hidden" name="planning_id" value="${escape(prefill?.id || '')}"><label class="wide">Kunde<input name="customer" required list="customers" value="${escape(prefill?.customerName || state.orderCustomer || '')}"></label>${prefill?.customerDetails ? planningCustomerPanel(prefill.customerDetails) : ''}${serviceLocationFields()}<label class="wide">Beschreibung<input name="title" placeholder="Ausgeführte Arbeiten" value="${escape(prefill?.title || '')}"></label><div class="wide" id="material-lines">${materialRow()}</div><button type="button" class="secondary wide" data-action="more-material">Weiteres Material</button>${teamEnabled() ? '' : `<p class="wide">Arbeitsstunden werden beim Speichern automatisch als <b>${escape(hourlyNameForEmployee(id))}</b> mit dem Preis aus der Materialliste ergänzt.</p>`}${teamOrderTimeFields(prefill?.ownerId || id,newOrderPeriods(prefill,id,previous,prefillEnd),`<label>Arbeitsbeginn${timeInput('start', previous)}</label><label>Arbeitsende${timeInput('end', prefillEnd)}</label><label>Pause in Stunden<input name="pause" type="number" min="0" step="0.25" value="0"></label><label>Ausgeführte Stunden<input name="hours" type="number" min="0.25" step="0.25" required value="${escape(prefill ? String(prefillEnd ? Math.max(0.25, Math.round(((toMinutes(prefillEnd) - toMinutes(previous)) / 60) * 4) / 4) : '') : '')}"></label>`)}${noteTemplates()}<label class="wide">Notiz / Dokumentation<textarea name="documentation" rows="4">${escape(prefill?.details || '')}</textarea></label><label class="wide">Dokumente hochladen<input name="documents" type="file" multiple accept="image/*,.pdf,.doc,.docx"></label>${signatureFields()}<button class="primary wide" data-signature-submit>${prefill?.confirmed ? 'Arbeitsschein abschließen' : 'Arbeitsschein speichern'}</button></form>${customerList()}${materialList()}</section>`;
+    const newOrder = locked(id) ? `<div class="locked">${escape(lockedText(id))}</div>` : `<section class="panel"><h3>Neuer Arbeitsschein</h3>${prefill ? `<p class="plan-alert">Übernahme aus der Planung: ${escape(prefill.title)} · ${escape(prefill.start)} – ${escape(prefill.end)} Uhr</p>` : ''}<form data-form="order" class="entry-form"><input type="hidden" name="planning_id" value="${escape(prefill?.id || '')}"><label class="wide">Kunde<input name="customer" required list="customers" value="${escape(prefill?.customerName || state.orderCustomer || '')}"></label>${prefill?.customerDetails ? planningCustomerPanel(prefill.customerDetails) : ''}${serviceLocationFields(null,prefill?.customerName || state.orderCustomer)}<label class="wide">Beschreibung<input name="title" placeholder="Ausgeführte Arbeiten" value="${escape(prefill?.title || '')}"></label><div class="wide order-input-layout"><section class="order-time-section entry-form"><h4 class="wide">Arbeitszeiten</h4>${teamEnabled() ? '' : `<p class="wide">Arbeitsstunden werden beim Speichern automatisch als <b>${escape(hourlyNameForEmployee(id))}</b> mit dem Preis aus der Materialliste ergänzt.</p>`}${teamOrderTimeFields(prefill?.ownerId || id,newOrderPeriods(prefill,id,previous,prefillEnd),`<label>Arbeitsbeginn${timeInput('start', previous)}</label><label>Arbeitsende${timeInput('end', prefillEnd)}</label><label>Pause in Stunden<input name="pause" type="number" min="0" step="0.25" value="0"></label><label>Ausgeführte Stunden<input name="hours" type="number" min="0.25" step="0.25" required value="${escape(prefill ? String(prefillEnd ? Math.max(0.25, Math.round(((toMinutes(prefillEnd) - toMinutes(previous)) / 60) * 4) / 4) : '') : '')}"></label>`)}</section><section class="order-material-section"><h4>Material</h4><div class="wide" id="material-lines">${materialRow()}</div><button type="button" class="secondary wide" data-action="more-material">Weiteres Material</button></section></div>${noteTemplates()}<label class="wide">Notiz / Dokumentation<textarea name="documentation" rows="4">${escape(prefill?.details || '')}</textarea></label><label class="wide">Dokumente hochladen<input name="documents" type="file" multiple accept="image/*,.pdf,.doc,.docx"></label>${signatureFields()}<button class="primary wide" data-signature-submit>${prefill?.confirmed ? 'Arbeitsschein abschließen' : 'Arbeitsschein speichern'}</button></form>${customerList()}${materialList()}</section>`;
     return `${prefill ? planningStyles() : ''}<section class="page-head"><div><span class="eyebrow">Arbeitsscheine von ${escape(worker()?.username || '')}</span><h2>${dateText(state.date)}</h2></div>${dayPicker()}</section><div data-day-plans>${plannedAssignmentsPanel(id, state.date)}</div>${selected ? orderEditor(selected) : newOrder}<section class="list-section"><h3>Arbeitsscheine des ausgewählten Tages</h3>${list.map(row => `<article class="row-card"><button type="button" class="row-main" data-action="open-order" data-id="${row.id}"><b>${escape(row.customer_name || 'Ohne Kunde')}</b><span>${dateText(row.work_date)} · ${escape(row.title || '')}${row.service_location?.label || row.service_location?.street ? ' · Objekt: '+escape(row.service_location.label || row.service_location.street) : ''} · ${orderEmployeeTimeText(row,id,state.date)} · ${h(orderHours(row,id,state.date))} · Öffnen</span></button><button type="button" class="danger small" data-action="delete-order" data-id="${row.id}">Löschen</button></article>`).join('') || '<p class="empty">Keine Arbeitsscheine für diesen Tag vorhanden.</p>'}</section>`;
   }
   root.addEventListener('click', event => {
@@ -2199,7 +2290,7 @@
     if (!order?.id) throw new Error('Der gemeinsame Arbeitsschein konnte nicht gespeichert werden.');
     if (!isCurrent()) return savedOrderSynchronized;
     if (timerId) deviceFeatures?.timerSaved(timerId);
-    state.orderCustomer=''; state.planPrefill=null; state.orderId=order.id; state.view='order-detail';
+    state.orderCustomer=''; state.orderSite=null; state.planPrefill=null; state.orderId=order.id; state.view='order-detail';
     state.date = order.work_date; state.month = state.date.slice(0, 7);
     // Core data is already committed atomically. A failed file upload never
     // causes the next attempt to create another work order.

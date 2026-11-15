@@ -144,6 +144,7 @@ async function main(){
   const before=(await dispatch(T,'list',{entity:'work-sheets'})).find(sheet=>!sheet.invoiced);
   await db.exec(migrationSource('20261114174907_klarwerk_customer_addresses.sql'));
   await db.exec(migrationSource('20261114204232_klarwerk_labor_rates.sql'));
+  await db.exec(migrationSource('20261114211325_work_period_dates.sql'));
   await db.exec(migrationSource('20261115105535_work_order_service_locations.sql'));
   if(before) assert.deepEqual((await dispatch(T,'list',{entity:'work-sheets',ids:[before.id]}))[0],before);
   const service_location={label:'Objekt B',street:'Einsatzweg',house_no:'22',postal_code:'01234',city:'Teststadt',country:'Deutschland'};
@@ -163,6 +164,31 @@ async function main(){
   assert.equal(cleared.service_location,null);
   await f.admin();
   assert.ok(!Object.hasOwn((await dispatch(T,'list',{entity:'work-sheets',ids:[order.id]}))[0],'service_location'));
+ });
+ await test('additional work periods keep their date and staff across months for routing and billing',async()=>{
+  await db.exec(migrationSource('20261115172500_klarwerk_fleet_work_period_days.sql'));
+  await f.actor('business');
+  const task={...f.order,work_date:'2026-10-29',title:'Mehrere Einsatztage',
+    service_location:{label:'Objekt Norden',street:'Musterweg',postal_code:'01234',city:'Musterstadt',country:'Deutschland'}};
+  const periods=[
+    {...f.periods[0],key:uuid(1651),work_date:'2026-10-29'},
+    {...f.periods[1],key:uuid(1652),work_date:'2026-10-29'},
+    {...f.periods[2],key:uuid(1653),work_date:'2026-11-03'},
+    {...f.periods[0],key:uuid(1654),work_date:'2026-11-04'}
+  ];
+  const order=await f.save(task,periods);
+  await f.admin();
+  const inMonth=async month=>(await dispatch(T,'list',{entity:'fleet-orders',month,company:ids.otherBusiness})).orders.filter(row=>row.id===order.id);
+  const tail=await inMonth('2026-11');
+  const october=await inMonth('2026-10');
+  assert.deepEqual(october.map(row=>[row.date,row.drivers]),[['2026-10-29',[ids.anna]]]);
+  assert.deepEqual(october[0].visits.map(visit=>[visit.driverId,visit.start.slice(0,5)]),[[ids.anna,'08:00'],[ids.anna,'10:30']]);
+  assert.deepEqual(tail.map(row=>[row.date,row.drivers]),[['2026-11-03',[ids.max]],['2026-11-04',[ids.anna]]]);
+  assert.equal(tail[0].start.slice(0,5),'08:30');
+  assert.deepEqual(tail[0].serviceLocation,task.service_location);
+  const [workSheet]=await dispatch(T,'list',{entity:'work-sheets',ids:[order.id]});
+  assert.deepEqual(workSheet.hours.map(period=>period.work_date||workSheet.work_date),periods.map(period=>period.work_date));
+  assert.equal(workSheet.hours.reduce((sum,period)=>sum+Number(period.hours),0),8.25);
  });
  await test('RPC is not callable with ordinary user credentials and role changes revoke existing access',async()=>{await f.actor('anna');await assert.rejects(dispatch(T,'company'));await f.admin();await db.query("update profiles set role='employee' where id=$1",[ids.business]);await assert.rejects(dispatch(T,'company'));await db.query("update profiles set role='business' where id=$1",[ids.business]);});
  await test('revocation immediately blocks reads and writes',async()=>{await manage(ids.business,ids.business,'revoke',{id:link.id});await assert.rejects(dispatch(T,'company'));await assert.rejects(dispatch(T,'rpc',{name:'issue_invoice_auto_v934',args}));});

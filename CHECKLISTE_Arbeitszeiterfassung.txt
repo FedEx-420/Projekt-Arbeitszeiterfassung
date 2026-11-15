@@ -419,3 +419,5 @@ AUSFÜHRUNGSORT JE ARBEITSSCHEIN
 [x] v1019: Ausführungsort für Kundenarbeitsscheine sichtbar hervorheben, Objekt in der Tagesliste kennzeichnen und neue Adressfelder nach Aktualisierung der installierten App zuverlässig ausliefern. Mobiles Timerformular, Speicherung und Projektion zu Klarwerk mit isolierten Daten geprüft.
 
 [x] v1020: Kundenanschriften beim Speichern abgleichen. Änderungen in geöffneten Apps über eine betriebsbezogene Versionsabfrage im Zwei-Sekunden-Takt erkennen. Hin- und Rückrichtung, Formularentwürfe und Firmenabgrenzung mit isolierten Daten geprüft.
+
+[x] Weitere Zeitabschnitte desselben Arbeitsscheins für Klarwerk-Fahrten berücksichtigen. Einsatzdaten, Fahrer, Monatswechsel, wiederholte Anfahrt nach einem anderen Ziel sowie getrennte Fahrzeugprüfung pro Tag überprüft. Die Abrechnung erhält weiterhin alle einzelnen Arbeitszeitpositionen.

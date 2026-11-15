@@ -411,3 +411,6 @@ KLARWERK-ABRECHNUNG v1011
 GROSSHÄNDLERBELEGE UND KLARWERK
 [x] Rechnungs- und Lieferschein-PDFs über die gespeicherten Neugart- und FiF-Webportalzugänge abrufen. Abruf nur bei aktiver Firmenverbindung, Originaldateien privat speichern und Wiederholungen anhand von Portalreferenz und Dateihash erkennen. Isoliert und mit vorhandenen Händleroriginalen geprüft.
 [ ] Klarwerk-Ansicht für Liefernachweise und weitere Originale auf der Produktionswebsite veröffentlichen. Rechnungen erscheinen bereits im bestehenden Klarwerk-Belegeingang. Die erweiterte Ansicht und die Zuordnung sind im isolierten Browsertest geprüft.
+
+AUSFÜHRUNGSORT JE ARBEITSSCHEIN
+[x] Optionalen Ausführungsort pro Kundenarbeitsschein speichern und für Klarwerk-Rechnung sowie Fahrtstrecke übergeben. Ohne Objektanschrift gilt die Hauptanschrift des Kunden. Datenbankprüfung mit fiktiven Firmen und Arbeitsscheinen bestanden.

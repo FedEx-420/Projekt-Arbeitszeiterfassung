@@ -458,3 +458,9 @@ Die Arbeitsscheine speichern Objektbezeichnung und abweichende Anschrift optiona
 `node tests/team/klarwerk-bridge-v1007.test.cjs` prüft mit fiktiven Daten die Speicherung, den Abgleich über beide Abfragen, die Firmenabgrenzung und das Entfernen der abweichenden Anschrift.
 
 - Objektanschrift pro Kundenarbeitsschein: unter **Arbeitsscheine → Neuer Arbeitsschein** oder beim Bearbeiten direkt nach der Kundenauswahl. Timer und Planung verwenden dasselbe Auftragsformular. Bei leerer Objektanschrift gilt die Hauptanschrift.
+
+## Kundenanschriften sofort abgleichen
+
+Der Adressabgleich verwendet weiterhin die bestätigte Klarwerk-Verbindung und dieselbe Kundenzuordnung. Die Migration `20261115160500_fast_customer_address_sync.sql` aktualisiert bei Kundenänderungen eine interne Version des Betriebs. Geöffnete Apps prüfen sie alle zwei Sekunden. Erst bei einer Änderung rufen sie die Kundenliste ab. Klarwerk sendet gespeicherte Änderungen über die autorisierte Bridge, unabhängig vom Abgleich der Rechnungen und Belege.
+
+Die bestehende Prüfung auf zwischenzeitliche Änderungen schützt parallele Bearbeitungen. Klarwerk zeigt den Abgleich im Kundenmenü an. Die Browser- und Datenbankprüfungen verwenden ausschließlich fiktive Kunden und Betriebe.

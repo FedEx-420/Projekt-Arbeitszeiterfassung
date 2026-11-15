@@ -30,6 +30,7 @@ jobs:
           node tests/team/klarwerk-browser-v1007.test.cjs
           node tests/team/klarwerk-bridge-v1007.test.cjs
           node tests/team/klarwerk-customer-addresses.test.cjs
+          node tests/team/customer-address-sync-browser.test.cjs
           node tests/team/klarwerk-labor-rates.test.cjs
           node tests/team/supplier-portal-docs-v1012.test.mjs
           node tests/team/supplier-portal-database-v1012.test.cjs

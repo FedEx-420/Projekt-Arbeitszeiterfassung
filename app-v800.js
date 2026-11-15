@@ -1043,6 +1043,8 @@
     for (const key of ['first_name','street','house_no','city','postal_code','country','phone_private','phone_mobile','email']) {
       custom[key] = String(form.elements[key].value || '').trim();
     }
+    const addressKeys = ['street','house_no','postal_code','city','country'];
+    if (addressKeys.some(key => custom[key] !== (current?.custom_fields?.[key] || ''))) delete custom.address;
     String(form.elements.extra.value || '').split('\n').map(value=>value.trim()).filter(Boolean)
       .forEach((value,index) => { custom['extra_'+(index+1)] = value; });
     const name = form.elements.name.value.trim();
@@ -1325,6 +1327,14 @@
     }
     throw lastError || new Error('Die Daten konnten nicht geladen werden.');
   }
+  let customerRead = 0, customerApplied = 0;
+  async function loadCustomerRows(isCurrent, timed = true) {
+    const request = ++customerRead;
+    const rows = await allRows('customers','select=*&order=name.asc,id.asc',timed);
+    if (!isCurrent() || request <= customerApplied) return;
+    customerApplied = request;
+    state.rows.customers = rows;
+  }
   async function readMaterialPages(isCurrent, timed) {
     const result = [];
     const limit = 500;
@@ -1365,7 +1375,16 @@
   async function reload(isCurrent = () => true, onDataReady) {
     planningSync.reset();
     const issues = [];
-    const load = async (name, table, query = 'select=*') => { try { const data = await allRows(table, query, Boolean(onDataReady)); if (isCurrent()) state.rows[name] = data; } catch { issues.push(name); } finally { if (isCurrent() && name !== 'people') onDataReady?.(name, !issues.includes(name)); } };
+    const load = async (name, table, query = 'select=*') => {
+      try {
+        if (name === 'customers') await loadCustomerRows(isCurrent, Boolean(onDataReady));
+        else {
+          const data = await allRows(table, query, Boolean(onDataReady));
+          if (isCurrent()) state.rows[name] = data;
+        }
+      } catch { issues.push(name); }
+      finally { if (isCurrent() && name !== 'people') onDataReady?.(name, !issues.includes(name)); }
+    };
     const loadRecipients = async () => { try { const data = await api('/functions/v1/mailbox-send', { method: 'POST', body: { action: 'recipients' }, signal: onDataReady ? AbortSignal.timeout(10000) : undefined }); if (isCurrent()) state.rows.recipients = data?.recipients || []; } catch { issues.push('recipients'); } finally { if (isCurrent()) onDataReady?.('recipients', !issues.includes('recipients')); } };
     const people = load('people', 'profiles');
     const essential = Promise.all([
@@ -1784,15 +1803,17 @@
     if (!actor) throw new Error('Bitte erneut anmelden.');
     const proof=await planningSync.begin(ifChanged);
     if(proof.unchanged)return false;
-    const [appointments, days, vacations, orders, entries, customers, requests, customerRates, workweeks] = await Promise.all([
+    const generation = startupGeneration;
+    const [appointments, days, vacations, orders, entries, , requests, customerRates, workweeks] = await Promise.all([
       allRows('appointments', 'select=*&order=event_date.asc,id.asc'), allRows('work_days', 'select=*&order=employee_id.asc,work_date.asc'),
-      allRows('vacation_requests', 'select=*&order=id.asc'), allRows('work_orders', 'select=*&order=id.asc'), allRows('time_entries', 'select=*&order=id.asc'), allRows('customers', 'select=*&order=name.asc,id.asc'),
+      allRows('vacation_requests', 'select=*&order=id.asc'), allRows('work_orders', 'select=*&order=id.asc'), allRows('time_entries', 'select=*&order=id.asc'),
+      loadCustomerRows(() => generation === startupGeneration && same(actor,state.profile?.id)),
       allRows('planning_requests', 'select=*&order=created_at.desc,id.asc', true).catch(()=>null),
       allRows('customer_hourly_rates','select=*&order=customer_id.asc'),allRows('employee_workweeks_v905','select=*&order=employee_id.asc,effective_from.asc')
     ]);
     if (!same(actor, state.profile?.id)) throw new Error('Das Benutzerkonto hat sich geändert. Bitte die Planung erneut öffnen.');
     planningSync.assertCurrent(proof);
-    Object.assign(state.rows, { appointments, days, vacations, orders, entries, customers, customerRates, workweeks });
+    Object.assign(state.rows, { appointments, days, vacations, orders, entries, customerRates, workweeks });
     state.customerRatesReady=true;
     state.planningRequestsReady=requests!==null;
     if(requests!==null){state.rows.planningRequests=requests;planningSync.commit(proof);}
@@ -2043,9 +2064,67 @@
     if (event.target.matches('[data-select="business"]')) { state.planId = ''; state.planForm = false; }
   }, true);
   let planningSyncBusy = false;
+  let customerSyncScope = '', customerStamp = null, customerSyncBusy = false, customerPaint = false, retryCustomerSyncAt = 0;
+  function flushCustomerSync() {
+    if (!customerPaint || state.view !== 'customers' || state.busy || state.menu) return;
+    const form = root.querySelector('form[data-form="customer"]');
+    const draft = form?.dataset.customerDirty === 'true';
+    const active = document.activeElement;
+    if (draft || active?.matches('input, select, textarea, [contenteditable]') || active?.closest('form')) {
+      const id = form?.elements.id.value;
+      const latest = state.rows.customers.find(row => same(row.id,id));
+      if (draft && latest && latest.updated_at !== form.elements.customerUpdatedAt.value &&
+          !form.querySelector('[data-customer-change-notice]')) {
+        form.insertAdjacentHTML('afterbegin','<p class="wide notice" role="status" data-customer-change-notice>Dieser Kunde wurde inzwischen geändert. Öffne ihn erneut, um die aktuelle Anschrift zu sehen.</p>');
+      }
+      return;
+    }
+    customerPaint = false;
+    render();
+  }
+  root.addEventListener('input', event => {
+    const form = event.target.closest('form[data-form="customer"]');
+    if (form) form.dataset.customerDirty = 'true';
+  });
+  root.addEventListener('focusout', () => setTimeout(flushCustomerSync,0));
+
+  async function syncCustomersIfVisible() {
+    if (!state.session || !state.profile || startupStage && startupStage !== 'data' || state.busy ||
+        customerSyncBusy || document.visibilityState === 'hidden') return;
+    const company = businessId(), actor = state.profile.id, generation = startupGeneration;
+    if (!company || Date.now() < retryCustomerSyncAt) return;
+    const scope = actor+':'+company+':'+generation;
+    const current = () => generation === startupGeneration && state.profile?.id === actor && businessId() === company;
+    if (scope !== customerSyncScope) {
+      customerSyncScope = scope;
+      customerStamp = null;
+      customerPaint = false;
+    }
+    customerSyncBusy = true;
+    try {
+      const stamp = await api('/rest/v1/rpc/customer_address_sync_revision',{
+        method:'POST',body:{p_company:company},signal:AbortSignal.timeout(5000)
+      });
+      if (!current() || typeof stamp !== 'string' || !/^\d+$/.test(stamp)) return;
+      if (stamp !== customerStamp) {
+        await loadCustomerRows(current);
+        if (!current()) return;
+        customerStamp = stamp;
+        customerPaint = true;
+      }
+      flushCustomerSync();
+    } catch {
+      if (current()) retryCustomerSyncAt = Date.now()+10000;
+    } finally { customerSyncBusy = false; }
+  }
+  window.setInterval(syncCustomersIfVisible,2000);
+  document.addEventListener('visibilitychange',syncCustomersIfVisible);
+  window.addEventListener('focus',syncCustomersIfVisible);
+  window.addEventListener('online',()=>{ retryCustomerSyncAt=0; syncCustomersIfVisible(); });
+
   async function syncPlanningIfVisible() {
     if (!state.session || state.busy || planningSyncBusy || document.visibilityState === 'hidden') return;
-    if (!['planning', 'time', 'orders', 'order-detail', 'home', 'calendar', 'settings', 'customers'].includes(state.view)) return;
+    if (!['planning', 'time', 'orders', 'order-detail', 'home', 'calendar', 'settings'].includes(state.view)) return;
     planningSyncBusy = true;
     const orderId = state.orderId;
     const wasBilled = state.rows.orders.find(order => same(order.id, orderId))?.invoiced;
@@ -2062,7 +2141,7 @@
         const form = root.querySelector('form[data-form="planning"]');
         if (form) { updatePlanningWarnings(form); updatePlanningCustomer(form); } else if (!state.menu) render();
       }
-      else if(['home','calendar','settings','customers'].includes(state.view)&&!state.menu&&!document.activeElement?.closest('form')&&!document.activeElement?.matches('input,select,textarea'))render();
+      else if(['home','calendar','settings'].includes(state.view)&&!state.menu&&!document.activeElement?.closest('form')&&!document.activeElement?.matches('input,select,textarea'))render();
     } catch { /* Keep the last verified plan during temporary network outages. */ }
     finally { planningSyncBusy = false; }
   }

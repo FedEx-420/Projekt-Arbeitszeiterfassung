@@ -416,3 +416,5 @@ AUSFÜHRUNGSORT JE ARBEITSSCHEIN
 [x] Optionalen Ausführungsort pro Kundenarbeitsschein speichern und für Klarwerk-Rechnung sowie Fahrtstrecke übergeben. Ohne Objektanschrift gilt die Hauptanschrift des Kunden. Datenbankprüfung mit fiktiven Firmen und Arbeitsscheinen bestanden.
 
 [x] v1019: Ausführungsort für Kundenarbeitsscheine sichtbar hervorheben, Objekt in der Tagesliste kennzeichnen und neue Adressfelder nach Aktualisierung der installierten App zuverlässig ausliefern. Mobiles Timerformular, Speicherung und Projektion zu Klarwerk mit isolierten Daten geprüft.
+
+[x] v1020: Kundenanschriften beim Speichern abgleichen. Änderungen in geöffneten Apps über eine betriebsbezogene Versionsabfrage im Zwei-Sekunden-Takt erkennen. Hin- und Rückrichtung, Formularentwürfe und Firmenabgrenzung mit isolierten Daten geprüft.

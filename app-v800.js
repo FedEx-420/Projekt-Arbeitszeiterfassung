@@ -653,13 +653,54 @@
       throw new Error('Bitte Straße, Postleitzahl, Ort und Land des Objekts angeben oder die Objektanschrift leer lassen.');
     return Object.keys(location).length?location:null;
   }
+  function wholesalerFields(order) {
+    const fields=[['label','Großhändler',160],...serviceLocationInputs.filter(([key])=>key!=='label')];
+    const stop=(item={})=>[
+      '<fieldset class="entry-form" data-wholesaler-stop><legend>Großhändlerstopp</legend>',
+      '<label>Datum<input type="date" data-stop-key="date" required value="'+escape(item.date||order?.work_date||state.date)+'"></label>',
+      '<label>Ankunftszeit<input type="time" data-stop-key="time" required value="'+escape(item.time||'')+'"></label>',
+      ...fields.map(([key,label,max])=>'<label>'+label+'<input type="text" data-stop-key="'+key+'" required maxlength="'+max+
+        '" autocomplete="off" value="'+escape(item[key]||(key==='country'?'Deutschland':''))+'"></label>'),
+      '<button type="button" class="secondary" data-remove-wholesaler>Stopp entfernen</button></fieldset>'
+    ].join('');
+    const internal=order?.work_kind&&order.work_kind!=='customer';
+    return '<fieldset class="wide" data-wholesaler-trips'+(order?.invoiced||internal?' disabled':'')+
+      (internal?' hidden':'')+'><legend>Fahrten zu Großhändlern</legend>'+
+      '<p>Jeder Stopp wird diesem Arbeitsschein zugeordnet. Die Ankunftszeit bestimmt die Reihenfolge der Fahrt.</p>'+
+      '<div data-wholesaler-list>'+(order?.wholesaler_stops||[]).map(stop).join('')+'</div>'+
+      '<template data-wholesaler-template>'+stop()+'</template>'+
+      '<button type="button" class="secondary" data-add-wholesaler>＋ Großhändlerstopp hinzufügen</button></fieldset>';
+  }
+
+  function readWholesalerStops(form,kind,allowedDays) {
+    if (kind!=='customer') return [];
+    const stops=[...form.querySelectorAll('[data-wholesaler-stop]')].map(group=>Object.fromEntries(
+      [...group.querySelectorAll('[data-stop-key]')].map(input=>[input.dataset.stopKey,input.value.trim()])
+    ));
+    if (stops.length>12||stops.some(stop=>Object.values(stop).some(value=>!value)||!allowedDays.includes(stop.date)))
+      throw new Error('Bitte für jeden Großhändlerstopp eine vollständige Anschrift, eine Uhrzeit und ein Datum aus den Arbeitszeiten eintragen (höchstens zwölf Stopps).');
+    return stops;
+  }
+
+  root.addEventListener('click',event=>{
+    const add=event.target.closest('[data-add-wholesaler]');
+    const remove=event.target.closest('[data-remove-wholesaler]');
+    if (remove) remove.closest('[data-wholesaler-stop]').remove();
+    if (!add) return;
+    const group=add.closest('[data-wholesaler-trips]');
+    const list=group.querySelector('[data-wholesaler-list]');
+    if (list.children.length>=12) return;
+    list.append(group.querySelector('template').content.cloneNode(true));
+    list.lastElementChild.querySelector('[data-stop-key="time"]').focus();
+  });
+
   function orderEditor(order) {
     if (!order) return '';
     const items = state.rows.items.filter(item => same(item.work_order_id, order.id) && !isHourlyMaterial(item.position_name));
     const documents = state.rows.documents.filter(document => same(document.work_order_id, order.id));
     const rows = items.length ? items.map(materialRow).join('') : materialRow();
     const billingStatus = order.invoiced ? '<span class="badge">Bereits abgerechnet</span>' : '';
-    return `<section class="panel"><div class="page-head"><div><span class="eyebrow">Arbeitsschein bearbeiten</span><h3>${escape(order.customer_name || 'Ohne Kunde')}</h3></div><div class="actions">${billingStatus}${items.length && canExportJuprowaMaterial(order) ? `<button type="button" class="secondary small" data-action="juprowa-material" data-id="${escape(order.id)}">Juprowa-Materialdatei</button>` : ''}<button type="button" class="secondary small" data-action="order-pdf" data-id="${order.id}">PDF drucken / speichern</button><button type="button" class="danger small" data-action="delete-order" data-id="${order.id}">Arbeitsschein löschen</button><button type="button" class="secondary small" data-action="close-order">Schließen</button></div></div><form data-form="order-edit" class="entry-form"><input type="hidden" name="id" value="${order.id}">${orderDatePicker(order.work_date)}<label class="wide">Kunde<input name="customer" required list="customers" value="${escape(order.customer_name || '')}"></label>${serviceLocationFields(order)}<label class="wide">Beschreibung<input name="title" value="${escape(order.title || '')}"></label><div class="wide order-input-layout"><section class="order-time-section entry-form"><h4 class="wide">Arbeitszeiten</h4>${teamEnabled() ? '' : `<p class="wide">Arbeitsstunden werden beim Speichern automatisch als <b>${escape(hourlyNameForEmployee(order.employee_id))}</b> mit dem Preis aus der Materialliste ergänzt.</p>`}${teamOrderTimeFields(order.employee_id,orderPeriods(order),`<label>Arbeitsbeginn${timeInput('start', order.start_time?.slice(0, 5))}</label><label>Arbeitsende${timeInput('end', order.end_time?.slice(0, 5))}</label><label>Pause in Stunden<input name="pause" type="number" min="0" step="0.25" value="${n(order.pause_hours)}"></label><label>Ausgeführte Stunden<input name="hours" type="number" min="0.25" step="0.25" value="${n(order.executed_hours)}" required></label>`)}</section><section class="order-material-section"><h4>Material</h4><div class="wide" id="material-lines">${rows}</div><button type="button" class="secondary wide" data-action="more-material">Weiteres Material</button></section></div>${noteTemplates()}<label class="wide">Notiz / Dokumentation<textarea name="documentation" rows="4">${escape(order.documentation || '')}</textarea></label><label class="wide">Weitere Dokumente hochladen<input name="documents" type="file" multiple accept="image/*,.pdf,.doc,.docx"></label>${documents.length ? `<p class="wide">Vorhandene Dokumente: ${documents.map(document => escape(document.file_name)).join(', ')}</p>` : ''}${signatureFields(order)}<button class="primary wide" data-signature-submit>Änderungen speichern</button></form>${customerList()}${materialList()}</section>`;
+    return `<section class="panel"><div class="page-head"><div><span class="eyebrow">Arbeitsschein bearbeiten</span><h3>${escape(order.customer_name || 'Ohne Kunde')}</h3></div><div class="actions">${billingStatus}${items.length && canExportJuprowaMaterial(order) ? `<button type="button" class="secondary small" data-action="juprowa-material" data-id="${escape(order.id)}">Juprowa-Materialdatei</button>` : ''}<button type="button" class="secondary small" data-action="order-pdf" data-id="${order.id}">PDF drucken / speichern</button><button type="button" class="danger small" data-action="delete-order" data-id="${order.id}">Arbeitsschein löschen</button><button type="button" class="secondary small" data-action="close-order">Schließen</button></div></div><form data-form="order-edit" class="entry-form"><input type="hidden" name="id" value="${order.id}">${orderDatePicker(order.work_date)}<label class="wide">Kunde<input name="customer" required list="customers" value="${escape(order.customer_name || '')}"></label>${serviceLocationFields(order)}${wholesalerFields(order)}<label class="wide">Beschreibung<input name="title" value="${escape(order.title || '')}"></label><div class="wide order-input-layout"><section class="order-time-section entry-form"><h4 class="wide">Arbeitszeiten</h4>${teamEnabled() ? '' : `<p class="wide">Arbeitsstunden werden beim Speichern automatisch als <b>${escape(hourlyNameForEmployee(order.employee_id))}</b> mit dem Preis aus der Materialliste ergänzt.</p>`}${teamOrderTimeFields(order.employee_id,orderPeriods(order),`<label>Arbeitsbeginn${timeInput('start', order.start_time?.slice(0, 5))}</label><label>Arbeitsende${timeInput('end', order.end_time?.slice(0, 5))}</label><label>Pause in Stunden<input name="pause" type="number" min="0" step="0.25" value="${n(order.pause_hours)}"></label><label>Ausgeführte Stunden<input name="hours" type="number" min="0.25" step="0.25" value="${n(order.executed_hours)}" required></label>`)}</section><section class="order-material-section"><h4>Material</h4><div class="wide" id="material-lines">${rows}</div><button type="button" class="secondary wide" data-action="more-material">Weiteres Material</button></section></div>${noteTemplates()}<label class="wide">Notiz / Dokumentation<textarea name="documentation" rows="4">${escape(order.documentation || '')}</textarea></label><label class="wide">Weitere Dokumente hochladen<input name="documents" type="file" multiple accept="image/*,.pdf,.doc,.docx"></label>${documents.length ? `<p class="wide">Vorhandene Dokumente: ${documents.map(document => escape(document.file_name)).join(', ')}</p>` : ''}${signatureFields(order)}<button class="primary wide" data-signature-submit>Änderungen speichern</button></form>${customerList()}${materialList()}</section>`;
   }
   function orderDetailView() { const order = state.rows.orders.find(row => same(row.id, state.orderId)); return order ? orderEditor(order) : `<section class="panel"><h2>Arbeitsschein nicht gefunden</h2><p>Der Arbeitsschein ist nicht mehr verfügbar.</p><button type="button" class="secondary" data-action="close-order">Zurück</button></section>`; }
   function ordersView() {
@@ -2027,11 +2068,12 @@
     }
     if (locked(id)) throw new Error(lockedText(id));
     const service_location = readServiceLocation(form);
+    const wholesaler_stops=readWholesalerStops(form,'customer',[state.date]);
     const customer = await ensureCustomer(form.elements.customer.value, id, planningCustomers(id)), value = timeValues(form), signature = signatureValues(form);
     // The appointment UUID is also the order UUID for a converted assignment.
     // The database primary key therefore prevents duplicate work orders even
     // if two devices submit the same assignment concurrently.
-    const created = await write('work_orders', { ...(planId ? { id: planId } : {}), service_location, employee_id: id, work_date: state.date, customer_id: customer.id, customer_name: customer.name, title: String(form.elements.title.value || '').trim(), start_time: value.start, end_time: value.end, pause_hours: value.pause, executed_hours: value.hours, calculation_mode: 'end_time', documentation: String(form.elements.documentation.value || ''), ...signature });
+    const created = await write('work_orders', { ...(planId ? { id: planId } : {}), service_location, wholesaler_stops, employee_id: id, work_date: state.date, customer_id: customer.id, customer_name: customer.name, title: String(form.elements.title.value || '').trim(), start_time: value.start, end_time: value.end, pause_hours: value.pause, executed_hours: value.hours, calculation_mode: 'end_time', documentation: String(form.elements.documentation.value || ''), ...signature });
     const order = created?.[0]; if (!order) throw new Error('Der Arbeitsschein konnte nicht gespeichert werden.');
     await saveMaterials(form, order); await saveHourlyMaterial(order, value.hours); await saveDocuments(form, order, id);
     if (planId) {
@@ -2043,7 +2085,7 @@
     const id = workerId(), list = state.rows.orders.filter(row => orderForEmployee(row,id,state.date)), selected = list.find(row => same(row.id, state.orderId)), prefill = same(state.planPrefill?.employeeId, id) && state.planPrefill?.date === state.date ? state.planPrefill : null;
     const previous = prefill?.start || dayEntries(id).at(-1)?.end_time?.slice(0, 5) || '07:30';
     const prefillEnd = prefill?.end || '';
-    const newOrder = locked(id) ? `<div class="locked">${escape(lockedText(id))}</div>` : `<section class="panel"><h3>Neuer Arbeitsschein</h3>${prefill ? `<p class="plan-alert">Übernahme aus der Planung: ${escape(prefill.title)} · ${escape(prefill.start)} – ${escape(prefill.end)} Uhr</p>` : ''}<form data-form="order" class="entry-form"><input type="hidden" name="planning_id" value="${escape(prefill?.id || '')}"><label class="wide">Kunde<input name="customer" required list="customers" value="${escape(prefill?.customerName || state.orderCustomer || '')}"></label>${prefill?.customerDetails ? planningCustomerPanel(prefill.customerDetails) : ''}${serviceLocationFields(null,prefill?.customerName || state.orderCustomer)}<label class="wide">Beschreibung<input name="title" placeholder="Ausgeführte Arbeiten" value="${escape(prefill?.title || '')}"></label><div class="wide order-input-layout"><section class="order-time-section entry-form"><h4 class="wide">Arbeitszeiten</h4>${teamEnabled() ? '' : `<p class="wide">Arbeitsstunden werden beim Speichern automatisch als <b>${escape(hourlyNameForEmployee(id))}</b> mit dem Preis aus der Materialliste ergänzt.</p>`}${teamOrderTimeFields(prefill?.ownerId || id,newOrderPeriods(prefill,id,previous,prefillEnd),`<label>Arbeitsbeginn${timeInput('start', previous)}</label><label>Arbeitsende${timeInput('end', prefillEnd)}</label><label>Pause in Stunden<input name="pause" type="number" min="0" step="0.25" value="0"></label><label>Ausgeführte Stunden<input name="hours" type="number" min="0.25" step="0.25" required value="${escape(prefill ? String(prefillEnd ? Math.max(0.25, Math.round(((toMinutes(prefillEnd) - toMinutes(previous)) / 60) * 4) / 4) : '') : '')}"></label>`)}</section><section class="order-material-section"><h4>Material</h4><div class="wide" id="material-lines">${materialRow()}</div><button type="button" class="secondary wide" data-action="more-material">Weiteres Material</button></section></div>${noteTemplates()}<label class="wide">Notiz / Dokumentation<textarea name="documentation" rows="4">${escape(prefill?.details || '')}</textarea></label><label class="wide">Dokumente hochladen<input name="documents" type="file" multiple accept="image/*,.pdf,.doc,.docx"></label>${signatureFields()}<button class="primary wide" data-signature-submit>${prefill?.confirmed ? 'Arbeitsschein abschließen' : 'Arbeitsschein speichern'}</button></form>${customerList()}${materialList()}</section>`;
+    const newOrder = locked(id) ? `<div class="locked">${escape(lockedText(id))}</div>` : `<section class="panel"><h3>Neuer Arbeitsschein</h3>${prefill ? `<p class="plan-alert">Übernahme aus der Planung: ${escape(prefill.title)} · ${escape(prefill.start)} – ${escape(prefill.end)} Uhr</p>` : ''}<form data-form="order" class="entry-form"><input type="hidden" name="planning_id" value="${escape(prefill?.id || '')}"><label class="wide">Kunde<input name="customer" required list="customers" value="${escape(prefill?.customerName || state.orderCustomer || '')}"></label>${prefill?.customerDetails ? planningCustomerPanel(prefill.customerDetails) : ''}${serviceLocationFields(null,prefill?.customerName || state.orderCustomer)}${wholesalerFields()}<label class="wide">Beschreibung<input name="title" placeholder="Ausgeführte Arbeiten" value="${escape(prefill?.title || '')}"></label><div class="wide order-input-layout"><section class="order-time-section entry-form"><h4 class="wide">Arbeitszeiten</h4>${teamEnabled() ? '' : `<p class="wide">Arbeitsstunden werden beim Speichern automatisch als <b>${escape(hourlyNameForEmployee(id))}</b> mit dem Preis aus der Materialliste ergänzt.</p>`}${teamOrderTimeFields(prefill?.ownerId || id,newOrderPeriods(prefill,id,previous,prefillEnd),`<label>Arbeitsbeginn${timeInput('start', previous)}</label><label>Arbeitsende${timeInput('end', prefillEnd)}</label><label>Pause in Stunden<input name="pause" type="number" min="0" step="0.25" value="0"></label><label>Ausgeführte Stunden<input name="hours" type="number" min="0.25" step="0.25" required value="${escape(prefill ? String(prefillEnd ? Math.max(0.25, Math.round(((toMinutes(prefillEnd) - toMinutes(previous)) / 60) * 4) / 4) : '') : '')}"></label>`)}</section><section class="order-material-section"><h4>Material</h4><div class="wide" id="material-lines">${materialRow()}</div><button type="button" class="secondary wide" data-action="more-material">Weiteres Material</button></section></div>${noteTemplates()}<label class="wide">Notiz / Dokumentation<textarea name="documentation" rows="4">${escape(prefill?.details || '')}</textarea></label><label class="wide">Dokumente hochladen<input name="documents" type="file" multiple accept="image/*,.pdf,.doc,.docx"></label>${signatureFields()}<button class="primary wide" data-signature-submit>${prefill?.confirmed ? 'Arbeitsschein abschließen' : 'Arbeitsschein speichern'}</button></form>${customerList()}${materialList()}</section>`;
     return `${prefill ? planningStyles() : ''}<section class="page-head"><div><span class="eyebrow">Arbeitsscheine von ${escape(worker()?.username || '')}</span><h2>${dateText(state.date)}</h2></div>${dayPicker()}</section><div data-day-plans>${plannedAssignmentsPanel(id, state.date)}</div>${selected ? orderEditor(selected) : newOrder}<section class="list-section"><h3>Arbeitsscheine des ausgewählten Tages</h3>${list.map(row => `<article class="row-card"><button type="button" class="row-main" data-action="open-order" data-id="${row.id}"><b>${escape(row.customer_name || 'Ohne Kunde')}</b><span>${dateText(row.work_date)} · ${escape(row.title || '')}${row.service_location?.label || row.service_location?.street ? ' · Objekt: '+escape(row.service_location.label || row.service_location.street) : ''} · ${orderEmployeeTimeText(row,id,state.date)} · ${h(orderHours(row,id,state.date))} · Öffnen</span></button><button type="button" class="danger small" data-action="delete-order" data-id="${row.id}">Löschen</button></article>`).join('') || '<p class="empty">Keine Arbeitsscheine für diesen Tag vorhanden.</p>'}</section>`;
   }
   root.addEventListener('click', event => {
@@ -2354,6 +2396,7 @@
     if(workKind!=='customer'&&planId)throw new Error('Eine bestätigte Kundenplanung muss als Kundenauftrag abgeschlossen werden. Für interne Tätigkeiten bitte einen eigenen Arbeitsschein anlegen.');
     const documentation=window.WorktimeBusinessRules?.documentation(workKind,form.elements.documentation.value)||String(form.elements.documentation.value||'');
     const service_location=readServiceLocation(form,workKind);
+    const wholesaler_stops=readWholesalerStops(form,workKind,[...new Set(periods.map(period=>period.work_date||date))]);
     const customerName=String(form.elements.customer.value||'').trim(),customer=customerName?await ensureCustomer(customerName,owner,planningCustomers(owner)):null;
     if (workKind==='customer'&&!customer?.id) throw new Error('Bitte einen Kunden angeben.');
     const inputs = [...form.querySelectorAll('[name="material"]')], quantities = [...form.querySelectorAll('[name="quantity"]')], units = [...form.querySelectorAll('[name="unit"]')], items = [];
@@ -2364,7 +2407,7 @@
     const timerId=form.dataset.timerId,timerDevice=form.dataset.timerDevice;
     const actor = state.profile.id, company = businessId(), generation = startupGeneration;
     const isCurrent = () => state.profile?.id === actor && businessId() === company && startupGeneration === generation;
-    const saved = await api('/rest/v1/rpc/'+(timerId?(timerDevice?'save_team_work_order_from_device_timer':'save_team_work_order_from_timer'):'save_team_work_order'),{method:'POST',body:{...(timerId?{p_timer_id:timerId}:{}),...(timerDevice?{p_device:timerDevice}:{}),p_order:{ ...(existing ? {id:existing.id} : {}),employee_id:owner,work_date:date,customer_id:customer?.id||null,title:String(form.elements.title.value || '').trim(),documentation,work_kind:workKind,service_location,...signature},p_periods:periods,p_items:items,p_plan_id:planId || null}});
+    const saved = await api('/rest/v1/rpc/'+(timerId?(timerDevice?'save_team_work_order_from_device_timer':'save_team_work_order_from_timer'):'save_team_work_order'),{method:'POST',body:{...(timerId?{p_timer_id:timerId}:{}),...(timerDevice?{p_device:timerDevice}:{}),p_order:{ ...(existing ? {id:existing.id} : {}),employee_id:owner,work_date:date,customer_id:customer?.id||null,title:String(form.elements.title.value || '').trim(),documentation,work_kind:workKind,service_location,wholesaler_stops,...signature},p_periods:periods,p_items:items,p_plan_id:planId || null}});
     const order = Array.isArray(saved) ? saved[0] : saved;
     if (!order?.id) throw new Error('Der gemeinsame Arbeitsschein konnte nicht gespeichert werden.');
     if (!isCurrent()) return savedOrderSynchronized;
@@ -2388,6 +2431,11 @@
     if (input.name==='work_kind') {
       const location=form?.querySelector('[data-service-location]');
       if (location) location.hidden=input.value!=='customer';
+      const wholesaler=form?.querySelector('[data-wholesaler-trips]');
+      if (wholesaler) {
+        wholesaler.hidden=input.value!=='customer';
+        wholesaler.disabled=wholesaler.hidden;
+      }
     }
     if (input.matches('[data-order-team-choice]')) {
       const target=form.querySelector('[data-team-times]'), present=[...target.querySelectorAll('[data-team-employee]')].find(section => same(section.dataset.teamEmployee,input.value));

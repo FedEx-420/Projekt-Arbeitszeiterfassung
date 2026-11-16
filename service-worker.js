@@ -190,7 +190,7 @@ FILES.push('./invoice-tax-v905.js?v=1012');
 
 for (let i = 0; i < FILES.length; i++) {
   const path = FILES[i].split('?')[0];
-  if (path === './app-v800.js') FILES[i] = path + '?v=1020';
+  if (path === './app-v800.js') FILES[i] = path + '?v=1021';
   if (path === './neugart-accounts-v971.js') FILES[i] = path + '?v=1016';
   if (path === './navigation-v901.js') FILES[i] = path + '?v=1013';
 }

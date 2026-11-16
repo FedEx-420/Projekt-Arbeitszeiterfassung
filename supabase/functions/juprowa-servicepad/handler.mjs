@@ -1,4 +1,5 @@
-import { checkLogin, openWorksheets, portalLogin, ServicepadError } from './portal.mjs';
+import { checkLogin, openWorksheets, portalLogin, ServicepadError, worksheetDetail } from './portal.mjs';
+import { customerPage } from './customers.mjs';
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -89,7 +90,7 @@ export function createServicepadHandler({ baseUrl, serviceKey, fetcher = fetch }
       if (!baseUrl || !serviceKey) throw new Error('Missing configuration');
       let input;
       try { input = await req.json(); } catch { input = null; }
-      if (!input || !['status', 'connect', 'list', 'disconnect'].includes(input.action)) {
+      if (!input || !['status', 'connect', 'list', 'disconnect', 'customers-preview', 'customers-import', 'worksheet-detail'].includes(input.action)) {
         return json({ error: 'Diese ServicePad-Aktion ist ungültig.' }, 400);
       }
       const company = await activeBusiness(req, input.businessId);
@@ -102,7 +103,7 @@ export function createServicepadHandler({ baseUrl, serviceKey, fetcher = fetch }
         const verified = await checkLogin(fetcher, portalLogin(input));
         const selected = verified.mandants.find(entry => entry.id === input.mandantId)
           ?? (input.mandantId == null && verified.mandants.length === 1 ? verified.mandants[0] : null);
-        if (!selected) return json({ mandants: verified.mandants });
+        if (!selected) return json({ mandants: verified.mandants.map(({ id, label }) => ({ id, label })) });
         if (connection && (verified.customerId !== connection.portal_customer_id || selected.id !== connection.mandant_id)) {
           throw new ServicepadError('different_mandant', 409,
             'Der gewählte Mandant weicht von der bestehenden Verbindung ab. Trenne die Verbindung vor einem Wechsel.');
@@ -129,9 +130,28 @@ export function createServicepadHandler({ baseUrl, serviceKey, fetcher = fetch }
         return json({ connection: null });
       }
       const verified = await checkLogin(fetcher, await decrypt(connection));
-      if (verified.customerId !== connection.portal_customer_id
-        || !verified.mandants.some(entry => entry.id === connection.mandant_id)) {
+      const mandant = verified.mandants.find(entry => entry.id === connection.mandant_id);
+      if (verified.customerId !== connection.portal_customer_id || !mandant) {
         throw new ServicepadError('portal_scope', 403, 'Der verknüpfte ServicePad-Mandant ist mit diesem Zugang nicht mehr verfügbar.');
+      }
+      if (input.action === 'customers-preview' || input.action === 'customers-import') {
+        const applying = input.action === 'customers-import';
+        if (applying && (typeof input.fingerprint !== 'string' || !/^[a-f0-9]{64}$/.test(input.fingerprint))) {
+          throw new ServicepadError('customer_preview', 400, 'Erstelle vor der Übernahme eine Kundenvorschau.');
+        }
+        const { customers, next } = await customerPage(fetcher, verified.auth, mandant.customerMandantId, input.cursor ?? '0');
+        const result = await rest('rpc/juprowa_customer_batch', { method: 'POST', body: {
+          p_business: company, p_revision: connection.revision, p_customers: customers,
+          p_expected: applying ? input.fingerprint : null,
+        } });
+        if (result.changed) throw changed();
+        return json({ ...result, next });
+      }
+      if (input.action === 'worksheet-detail') {
+        const detail = await worksheetDetail(fetcher, verified.auth, connection.mandant_id, input.worksheetId);
+        const [current] = await rest(filter + '&select=revision');
+        if (current?.revision !== connection.revision) throw changed();
+        return json({ detail });
       }
       const worksheets = await openWorksheets(fetcher, verified.auth, connection.mandant_id);
       const [current] = await rest(filter + '&select=revision');

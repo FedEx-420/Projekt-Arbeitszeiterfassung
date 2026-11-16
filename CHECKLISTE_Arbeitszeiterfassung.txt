@@ -394,7 +394,9 @@ JUPROWA MATERIALDATEI v1009
 
 JUPROWA ARBEITSSCHEINABGLEICH
 [ ] Offene Juprowa-Arbeitsscheine automatisch abrufen und einmalig anhand ihrer Juprowa-ID im richtigen Betrieb führen. Geschäft, Administration und Mitarbeiter prüfen.
-[ ] Direkte ServicePad-Anmeldung mit dem bestehenden Portalzugang und Abruf der offenen Arbeitsscheine für den gewählten Mandanten ohne Kontakt zum Anbieter. Live-Abruf im verbundenen Geschäftskonto prüfen.
+[x] Direkte ServicePad-Anmeldung mit dem bestehenden Portalzugang und Abruf der offenen Arbeitsscheine für den gewählten Mandanten. Im verknüpften Geschäftskonto wurde der wiederholte Abruf bestätigt.
+[ ] Juprowa-Kundenstamm im freigegebenen Mandanten mit vorhandenen Kunden der Arbeitszeiterfassung und Klarwerk abgleichen, leere Kontaktfelder ergänzen, Mehrfachzuordnungen prüfen und doppeltes Anlegen vermeiden.
+[ ] Vollständigen Arbeitsschein nach eigener Bestätigung in Juprowa anlegen und dort abschließen. Bestehende Juprowa-Scheine vollständig in der Arbeitszeiterfassung bearbeiten und am Ziel abschließen. Reale Zieldaten mit isolierten Prüfscheinen verifizieren.
 [ ] Bestehenden Juprowa-Schein aus der Arbeitszeiterfassung bearbeiten und abschließen. Juprowa-Abschluss und Datenübernahme am Ziel bestätigen.
 [ ] Neuen Arbeitsschein aus der Arbeitszeiterfassung mit Auftrag, Arbeiten, Zeiten, Material, Unterschrift und Anhängen vollständig in Juprowa anlegen und abschließen.
 [ ] Firmen- und Rollenrechte, geänderte Zielversionen, Teilausfälle, Wiederholung und parallele Abschlüsse mit fiktiven Daten prüfen. Der Juprowa-Status wird getrennt vom Abrechnungsstatus geführt.

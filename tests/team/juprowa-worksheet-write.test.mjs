@@ -19,7 +19,7 @@ function fixture() {
     assert.equal(options.method,'POST');assert.equal(options.redirect,'error');
     assert.equal(options.body.get('ITEMID'),'12');
     current=JSON.parse(options.body.get('DATA'));writes++;
-    return Response.json({ResponseParams:{data:current}});
+    return Response.json({result:'unrecognized response envelope'});
   };
   const ctx={auth:{uid:'fixture',passport:'fixture'},mandantId:'0',technician:'11',beforeSend:async()=>{}};
   return {fetcher,ctx,state:()=>current,writes:()=>writes};

@@ -79,13 +79,20 @@
           <canvas width="760" height="230" aria-label="Unterschriftenfeld" style="width:100%;touch-action:none;border:1px solid #b5c9bc;background:#fff"></canvas>
           <button type="button" data-sp-clear>Unterschrift löschen</button>
         </details>
+        <div class="wide notice" data-sp-confirm-panel hidden><p data-sp-confirm-text></p>
+          <button type="submit" class="primary" value="confirm">Jetzt in Juprowa bestätigen</button>
+          <button type="button" data-sp-return>Weiter bearbeiten</button></div>
         <p class="wide" role="status" data-sp-editor-status></p>
         <div class="wide actions"><button type="submit" value="save">In Juprowa speichern</button>
           <button type="submit" value="close" class="primary">In Juprowa abschließen</button>
           <button type="button" data-sp-cancel>Abbrechen</button></div>
       </form>`;
       const form=dialog.querySelector('form'),canvas=dialog.querySelector('canvas'),ctx=canvas.getContext('2d');
-      let strokes=[],pointer=null,drawing=null;
+      const confirmation=dialog.querySelector('[data-sp-confirm-panel]');
+      let strokes=[],pointer=null,drawing=null,pending=null;
+      const resetConfirmation=()=>{pending=null;confirmation.hidden=true;};
+      form.addEventListener('input',resetConfirmation);
+      dialog.querySelector('[data-sp-return]').onclick=resetConfirmation;
       ctx.strokeStyle='#143a31';ctx.lineWidth=2;ctx.lineCap='round';ctx.lineJoin='round';
       const point=e=>{
         const box=canvas.getBoundingClientRect();
@@ -94,6 +101,7 @@
       };
       canvas.addEventListener('pointerdown',e=>{
         if(pointer!==null||e.button!==0)return;
+        resetConfirmation();
         pointer=e.pointerId;canvas.setPointerCapture(pointer);
         drawing=[point(e)];strokes.push(drawing);
       });
@@ -106,29 +114,41 @@
       for(const event of ['pointerup','pointercancel','lostpointercapture'])canvas.addEventListener(event,e=>{
         if(pointer===e.pointerId){pointer=null;drawing=null;}
       });
-      dialog.querySelector('[data-sp-clear]').onclick=()=>{strokes=[];pointer=null;drawing=null;ctx.clearRect(0,0,canvas.width,canvas.height);};
+      dialog.querySelector('[data-sp-clear]').onclick=()=>{resetConfirmation();strokes=[];pointer=null;drawing=null;ctx.clearRect(0,0,canvas.width,canvas.height);};
       dialog.querySelector('[data-sp-cancel]').onclick=()=>dialog.close();
       dialog.addEventListener('close',()=>{if(editDialog===dialog)editDialog=null;dialog.remove();});
       form.addEventListener('submit',async event=>{
         event.preventDefault();
         if(active!==current||scope()!==current.key||current.busy)return;
-        const closing=event.submitter?.value==='close',values=new FormData(form);
         const status=dialog.querySelector('[data-sp-editor-status]');
-        const signature={name:String(values.get('signer')||'').trim(),strokes};
-        if(closing&&(!signature.name||!strokes.some(stroke=>stroke.length>1))){
-          status.textContent='Bitte Namen und Unterschrift für den Abschluss erfassen.';return;
-        }
-        if(!window.confirm(closing?`Arbeitsschein ${sheet.number} wirklich unterschrieben in Juprowa abschließen?`:`Änderungen an Arbeitsschein ${sheet.number} in Juprowa speichern?`))return;
-        current.busy=true;
-        const buttons=[...dialog.querySelectorAll('button[type=submit]')];buttons.forEach(b=>{b.disabled=true;});
-        status.textContent='Juprowa speichert den Arbeitsschein und bestätigt den Stand …';
-        try{
-          const result=await call(current,closing?'worksheet-close':'worksheet-save',{
+        const choice=event.submitter?.value;
+        if(choice!=='confirm') {
+          const closing=choice==='close',values=new FormData(form);
+          const signature={name:String(values.get('signer')||'').trim(),strokes:structuredClone(strokes)};
+          if(closing&&(!signature.name||!strokes.some(stroke=>stroke.length>1))){
+            status.textContent='Bitte Namen und Unterschrift für den Abschluss erfassen.';return;
+          }
+          pending={closing,payload:{
             confirmed:true,worksheetId:sheet.id,sheetRevision:sheet.revision,signature:closing?signature:undefined,
             edits:{requested:values.get('requested'),completed:values.get('completed'),notes:values.get('notes'),
               times:sheet.times.map((_,i)=>({start:values.get('start-'+i),end:values.get('end-'+i),breakMinutes:values.get('pause-'+i)})),
               materials:sheet.materials.map((_,i)=>({quantity:values.get('qty-'+i),unit:values.get('unit-'+i)}))},
-          });
+          }};
+          confirmation.querySelector('[data-sp-confirm-text]').textContent=closing?
+            `Arbeitsschein ${sheet.number} unterschrieben in Juprowa abschließen?`:
+            `Änderungen an Arbeitsschein ${sheet.number} in Juprowa speichern?`;
+          confirmation.hidden=false;
+          confirmation.querySelector('button').focus();
+          return;
+        }
+        if(!pending)return;
+        const {closing,payload}=pending;
+        resetConfirmation();
+        current.busy=true;
+        const buttons=[...dialog.querySelectorAll('button[type=submit]')];buttons.forEach(b=>{b.disabled=true;});
+        status.textContent='Juprowa speichert den Arbeitsschein und bestätigt den Stand …';
+        try{
+          const result=await call(current,closing?'worksheet-close':'worksheet-save',payload);
           if(active!==current||scope()!==current.key)return;
           current.busy=false;dialog.close();
           current.outcome=result.closed?'Juprowa hat den Abschluss bestätigt.':'Juprowa hat die Änderungen bestätigt.';

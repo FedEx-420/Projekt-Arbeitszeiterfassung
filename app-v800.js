@@ -2646,7 +2646,15 @@
     settingsView=()=>baseSettings()+servicePad.settings();
     customersView=()=>servicePad.customers()+baseCustomers();
     ordersView=()=>servicePad.orders()+baseOrders();
-    render=()=>{baseRender();servicePad.afterRender();};
+    render=()=>{
+      baseRender();
+      if(!root.querySelector('#juprowa-settings')){
+        const page=root.querySelector('main');
+        if(state.view==='orders')page?.insertAdjacentHTML('afterbegin',servicePad.orders());
+        if(state.view==='customers')page?.insertAdjacentHTML('afterbegin',servicePad.customers());
+      }
+      servicePad.afterRender();
+    };
   }
   const themeRender=render;render=()=>{themeRender();window.WorktimeKlarwerkTheme?.afterRender(root);};window.WorktimeKlarwerkTheme?.afterRender(root);
   const supplierStock=window.WorktimeSupplierStock?.create({root,state,businessId,isManager,api,escape,shoppingProvider:()=>activeShoppingProvider()});

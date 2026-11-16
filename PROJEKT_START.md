@@ -495,3 +495,8 @@ Die Migration `20261115172500_klarwerk_fleet_work_period_days.sql` gibt für ein
 
 ## Großhändlerstopps auf Arbeitsscheinen (v1021)
 Kundenarbeitsscheine erfassen je Großhändlerstopp Datum, Ankunftszeit und vollständige Anschrift. Die vorhandene atomare Speicherung und die beschränkte Betriebsverbindung transportieren das Feld als `wholesaler_stops`. Klarwerk verwendet die Angaben ausschließlich für Fahrten und Rechnungsentwürfe des verknüpften Betriebs. Die Datenbankmigration muss vor der Auslieferung des geänderten Formulars aktiv sein.
+## v1030 – Arbeitsscheine, Großhändlerartikel und Juprowa
+
+Offene Juprowa-Scheine verwenden den regulären Arbeitsscheineditor. Nach dem lokalen Speichern wird die Übertragung separat bestätigt. Vorhandene ServicePad-Scheine werden unter ihrer ursprünglichen ID aktualisiert. Für neue Scheine prüft der Dienst die Projektkennung im Mandanten und verhindert eine zweite Neuanlage nach einer unklaren Antwort. Mitarbeiter, Material, Preise und Anhänge werden aus der gespeicherten Fassung gelesen. Die bereits gespeicherte Unterschrift lässt sich als Originalbild in den Anlagen des ServicePad-Scheins nachvollziehen.
+
+Die Artikelwahl aus verbundenen EFG-/GC-Händlerzugängen prüft Bestellnummer, Einheit und Preis vor der Übernahme. Klarwerk liest den tatsächlich auf dem Arbeitsschein gespeicherten Nettopreis. Der Browser- und Schnittstellentest verwenden fiktive Aufträge und führen keine Testbuchungen in einem Live-Mandanten aus.

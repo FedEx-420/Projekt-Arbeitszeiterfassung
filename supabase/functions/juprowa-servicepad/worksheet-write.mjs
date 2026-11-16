@@ -81,6 +81,11 @@ function editMaterial(original, values) {
     }
   }
   if (!original || owns(values, 'unit')) row.AP_MENGEEH = text(values.unit ?? '',4);
+  if (owns(values,'price')) {
+    if (!canEditMaterialIdentity(row) || !/^\d{1,7}(?:\.\d{1,4})?$/.test(String(values.price))) throw invalid('Bitte den gespeicherten Materialpreis prüfen.');
+    row.AP_VKPREIS=String(values.price);
+    row.AP_POSPREIS=(quantities(row.AP_MENGE)*quantities(row.AP_VKPREIS)).toFixed(2);
+  }
   return row;
 }
 
@@ -136,7 +141,7 @@ export function encodeSignature(strokes) {
   return 'image/jsignature;base30,'+body;
 }
 
-function applyEdits(worksheet, edits, workers) {
+export function applyEdits(worksheet, edits, workers) {
   if (!edits||typeof edits!=='object'||Array.isArray(edits)) throw invalid('Die Arbeitsscheindaten fehlen.');
   const row=structuredClone(worksheet);
   row.AK_DURCHZUFUEHREN=text(edits.requested,12000);

@@ -1,4 +1,4 @@
-import { requestPortal, scopedWorksheets, ServicepadError, worksheetRevision, worksheetRows } from './portal.mjs';
+import { requestPortal, scopedWorksheets, ServicepadError, worksheetAddressFields, worksheetAddressPrefixes, worksheetRevision, worksheetRows } from './portal.mjs';
 
 const restage = () => new ServicepadError('worksheet_changed',409,
   'Der Arbeitsschein hat sich in ServicePad geändert. Öffne ihn erneut, bevor du speicherst.');
@@ -20,6 +20,89 @@ const text = (value, length) => {
   }
   return value;
 };
+const owns = (row, key) => Object.hasOwn(row, key);
+const timeFields = { start:'AZ_WORK_BEG', end:'AZ_WORK_END', travelStart:'AZ_TRAVEL_BEG', travelEnd:'AZ_TRAVEL_END', breakStart:'AZ_WORK_PAUSE_BEG' };
+const quantities = value => Number(String(value ?? '').replace(',', '.'));
+const emptyTime = '00:00:00';
+
+function integer(value, max, message) {
+  if (!/^\d{0,9}$/.test(String(value)) || Number(value) > max) throw invalid(message);
+  return Number(value);
+}
+
+function editTime(original, values, workers) {
+  const row = { ...original };
+  if (!original || owns(values, 'day')) {
+    const day = values.day;
+    if (typeof day !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(day) || day < '1900-01-01' ||
+        day > '2999-12-31' || !Number.isFinite(Date.parse(day)) || new Date(day).toISOString().slice(0,10) !== day) {
+      throw invalid('Bitte das Datum des Zeitabschnitts prüfen.');
+    }
+    row.AZ_DATUM = day;
+  }
+  if (!original || owns(values, 'workerId')) {
+    const worker = workers.find(person => person.id === values.workerId);
+    if (!worker) throw invalid('Bitte für jede neue oder geänderte Zuordnung einen verfügbaren Juprowa-Monteur auswählen.');
+    row.AZ_WORKER = worker.id;
+    row.AZ_WORKERNAME = worker.name;
+  }
+  for (const [key, field] of Object.entries(timeFields)) {
+    if (!original || owns(values, key)) {
+      row[field] = time(values[key] ?? '', !original && (key === 'start' || key === 'end')) ||
+        (key === 'breakStart' ? row.AZ_WORK_BEG || emptyTime : emptyTime);
+    }
+  }
+  if (!original || owns(values, 'breakMinutes')) row.AZ_WORK_PAUSE = integer(values.breakMinutes ?? '', 720, 'Bitte die Pausenzeit in Minuten angeben.');
+  if (!original || owns(values, 'travelKm')) row.AZ_TRAVEL_WIDTH = integer(values.travelKm ?? '', 99999, 'Bitte die Anfahrtskilometer als ganze Zahl eingeben.');
+  return row;
+}
+
+const canEditMaterialIdentity = row => !row.AP_GERID && Number(row.AP_POSTYPE || 0) === 0;
+
+function editMaterial(original, values) {
+  const row = original ? { ...original } : { AP_POSTYPE:'0', AP_GERID:'', AP_VKPREIS:'', AP_POSPREIS:'' };
+  if (!original || canEditMaterialIdentity(original)) {
+    if (!original || owns(values, 'article')) row.AP_ARTNR = text(values.article ?? '',26).trim().toUpperCase();
+    if (!original || owns(values, 'supplier')) row.AP_LIEF = text(values.supplier ?? '',5).trim();
+    if (!original || owns(values, 'description')) {
+      const description = text(values.description ?? '',4000).replace(/\r\n/g,'\n');
+      if (!description.trim() && !row.AP_ARTNR) throw invalid('Bitte eine Materialbezeichnung oder Artikelnummer angeben.');
+      const [first = '', second = ''] = description.split('\n');
+      Object.assign(row,{AP_TEXT:description,AP_KT1:first.slice(0,40),AP_KT2:second.slice(0,40)});
+    }
+  } else if (['article','supplier','description'].some(key => owns(values,key))) {
+    throw invalid('Eine mit Geräten oder Formularen verknüpfte Position kann hier nur in Menge und Einheit geändert werden.');
+  }
+  if (!original || owns(values, 'quantity')) {
+    if (!/^\d{1,8}(?:[.,]\d{1,4})?$/.test(String(values.quantity))) throw invalid('Bitte die Materialmenge prüfen.');
+    row.AP_MENGE = String(values.quantity).replace(',','.');
+    if (String(row.AP_VKPREIS ?? '').trim() && Number.isFinite(quantities(row.AP_VKPREIS))) {
+      row.AP_POSPREIS = (quantities(row.AP_MENGE) * quantities(row.AP_VKPREIS)).toFixed(2);
+    }
+  }
+  if (!original || owns(values, 'unit')) row.AP_MENGEEH = text(values.unit ?? '',4);
+  return row;
+}
+
+function editRows(originals, changes, edit, removeAllowed = () => true) {
+  if (!Array.isArray(changes) || changes.length > Math.max(200,originals.length)) throw invalid('Zu viele oder ungültige Positionen im Arbeitsschein.');
+  const used = new Set(), rows = [];
+  for (const values of changes) {
+    if (!values || typeof values !== 'object' || Array.isArray(values)) throw invalid('Eine Position im Arbeitsschein ist ungültig.');
+    const { originalIndex } = values;
+    if (originalIndex === null) {
+      rows.push(edit(null, values));
+      continue;
+    }
+    if (!Number.isSafeInteger(originalIndex) || !originals[originalIndex] || used.has(originalIndex)) throw restage();
+    used.add(originalIndex);
+    rows.push(edit(originals[originalIndex], values));
+  }
+  if (originals.some((row,index)=>!used.has(index) && !removeAllowed(row))) {
+    throw invalid('Eine mit Geräten oder Formularen verknüpfte Position kann hier nicht entfernt werden.');
+  }
+  return rows;
+}
 
 // Base30 wire format, interoperable with the MIT-licensed jSignature encoder.
 // Original format by Willow Systems Corp, https://github.com/willowsystems/jSignature.
@@ -53,13 +136,25 @@ export function encodeSignature(strokes) {
   return 'image/jsignature;base30,'+body;
 }
 
-function applyEdits(worksheet, edits) {
+function applyEdits(worksheet, edits, workers) {
   if (!edits||typeof edits!=='object'||Array.isArray(edits)) throw invalid('Die Arbeitsscheindaten fehlen.');
   const row=structuredClone(worksheet);
   row.AK_DURCHZUFUEHREN=text(edits.requested,12000);
   row.AK_ARBEITEN=text(edits.completed,12000);
   row.AK_NOTIZ=text(edits.notes,12000);
   const times=worksheetRows(row.WORKTIMES),materials=worksheetRows(row.POSITIONS);
+  if (edits.rowFormat === 2) {
+    for (const [key,prefix] of Object.entries(worksheetAddressPrefixes)) {
+      for (const [name,suffix] of Object.entries(worksheetAddressFields)) {
+        if (owns(edits.addresses?.[key] ?? {},name)) {
+          row[`${prefix}_${suffix}`] = text(edits.addresses[key][name],name==='postalCode'?16:100).trim();
+        }
+      }
+    }
+    row.WORKTIMES = editRows(times,edits.times,(original,values)=>editTime(original,values,workers));
+    row.POSITIONS = editRows(materials,edits.materials,editMaterial,canEditMaterialIdentity);
+    return row;
+  }
   if(!Array.isArray(edits.times)||times.length!==edits.times.length||!Array.isArray(edits.materials)||materials.length!==edits.materials.length) throw restage();
   for(const [index,period] of times.entries()) {
     const {start,end,breakMinutes}=edits.times[index]||{};
@@ -78,7 +173,7 @@ function applyEdits(worksheet, edits) {
   return row;
 }
 
-export async function saveExistingWorksheet(fetcher,{auth,mandantId,technician,input,beforeSend}) {
+export async function saveExistingWorksheet(fetcher,{auth,mandantId,technician,workers=[],input,beforeSend}) {
   const id=input.worksheetId;
   if(input.confirmed!==true||typeof id!=='string'||!/^[1-9]\d{0,14}$/.test(id)
       ||typeof input.sheetRevision!=='string'||!/^[a-f0-9]{64}$/.test(input.sheetRevision)) {
@@ -87,7 +182,7 @@ export async function saveExistingWorksheet(fetcher,{auth,mandantId,technician,i
   const close=input.action==='worksheet-close';
   const current=(await scopedWorksheets(fetcher,auth,mandantId,true)).get(id);
   if(!current||Number(current.AK_AUFSTATUS)>=5||await worksheetRevision(current)!==input.sheetRevision)throw restage();
-  const updated=applyEdits(current,input.edits);
+  const updated=applyEdits(current,input.edits,workers);
   updated.ID=Number(id);
   updated.AK_SAVE_TIME=localStamp();
   if(close){
@@ -118,12 +213,26 @@ export async function saveExistingWorksheet(fetcher,{auth,mandantId,technician,i
       (close&&result.SIGNATURE_NAME!==updated.SIGNATURE_NAME))throw pending();
   const periods=worksheetRows(result.WORKTIMES), positions=worksheetRows(result.POSITIONS);
   const intendedPeriods=worksheetRows(updated.WORKTIMES),intendedPositions=worksheetRows(updated.POSITIONS);
-  const quantity=value=>Number(String(value??'').replace(',','.'));
+  const addressKeys = Object.values(worksheetAddressPrefixes).flatMap(prefix =>
+    Object.values(worksheetAddressFields).map(suffix => `${prefix}_${suffix}`));
+  const normalizedTime=value=>String(value??'').replace(/^(\d):/,'0$1:').slice(0,5) || '00:00';
+  const timeKey=row=>JSON.stringify([String(row.AZ_DATUM??'').slice(0,10),String(row.AZ_WORKER??''),
+    ...Object.values(timeFields).map(field=>normalizedTime(row[field] ?? (field==='AZ_WORK_PAUSE_BEG' ? row.AZ_WORK_BEG : ''))),
+    Number(row.AZ_WORK_PAUSE??0),Number(row.AZ_TRAVEL_WIDTH??0)]);
+  const timeKeys=rows=>JSON.stringify(rows.map(timeKey).sort());
+  const materialKey=row=>JSON.stringify(['AP_ARTNR','AP_LIEF','AP_KT1','AP_KT2','AP_TEXT','AP_MENGEEH']
+    .map(field=>lines(row[field]).trim()).concat(quantities(row.AP_MENGE)));
+  if (input.edits.rowFormat===2) {
+    if (addressKeys.some(field=>lines(result[field]).trim()!==lines(updated[field]).trim()) ||
+        timeKeys(periods)!==timeKeys(intendedPeriods) ||
+        JSON.stringify(positions.map(materialKey))!==JSON.stringify(intendedPositions.map(materialKey))) throw pending();
+    return {id,closed:close};
+  }
   if(periods.length!==intendedPeriods.length||positions.length!==intendedPositions.length||
       periods.some((row,index)=>['AZ_WORK_BEG','AZ_WORK_END'].some(field=>
         String(row[field]??'').slice(0,5)!==String(intendedPeriods[index][field]??'').slice(0,5))||
         Number(row.AZ_WORK_PAUSE??0)!==Number(intendedPeriods[index].AZ_WORK_PAUSE??0))||
-      positions.some((row,index)=>quantity(row.AP_MENGE)!==quantity(intendedPositions[index].AP_MENGE)||
+      positions.some((row,index)=>quantities(row.AP_MENGE)!==quantities(intendedPositions[index].AP_MENGE)||
         String(row.AP_MENGEEH??'')!==String(intendedPositions[index].AP_MENGEEH??'')))throw pending();
   return {id,closed:close};
 }

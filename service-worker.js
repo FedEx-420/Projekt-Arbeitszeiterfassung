@@ -1,4 +1,4 @@
-const CACHE = 'worktime-v1026';
+const CACHE = 'worktime-v1027';
 const FILES = ['./','./index.html','./styles-v700.css?v=1021','./responsive-v701.css','./navigation-v710.css','./menu-v720.css','./calendar-v800.css?v=2','./home-v827.css?v=3','./signature-v828.css?v=2','./planned-orders-v855.css','./offers-v857.css?v=908','./material-units-v860.css','./vendor/pdf-lib-1.17.1.min.js','./planning-pdf.js?v=854','./documents-pdf-v857.js?v=908','./offers-v857.js?v=908','./app-v800.js?v=908','./receipt-pdf-v863-1.js','./arrival-timer-v865.js?v=875','./iphone-shortcuts-v870.js','./iphone-shortcuts-v870.css','./owntracks-v871.js?v=908','./owntracks-v871.css?v=906','./device-features-v863.js?v=964','./device-features-v863.css?v=873','./config.js?v=875','./manifest.webmanifest','./icon.svg'];
 FILES.push('./presentation-v900.css','./platform-v900.js','./guidance-v900.js?v=907','./help-topics-v900.js','./navigation-v901.js?v=908','./navigation-v901.css');
 FILES.push('./legal-templates-v900.js','./legal-v900.js');
@@ -187,7 +187,8 @@ for (let i = FILES.length - 1; i >= 0; i--) {
 
 // Used only to preserve the net conversion of historically gross-priced offers.
 FILES.push('./invoice-tax-v905.js?v=1012');
-FILES.push('./juprowa-servicepad-v1022.js?v=1026');
+FILES.push('./juprowa-servicepad-v1022.js?v=1027');
+for(let i=0;i<FILES.length;i++)if(FILES[i].startsWith('./offers-v857.js?'))FILES[i]='./offers-v857.js?v=1027';
 
 for (let i = 0; i < FILES.length; i++) {
   const path = FILES[i].split('?')[0];

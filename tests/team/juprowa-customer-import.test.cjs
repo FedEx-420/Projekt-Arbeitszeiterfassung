@@ -10,6 +10,8 @@ const company = '7f0d0000-0000-4000-8000-000000000001';
 const other = '7f0d0000-0000-4000-8000-000000000002';
 const token = '7f0d0000-0000-4000-8000-000000000003';
 const existing = '7f0d0000-0000-4000-8000-000000000004';
+const uncertain = '7f0d0000-0000-4000-8000-000000000005';
+const foreignCustomer = '7f0d0000-0000-4000-8000-000000000006';
 
 test('confirms a fresh plan, imports once, fills blanks, and keeps ambiguous and foreign rows separate', async () => {
   const db = new PGlite();
@@ -22,12 +24,14 @@ test('confirms a fresh plan, imports once, fills blanks, and keeps ambiguous and
       create table auth.users(id uuid primary key, deleted_at timestamptz, banned_until timestamptz);
       create table app_private.klarwerk_links_v1007(id uuid, created_by uuid, company_id uuid, token_hash text, claimed_at timestamptz, revoked_at timestamptz, offers_allowed boolean default false);
       create table app_private.klarwerk_events_v1007(link_id uuid, company_id uuid, operation text, request_id text);
-      create table public.offers(id uuid, business_id uuid, revision integer, updated_at timestamptz default now(),
+      create table public.offers(id uuid primary key, business_id uuid, revision integer, updated_at timestamptz default now(),
         offer_number text,customer_name text,customer_snapshot jsonb,offer_date date,valid_until date,
         title text,notes text,status text,items jsonb,subtotal numeric,tax_amount numeric,total numeric,offer_config jsonb);
       create function app_private.team_company(id uuid) returns uuid language sql as
         $$select case when role='business' then p.id else business_id end from public.profiles p where p.id=$1$$;
       create function app_private.customer_address_revision(id uuid) returns text language sql as $$select '1'::text$$;
+      create function app_private.team_can_manage(id uuid) returns boolean language sql as $$select $1::text=current_setting('test.business',true)$$;
+      grant usage on schema app_private to authenticated;
       create table public.customers(id uuid primary key default gen_random_uuid(),
         employee_id uuid references profiles(id), name text not null,
         updated_at timestamptz not null default now(), custom_fields jsonb not null default '{}');
@@ -43,6 +47,8 @@ test('confirms a fresh plan, imports once, fills blanks, and keeps ambiguous and
     await db.exec(sql('_klarwerk_offer_and_customer_sites.sql'));
     await db.exec(sql('_klarwerk_offer_feed.sql'));
     await db.exec(sql('_juprowa_worksheet_write_lease.sql'));
+    await db.exec(sql('_juprowa_customer_manual_selection.sql'));
+    await db.exec(sql('_klarwerk_offer_review_status.sql'));
     await db.query('insert into profiles values ($1,\'business\',null),($2,\'business\',null)', [company, other]);
     await db.query('insert into auth.users(id) values ($1)', [company]);
     await db.query("insert into app_private.klarwerk_links_v1007 values (gen_random_uuid(),$1,$1,'synthetic-grant',now(),null,true)", [company]);
@@ -50,8 +56,8 @@ test('confirms a fresh plan, imports once, fills blanks, and keeps ambiguous and
     await db.query("insert into juprowa_servicepad_connections values ($1,'portal','0','Test','dummy',$2)", [company, token]);
     await db.query(`insert into customers(id,employee_id,name,custom_fields) values
       ($1,$2,'Sven Beispiel','{"street":"Musterweg","house_no":"8","city":"Bonn","postal_code":"53111","country":"Deutschland","phone_private":"0228-222"}'),
-      (gen_random_uuid(),$2,'Komplex GmbH','{}'),
-      (gen_random_uuid(),$3,'Neukunde Beispiel','{"email":"new@example.invalid"}')`, [existing, company, other]);
+      ($4,$2,'Komplex GmbH','{}'),
+      ($5,$3,'Neukunde Beispiel','{"email":"new@example.invalid"}')`, [existing, company, other, uncertain, foreignCustomer]);
     const incoming = [
       { source_id: '101', name: 'Sven Beispiel', fields: { street: 'Musterweg', house_no: '8', postal_code: '53111',
         city: 'Bonn', phone_private: '0228-999', email: 'sven@example.invalid', juprowa_number: '0123' } },
@@ -73,7 +79,8 @@ test('confirms a fresh plan, imports once, fills blanks, and keeps ambiguous and
     assert.equal(await lease(other),true);
     const initial = await batch(null);
     assert.deepEqual(initial.counts, { new: 1, linked: 1, review: 1 });
-    assert.deepEqual(initial.review, [{ name: 'Komplex GmbH', candidates: ['Komplex GmbH'] }]);
+    assert.equal(initial.review[0].name, 'Komplex GmbH');
+    assert.deepEqual(initial.review[0].matches.map(match=>match.id),[uncertain]);
     assert.deepEqual(initial.new_candidates,[{id:'103',name:'Neukunde Beispiel',city:null}]);
     const offer=(await db.query("select app_private.klarwerk_offer_revision('synthetic-grant') as value")).rows[0].value;
     assert.equal(offer.allowed,true);
@@ -81,6 +88,19 @@ test('confirms a fresh plan, imports once, fills blanks, and keeps ambiguous and
     const offerRows=(await db.query("select app_private.klarwerk_offer_feed('synthetic-grant','{}') as value")).rows[0].value;
     assert.equal(offerRows.length,1);
     assert.equal(offerRows[0].business_id,company);
+    const reviewState=async (status, revision=1)=> (await db.query("select public.klarwerk_dispatch_v1007('synthetic-grant','rpc',$1::jsonb) as value",
+      [JSON.stringify({name:'sync_offer_reviews',args:{reviews:[{id:offerRows[0].id,revision,status,number:'TEST-1'},
+        {id:foreignCustomer,revision:9,status:'approved',number:'FOREIGN'}]}})])).rows[0].value;
+    assert.deepEqual(await reviewState('approved',2),{updated:0});
+    assert.deepEqual(await reviewState('approved'),{updated:1});
+    assert.deepEqual(await reviewState('approved'),{updated:0});
+    assert.deepEqual(await reviewState('accepted'),{updated:1});
+    await db.exec('set role authenticated');
+    await db.query("select set_config('test.business',$1,false)",[other]);
+    assert.equal((await db.query('select * from klarwerk_offer_reviews')).rows.length,0);
+    await db.query("select set_config('test.business',$1,false)",[company]);
+    assert.deepEqual((await db.query('select review_status from klarwerk_offer_reviews')).rows,[{review_status:'accepted'}]);
+    await db.exec('set role service_role');
     assert.deepEqual(await batch(null, token, other), { changed: true });
     await db.query("update customers set custom_fields = custom_fields || '{\"fax\":\"0228-111\"}' where id=$1", [existing]);
     const stale = await batch(initial.fingerprint);
@@ -105,6 +125,14 @@ test('confirms a fresh plan, imports once, fills blanks, and keeps ambiguous and
     const repeated = await batch(null);
     assert.deepEqual(repeated.counts, { new: 0, linked: 2, review: 1 });
     assert.equal((await batch(repeated.fingerprint)).applied, true);
+    const selectMatch = id => incoming.map(row=>row.source_id==='102'?{...row,review_target:id}:row);
+    const confirmMatch = await batch(null);
+    assert.deepEqual(await batch(confirmMatch.fingerprint,token,company,selectMatch(foreignCustomer)),{selection_error:'invalid'});
+    const assigned=await batch(confirmMatch.fingerprint,token,company,selectMatch(uncertain));
+    assert.equal(assigned.counts.assigned,1);
+    const updated=(await db.query('select custom_fields from customers where id=$1',[uncertain])).rows[0].custom_fields;
+    assert.equal(updated.city,'Bonn');
+    assert.deepEqual((await batch(null)).counts,{new:0,linked:3,review:0});
     assert.deepEqual((await db.query('select count(*)::int from customers where employee_id=$1', [company])).rows, [{ count: 3 }]);
   } finally {
     await db.close();

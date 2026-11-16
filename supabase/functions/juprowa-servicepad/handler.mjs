@@ -146,7 +146,7 @@ export function createServicepadHandler({ baseUrl, serviceKey, fetcher = fetch }
         if(!await lease(false))throw new ServicepadError('worksheet_busy',409,'Dieser Arbeitsschein wird gerade gespeichert. Prüfe den Stand erneut.');
         try{
           const result=await saveExistingWorksheet(fetcher,{auth:verified.auth,mandantId:connection.mandant_id,
-            technician:verified.technician,input,beforeSend:async()=>{
+            technician:verified.technician,workers:verified.workers,input,beforeSend:async()=>{
               const [current]=await rest(filter+'&select=revision');
               if(current?.revision!==connection.revision)throw changed();
             }});
@@ -163,16 +163,27 @@ export function createServicepadHandler({ baseUrl, serviceKey, fetcher = fetch }
         const { customers, next } = await customerPage(fetcher, verified.auth, mandant.customerMandantId, input.cursor ?? '0');
         const selected = applying && Array.isArray(input.newCustomers)
           ? new Set(input.newCustomers.filter(id=>typeof id==='string'&&/^[1-9][0-9]{0,14}$/.test(id)).slice(0,401)) : new Set();
+        const requestedAssignments=applying ? input.customerAssignments ?? {} : {};
+        const entries=requestedAssignments && typeof requestedAssignments==='object' && !Array.isArray(requestedAssignments)
+          ? Object.entries(requestedAssignments) : null;
+        const available=new Set(customers.map(customer=>customer.source_id));
+        if (!entries || entries.length>401 || entries.some(([source,target])=>!available.has(source) || typeof target!=='string' || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(target))) {
+          throw new ServicepadError('customer_assignment', 400, 'Mindestens eine Kundenzuordnung ist ungültig. Bitte lade die Kundenvorschau erneut.');
+        }
+        const assignments=new Map(entries);
         const result = await rest('rpc/juprowa_customer_batch', { method: 'POST', body: {
           p_business: company, p_revision: connection.revision,
-          p_customers: customers.map(customer=>({...customer,add_new:selected.has(customer.source_id)})),
+          p_customers: customers.map(customer=>({...customer,add_new:selected.has(customer.source_id),review_target:assignments.get(customer.source_id)})),
           p_expected: applying ? input.fingerprint : null,
         } });
         if (result.changed) throw changed();
+        if (result.selection_error) throw new ServicepadError('customer_assignment',409,result.selection_error==='duplicate'
+          ? 'Mehrere Juprowa-Kunden sind demselben Kunden zugeordnet. Bitte wähle pro Kundenkonto höchstens einen Eintrag.'
+          : 'Mindestens eine Zuordnung ist für diese Kundenvorschau nicht verfügbar. Bitte prüfe die Auswahl.');
         return json({ ...result, next });
       }
       if (input.action === 'worksheet-detail') {
-        const detail = await worksheetDetail(fetcher, verified.auth, connection.mandant_id, input.worksheetId);
+        const detail = await worksheetDetail(fetcher, verified.auth, connection.mandant_id, input.worksheetId, verified.workers);
         const [current] = await rest(filter + '&select=revision');
         if (current?.revision !== connection.revision) throw changed();
         return json({ detail });

@@ -96,7 +96,9 @@ export async function checkLogin(fetcher, auth) {
   } else if (uid !== auth.uid) {
     throw unexpectedReply();
   }
-  return { customerId, mandants, auth: { uid, passport }, technician: remoteId(user.MONTEUR_ID) };
+  const workers = Object.entries(result.SP?.WORKERS ?? {}).flatMap(([id, name]) =>
+    remoteId(id) && label(name) ? [{ id, name: label(name) }] : []);
+  return { customerId, mandants, auth: { uid, passport }, technician: remoteId(user.MONTEUR_ID), workers };
 }
 
 export function portalLogin({ serial, username, password }) {
@@ -142,6 +144,11 @@ export async function openWorksheets(fetcher, auth, mandantId) {
 
 const fieldText = value => typeof value === 'number' ? String(value) : label(value);
 const dateValue = value => /^\d{4}-\d{2}-\d{2}/.exec(label(value))?.[0] || '';
+export const worksheetAddressFields = { name: 'NAM1', name2: 'NAM2', name3: 'NAM3', street: 'STR', postalCode: 'PLZ', city: 'ORT', country: 'LAND' };
+export const worksheetAddressPrefixes = { service: 'AK_BAUADR', billing: 'RE_ADR' };
+const addressFields = (row, prefix) => Object.fromEntries(Object.entries(worksheetAddressFields)
+  .map(([key, suffix]) => [key, fieldText(row[`${prefix}_${suffix}`])]));
+const worksheetText = (value, max = 12000) => typeof value === 'string' ? value.slice(0, max) : '';
 export const worksheetRows = value => value && typeof value === 'object'
   ? Object.values(value).filter(row => row && typeof row === 'object') : [];
 const records = worksheetRows;
@@ -151,7 +158,7 @@ const address = (row, prefix) => [
   [row[prefix + '_PLZ'], row[prefix + '_ORT'], row[prefix + '_LAND']].map(value => label(value)).filter(Boolean).join(' '),
 ].filter(Boolean).join('\n');
 
-export async function worksheetDetail(fetcher, auth, mandantId, id) {
+export async function worksheetDetail(fetcher, auth, mandantId, id, workers = []) {
   if (typeof id !== 'string' || !remoteId(id)) throw new ServicepadError('worksheet_id', 400, 'Dieser Arbeitsschein ist ungültig.');
   const row = (await scopedWorksheets(fetcher, auth, mandantId)).get(id);
   if (!row) throw new ServicepadError('worksheet_missing', 404, 'Der offene Arbeitsschein ist in diesem Mandanten nicht mehr verfügbar.');
@@ -161,21 +168,29 @@ export async function worksheetDetail(fetcher, auth, mandantId, id) {
     project: fieldText(row.AK_PROJEKTNR),
     service: address(row, 'AK_BAUADR'),
     billing: address(row, 'RE_ADR'),
-    requested: label(row.AK_DURCHZUFUEHREN, 12000),
-    completed: label(row.AK_ARBEITEN, 12000),
-    notes: label(row.AK_NOTIZ, 12000),
+    addresses: Object.fromEntries(Object.entries(worksheetAddressPrefixes).map(([key, prefix]) => [key, addressFields(row, prefix)])),
+    requested: worksheetText(row.AK_DURCHZUFUEHREN),
+    completed: worksheetText(row.AK_ARBEITEN),
+    notes: worksheetText(row.AK_NOTIZ),
+    workers,
     times: records(row.WORKTIMES).map(time => ({
       day: dateValue(time.AZ_DATUM),
       worker: fieldText(time.AZ_WORKERNAME) || fieldText(time.AZ_WORKER),
+      workerId: fieldText(time.AZ_WORKER),
       start: fieldText(time.AZ_WORK_BEG),
       end: fieldText(time.AZ_WORK_END),
       breakMinutes: fieldText(time.AZ_WORK_PAUSE),
+      breakStart: fieldText(time.AZ_WORK_PAUSE_BEG),
       travelStart: fieldText(time.AZ_TRAVEL_BEG),
       travelEnd: fieldText(time.AZ_TRAVEL_END),
+      travelKm: fieldText(time.AZ_TRAVEL_WIDTH),
     })),
     materials: records(row.POSITIONS).map(item => ({
       article: fieldText(item.AP_ARTNR),
+      supplier: fieldText(item.AP_LIEF),
       name: [item.AP_KT1, item.AP_KT2].map(fieldText).filter(Boolean).join(' ') || label(item.AP_TEXT, 1200),
+      description: worksheetText(item.AP_TEXT || [item.AP_KT1, item.AP_KT2].filter(Boolean).join('\n'), 4000),
+      editableIdentity: !item.AP_GERID && Number(item.AP_POSTYPE || 0) === 0,
       quantity: fieldText(item.AP_MENGE),
       unit: fieldText(item.AP_MENGEEH),
     })),

@@ -1,6 +1,9 @@
 (() => {
   'use strict';
 
+  const addressFields = {name:'Name',name2:'Namenszusatz',name3:'Weiterer Namenszusatz',street:'Straße und Hausnummer',postalCode:'Postleitzahl',city:'Ort',country:'Land'};
+  const timeValue = value => String(value ?? '').replace(/^(\d):/,'0$1:').slice(0,5);
+
   window.WorktimeServicePad = { create({ root, state, businessId, isManager, api, escape }) {
     const scope = () => isManager() && businessId() ? state.profile.id + ':' + businessId() : '';
     let active, editDialog;
@@ -16,16 +19,26 @@
     function customerReview(current, disabled) {
       if (!current.connection || current.form) return '';
       const review = current.customerReview;
+      const formatCustomer = row => [row.name,[row.street,row.house_no].filter(Boolean).join(' '),
+        [row.postal_code,row.city].filter(Boolean).join(' ')].filter(Boolean).join(' · ');
       return `<section aria-labelledby="juprowa-customer-heading">
         <h3 id="juprowa-customer-heading">Kunden aus Juprowa übernehmen</h3>
         <p>Ergänzt leere Felder bei eindeutig passenden Kunden. Neue Kunden kannst du einzeln wählen. Unklare Zuordnungen bleiben zur Prüfung offen.</p>
         <button type="button" data-sp="customers-preview"${disabled}>Kundenvorschau laden</button>
-        ${review ? `<p role="status">${review.applied ? 'Kundendaten ergänzt. Neu angelegt: '+Number(review.counts.added||0)+'. ' : ''}Mögliche Neukunden ${review.counts.new} · Eindeutig zugeordnet ${review.counts.linked} · Zu prüfen ${review.counts.review}</p>
-          ${review.review?.length ? `<details><summary>Unklare Zuordnungen anzeigen</summary><ul>${review.review.map(row =>
-            `<li>${escape(row.name)}${row.candidates.length ? ' · mögliche Zuordnung: ' + escape(row.candidates.join(', ')) : ''}</li>`).join('')}</ul></details>` : ''}
-          ${!review.applied&&review.new_candidates?.length?`<details><summary>Einzelne Neukunden auswählen</summary><ul>${review.new_candidates.map(row=>`<li><label><input type="checkbox" data-juprowa-new value="${escape(row.id)}"${disabled}> ${escape([row.name,row.city].filter(Boolean).join(' · '))}</label></li>`).join('')}</ul></details>`:''}
-          ${!review.applied && review.counts.new + review.counts.linked > 0 ? `<button type="button" class="primary" data-sp="customers-import"${disabled}>Fehlende Daten ergänzen und Auswahl übernehmen</button>` : ''}
-          ${review.next && (review.applied || review.counts.new + review.counts.linked === 0) ? `<button type="button" data-sp="customers-next"${disabled}>Nächste Kundenseite prüfen</button>` : ''}` : ''}
+        ${review ? `<p role="status">${review.applied ? 'Kundendaten ergänzt. Neu angelegt: '+Number(review.counts.added||0)+'. Manuell zugeordnet: '+Number(review.counts.assigned||0)+'. ' : ''}Mögliche Neukunden ${review.counts.new} · Eindeutig zugeordnet ${review.counts.linked} · Zu prüfen ${review.counts.review}</p>
+          ${!review.applied&&review.review?.length ? `<details><summary>Unklare Zuordnungen einzeln prüfen</summary><ul>${review.review.map(row =>
+            `<li>${row.matches?.length?`<label>${escape(formatCustomer(row))}<select data-juprowa-assignment="${escape(row.id)}"${disabled}>
+              <option value="">Überspringen</option>${row.matches.map(match=>`<option value="${escape(match.id)}"${current.assignments?.get(row.id)===match.id?' selected':''}>${escape(formatCustomer(match))}</option>`).join('')}</select></label>`:
+              `${escape(formatCustomer(row))} · Kein verfügbarer Treffer`}</li>`).join('')}</ul></details>` : ''}
+          ${!review.applied&&review.new_candidates?.length?`<details><summary>Neukunden auswählen</summary>
+            <button type="button" data-sp="customers-select-all"${disabled}>Alle auswählen</button>
+            <button type="button" data-sp="customers-select-none"${disabled}>Auswahl aufheben</button>
+            ${review.next?'<p>Die Auswahl gilt für die aktuell geladene Kundenseite.</p>':''}
+            <ul>${review.new_candidates.map(row=>`<li><label><input type="checkbox" data-juprowa-new value="${escape(row.id)}"${current.newCustomers?.has(row.id)?' checked':''}${disabled}> ${escape(formatCustomer(row))}</label></li>`).join('')}</ul></details>`:''}
+          ${!review.applied && (review.counts.new + review.counts.linked > 0 || review.review?.some(row=>row.matches?.length)) ? `<button type="button" class="primary" data-sp="customers-import"${disabled}>Fehlende Daten ergänzen und Auswahl übernehmen</button>
+            <div class="notice" data-customer-confirm hidden><p role="status"></p><button type="button" class="primary" data-sp="customers-confirm">Kundenübernahme bestätigen</button>
+              <button type="button" data-sp="customers-cancel-confirm">Auswahl weiter bearbeiten</button></div>` : ''}
+          ${review.next ? `<button type="button" data-sp="customers-next"${disabled}>Nächste Kundenseite prüfen</button>` : ''}` : ''}
       </section>`;
     }
 
@@ -36,7 +49,7 @@
         ['Auszuführen', sheet.requested], ['Ausgeführt', sheet.completed], ['Notizen', sheet.notes],
       ].filter(([, value]) => value);
       return `<section class="panel" id="juprowa-worksheet-detail" tabindex="-1"><h3>Arbeitsschein ${escape(sheet.number)}</h3>
-        <button type="button" class="secondary" data-sp="worksheet-edit">In Juprowa bearbeiten</button>
+        <button type="button" class="primary" data-sp="worksheet-edit">In der Arbeitszeiterfassung bearbeiten</button>
         <dl>${definition.map(([key, value]) => `<dt>${key}</dt><dd style="white-space:pre-wrap">${escape(value)}</dd>`).join('')}</dl>
         <h4>Arbeitszeiten</h4>
         ${sheet.times.length ? `<ul>${sheet.times.map(time => `<li>${escape([time.day, time.worker, [time.start, time.end].filter(Boolean).join(' – '),
@@ -49,6 +62,54 @@
       </section>`;
     }
 
+    function addressInputs(label, key, address) {
+      return `<details class="wide"><summary>${label} bearbeiten</summary><div class="form-grid">${Object.entries(addressFields).map(([name,title])=>
+        `<label>${title}<input name="${key}-${name}" maxlength="${name==='postalCode'?16:100}" value="${escape(address?.[name] || '')}"></label>`).join('')}</div></details>`;
+    }
+
+    function timeRow(sheet, row={}, originalIndex) {
+      const workers = sheet.workers || [];
+      const current = row.workerId || '';
+      const previous = current && !workers.some(worker=>worker.id===current)
+        ? `<option value="${escape(current)}" selected>${escape(row.worker || current)}</option>` : '';
+      const timeInput = (label, key) => `<label>${label}<input type="time" name="${key}" value="${escape(timeValue(row[key]))}"${originalIndex==null&&['start','end'].includes(key)?' required':''}></label>`;
+      return `<fieldset class="form-grid" data-sp-row="time" data-original="${originalIndex ?? ''}"><legend>Zeitabschnitt</legend>
+        <label>Datum<input type="date" name="day" value="${escape(row.day || (originalIndex==null && sheet.times.at(-1)?.day) || '')}"${originalIndex==null?' required':''}></label>
+        <label>Monteur<select name="workerId"${originalIndex==null?' required':''}><option value="">Monteur auswählen</option>${previous}${workers.map(worker=>
+          `<option value="${escape(worker.id)}"${worker.id===current?' selected':''}>${escape(worker.name)}</option>`).join('')}</select></label>
+        ${timeInput('Arbeitsbeginn','start')}${timeInput('Arbeitsende','end')}
+        ${timeInput('Pausenbeginn','breakStart')}
+        <label>Pause in Minuten<input name="breakMinutes" type="number" min="0" max="720" step="1" value="${escape(row.breakMinutes || '')}"></label>
+        ${timeInput('Anfahrt von','travelStart')}${timeInput('Anfahrt bis','travelEnd')}
+        <label>Anfahrtskilometer<input name="travelKm" type="number" min="0" max="99999" step="1" value="${escape(row.travelKm || '')}"></label>
+        <div class="wide"><button type="button" data-sp-remove>Zeitabschnitt entfernen</button></div>
+      </fieldset>`;
+    }
+
+    function materialRow(row={}, originalIndex) {
+      const editable = row.editableIdentity !== false;
+      return `<fieldset class="form-grid" data-sp-row="material" data-original="${originalIndex ?? ''}"><legend>Materialposition</legend>
+        ${editable ? `<label>Artikelnummer<input name="article" maxlength="26" value="${escape(row.article || '')}"></label>
+          <label>Lieferantenkürzel<input name="supplier" maxlength="5" value="${escape(row.supplier || '')}"></label>
+          <label class="wide">Bezeichnung<textarea name="description" rows="2" maxlength="4000">${escape(row.description || row.name || '')}</textarea></label>` :
+          `<p class="wide">${escape(row.name || row.article || 'Verknüpfte Position')}</p>`}
+        <label>Menge<input name="quantity" inputmode="decimal" value="${escape(row.quantity || '')}"${originalIndex==null?' required':''}></label>
+        <label>Einheit<input name="unit" maxlength="4" value="${escape(row.unit || '')}"></label>
+        ${editable?'<div class="wide"><button type="button" data-sp-remove>Materialposition entfernen</button></div>':''}
+      </fieldset>`;
+    }
+
+    function collectRows(form, type) {
+      return [...form.querySelectorAll(`[data-sp-row="${type}"]`)].map(row=>{
+        const originalIndex = row.dataset.original === '' ? null : Number(row.dataset.original);
+        const patch = { originalIndex };
+        for (const field of row.querySelectorAll('[name]')) {
+          if (originalIndex === null || field.dataset.originalValue !== field.value) patch[field.name] = field.value;
+        }
+        return patch;
+      });
+    }
+
     function openSheetEditor(current) {
       const sheet=current.sheetDetail;
       if(!sheet||current.busy||!current.connection)return;
@@ -58,40 +119,54 @@
       dialog.className='panel';
       dialog.setAttribute('aria-labelledby','sp-edit-title');
       dialog.style.maxWidth='min(780px,96vw)';
-      const timeInput=(title,key,value)=>`<label>${title}<input name="${key}" type="time" value="${escape(String(value||'').slice(0,5))}"></label>`;
       dialog.innerHTML=`<form method="dialog" class="entry-form">
         <h2 class="wide" id="sp-edit-title">Juprowa-Arbeitsschein ${escape(sheet.number)}</h2>
+        ${sheet.project?`<p class="wide">Projekt ${escape(sheet.project)}</p>`:''}
+        ${addressInputs('Einsatzort','service',sheet.addresses?.service)}
+        ${addressInputs('Rechnungsanschrift','billing',sheet.addresses?.billing)}
         <label class="wide">Auszuführen<textarea name="requested" rows="3" maxlength="12000">${escape(sheet.requested)}</textarea></label>
         <label class="wide">Ausgeführt<textarea name="completed" rows="3" maxlength="12000">${escape(sheet.completed)}</textarea></label>
         <label class="wide">Notizen<textarea name="notes" rows="3" maxlength="12000">${escape(sheet.notes)}</textarea></label>
-        ${sheet.times.length?`<fieldset class="wide"><legend>Arbeitszeiten</legend>${sheet.times.map((row,i)=>`
-          <fieldset class="form-grid"><legend>${escape([row.day,row.worker].filter(Boolean).join(' · '))}</legend>
-            ${timeInput('Beginn','start-'+i,row.start)}${timeInput('Ende','end-'+i,row.end)}
-            <label>Pause in Minuten<input name="pause-${i}" type="number" min="0" max="720" step="1" value="${escape(row.breakMinutes)}"></label>
-          </fieldset>`).join('')}</fieldset>`:''}
-        ${sheet.materials.length?`<fieldset class="wide"><legend>Material</legend>${sheet.materials.map((row,i)=>`
-          <fieldset class="form-grid"><legend>${escape(row.name||row.article)}</legend>
-            <label>Menge<input name="qty-${i}" inputmode="decimal" value="${escape(row.quantity)}"></label>
-            <label>Einheit<input name="unit-${i}" value="${escape(row.unit)}"></label>
-          </fieldset>`).join('')}</fieldset>`:''}
+        <fieldset class="wide"><legend>Arbeitszeiten</legend><div data-sp-rows="time">${sheet.times.map((row,i)=>timeRow(sheet,row,i)).join('')}</div>
+          <button type="button" data-sp-add="time"${sheet.workers?.length?'':' disabled'}>Zeitabschnitt hinzufügen</button>
+          ${sheet.workers?.length?'':'<p>Juprowa hat keine verfügbaren Monteure für neue Zeitabschnitte geliefert.</p>'}
+        </fieldset>
+        <fieldset class="wide"><legend>Material</legend><div data-sp-rows="material">${sheet.materials.map((row,i)=>materialRow(row,i)).join('')}</div>
+          <button type="button" data-sp-add="material">Materialposition hinzufügen</button>
+        </fieldset>
+        ${sheet.attachmentCount||sheet.formCount?`<p class="wide">Vorhanden in Juprowa: ${Number(sheet.attachmentCount)||0} Anhänge · ${Number(sheet.formCount)||0} Formulare</p>`:''}
         <details class="wide"><summary>Unterschrift für den Abschluss</summary>
           <label>Name der unterschreibenden Person<input name="signer" maxlength="150"></label>
           <canvas width="760" height="230" aria-label="Unterschriftenfeld" style="width:100%;touch-action:none;border:1px solid #b5c9bc;background:#fff"></canvas>
           <button type="button" data-sp-clear>Unterschrift löschen</button>
         </details>
         <div class="wide notice" data-sp-confirm-panel hidden><p data-sp-confirm-text></p>
-          <button type="submit" class="primary" value="confirm">Jetzt in Juprowa bestätigen</button>
+          <button type="submit" class="primary" value="confirm">Übertragung bestätigen</button>
           <button type="button" data-sp-return>Weiter bearbeiten</button></div>
         <p class="wide" role="status" data-sp-editor-status></p>
-        <div class="wide actions"><button type="submit" value="save">In Juprowa speichern</button>
-          <button type="submit" value="close" class="primary">In Juprowa abschließen</button>
+        <div class="wide actions"><button type="submit" value="save">Änderungen speichern</button>
+          <button type="submit" value="close" class="primary">Arbeitsschein abschließen</button>
           <button type="button" data-sp-cancel>Abbrechen</button></div>
       </form>`;
       const form=dialog.querySelector('form'),canvas=dialog.querySelector('canvas'),ctx=canvas.getContext('2d');
       const confirmation=dialog.querySelector('[data-sp-confirm-panel]');
+      for (const field of form.querySelectorAll('[name]')) field.dataset.originalValue=field.value;
       let strokes=[],pointer=null,drawing=null,pending=null;
       const resetConfirmation=()=>{pending=null;confirmation.hidden=true;};
       form.addEventListener('input',resetConfirmation);
+      form.addEventListener('click',event=>{
+        const control=event.target.closest('[data-sp-add],[data-sp-remove]');
+        if (!control || current.busy) return;
+        resetConfirmation();
+        if (control.hasAttribute('data-sp-remove')) {
+          control.closest('[data-sp-row]').remove();
+          return;
+        }
+        const type=control.dataset.spAdd;
+        const rows=form.querySelector(`[data-sp-rows="${type}"]`);
+        rows.insertAdjacentHTML('beforeend',type==='time'?timeRow(sheet):materialRow());
+        rows.lastElementChild.querySelector('input')?.focus();
+      });
       dialog.querySelector('[data-sp-return]').onclick=resetConfirmation;
       ctx.strokeStyle='#143a31';ctx.lineWidth=2;ctx.lineCap='round';ctx.lineJoin='round';
       const point=e=>{
@@ -130,9 +205,12 @@
           }
           pending={closing,payload:{
             confirmed:true,worksheetId:sheet.id,sheetRevision:sheet.revision,signature:closing?signature:undefined,
-            edits:{requested:values.get('requested'),completed:values.get('completed'),notes:values.get('notes'),
-              times:sheet.times.map((_,i)=>({start:values.get('start-'+i),end:values.get('end-'+i),breakMinutes:values.get('pause-'+i)})),
-              materials:sheet.materials.map((_,i)=>({quantity:values.get('qty-'+i),unit:values.get('unit-'+i)}))},
+            edits:{rowFormat:2,requested:values.get('requested'),completed:values.get('completed'),notes:values.get('notes'),
+              addresses:Object.fromEntries(['service','billing'].map(key=>[key,Object.fromEntries(Object.keys(addressFields).flatMap(name=>{
+                const field=form.elements.namedItem(`${key}-${name}`);
+                return field.value===field.dataset.originalValue?[]:[[name,field.value]];
+              }))])),
+              times:collectRows(form,'time'),materials:collectRows(form,'material')},
           }};
           confirmation.querySelector('[data-sp-confirm-text]').textContent=closing?
             `Arbeitsschein ${sheet.number} unterschrieben in Juprowa abschließen?`:
@@ -145,7 +223,8 @@
         const {closing,payload}=pending;
         resetConfirmation();
         current.busy=true;
-        const buttons=[...dialog.querySelectorAll('button[type=submit]')];buttons.forEach(b=>{b.disabled=true;});
+        const controls=[...form.querySelectorAll('input, select, textarea, button')].filter(control=>!control.disabled);
+        controls.forEach(control=>{control.disabled=true;});
         status.textContent='Juprowa speichert den Arbeitsschein und bestätigt den Stand …';
         try{
           const result=await call(current,closing?'worksheet-close':'worksheet-save',payload);
@@ -154,7 +233,7 @@
           current.outcome=result.closed?'Juprowa hat den Abschluss bestätigt.':'Juprowa hat die Änderungen bestätigt.';
           await run(current,'list');
         }catch(error){status.textContent=error.message||'Juprowa hat das Speichern nicht bestätigt.';}
-        finally{current.busy=false;buttons.forEach(b=>{b.disabled=false;});}
+        finally{current.busy=false;controls.forEach(control=>{control.disabled=false;});}
       });
       document.body.append(dialog);dialog.showModal();
     }
@@ -201,6 +280,7 @@
             ${sheet.technician ? `<p>Monteur <strong>${escape(sheet.technician)}</strong></p>` : ''}
             ${sheet.description ? `<p style="white-space: pre-wrap">${escape(sheet.description)}</p>` : ''}
             <button type="button" data-sp="worksheet-detail" data-sheet="${escape(sheet.id)}"${muted}>Details öffnen</button>
+            <button type="button" class="primary" data-sp="worksheet-detail" data-sheet="${escape(sheet.id)}" data-sp-open-editor${muted}>Arbeitsschein bearbeiten</button>
           </details></li>`).join('')}</ul>` : '<p>Im verknüpften Mandanten sind keine offenen Arbeitsscheine verfügbar.</p>'}` : '';
       panel.innerHTML = account + info
         + (current.outcome?`<p role="status">${escape(current.outcome)}</p>`:'')
@@ -270,13 +350,13 @@
       }
     }
 
-    async function reviewOrDetail(current, command, sheetId) {
+    async function reviewOrDetail(current, command, sheetId, openEditor) {
       if (current.busy || !current.connection) return;
       const previous = current.customerReview;
-      const importing = command === 'customers-import';
-      const newCustomers=importing?[...root.querySelectorAll('#juprowa-servicepad [data-juprowa-new]:checked')].map(node=>node.value):[];
-      if (importing && (!previous?.fingerprint || (!previous.counts.linked&&!newCustomers.length) ||
-        !window.confirm(newCustomers.length?'Fehlende Daten ergänzen und die '+newCustomers.length+' ausgewählten Neukunden anlegen?':'Fehlende Angaben der eindeutig zugeordneten Kunden ergänzen?'))) return;
+      const importing = command === 'customers-confirm';
+      const newCustomers=importing?[...(current.newCustomers ?? [])]:[];
+      const customerAssignments=importing?Object.fromEntries(current.assignments ?? []):{};
+      if (importing && !previous?.fingerprint) return;
       const detail = command === 'worksheet-detail';
       const cursor = importing ? previous.cursor : command === 'customers-next' ? previous?.next : '0';
       current.busy = true;
@@ -284,12 +364,14 @@
       if (detail) current.sheetDetail = null;
       paint(current);
       try {
-        const result = await call(current, detail || importing ? command : 'customers-preview',
-          detail ? { worksheetId: sheetId } : { cursor, fingerprint: importing ? previous.fingerprint : undefined, newCustomers });
+        const result = await call(current, detail ? command : importing ? 'customers-import' : 'customers-preview',
+          detail ? { worksheetId: sheetId } : { cursor, fingerprint: importing ? previous.fingerprint : undefined, newCustomers, customerAssignments });
         if (active !== current || scope() !== current.key) return;
         if (detail) current.sheetDetail = result.detail;
         else {
-          current.customerReview = { ...result, cursor, review: result.review ?? previous?.review ?? [] };
+          current.customerReview = { ...result, cursor, review: result.review ?? [] };
+          current.newCustomers=new Set();
+          current.assignments=new Map();
           if (importing && !result.applied) current.message = 'Die Kundendaten haben sich geändert. Prüfe die neue Vorschau.';
         }
       } catch (error) {
@@ -304,7 +386,8 @@
         current.busy = false;
         paint(current);
         if (detail && current.sheetDetail && active === current && scope() === current.key) {
-          root.querySelector('#juprowa-worksheet-detail')?.focus();
+          if (openEditor) openSheetEditor(current);
+          else root.querySelector('#juprowa-worksheet-detail')?.focus();
         }
       }
     }
@@ -346,6 +429,18 @@
       filterSheets(event.target.closest('#juprowa-servicepad'),active.sheetFilter);
     });
 
+    root.addEventListener('change',event=>{
+      const field=event.target, current=active;
+      if (!current || current.busy || scope()!==current.key || !field.matches('[data-juprowa-new],[data-juprowa-assignment]')) return;
+      const confirmation=field.closest('#juprowa-servicepad').querySelector('[data-customer-confirm]');
+      if (confirmation) confirmation.hidden=true;
+      if (field.hasAttribute('data-juprowa-new')) {
+        if (field.checked) current.newCustomers.add(field.value);
+        else current.newCustomers.delete(field.value);
+      } else if (field.value) current.assignments.set(field.dataset.juprowaAssignment,field.value);
+      else current.assignments.delete(field.dataset.juprowaAssignment);
+    });
+
     root.addEventListener('click', event => {
       const button = event.target.closest('#juprowa-servicepad button[data-sp]');
       const current = active;
@@ -359,8 +454,24 @@
         if (window.confirm('ServicePad von diesem Geschäftskonto trennen?')) void run(current, 'disconnect');
       } else if (button.dataset.sp==='worksheet-edit') {
         openSheetEditor(current);
+      } else if (button.dataset.sp==='customers-select-all'||button.dataset.sp==='customers-select-none') {
+        const panel=button.closest('#juprowa-servicepad'), all=button.dataset.sp==='customers-select-all';
+        const checkboxes=[...panel.querySelectorAll('[data-juprowa-new]')];
+        for (const checkbox of checkboxes) checkbox.checked=all;
+        current.newCustomers=new Set(all?checkboxes.map(checkbox=>checkbox.value):[]);
+        const confirmation=panel.querySelector('[data-customer-confirm]');
+        if (confirmation) confirmation.hidden=true;
+      } else if (button.dataset.sp==='customers-import'||button.dataset.sp==='customers-cancel-confirm') {
+        const panel=button.closest('#juprowa-servicepad').querySelector('[data-customer-confirm]');
+        panel.hidden=button.dataset.sp==='customers-cancel-confirm';
+        if (!panel.hidden) {
+          const added=current.newCustomers?.size||0, manual=current.assignments?.size||0;
+          const count=Number(current.customerReview?.counts.linked||0)+added+manual;
+          panel.querySelector('[role=status]').textContent=count?`${added} Neukunden anlegen, ${manual} Kunden manuell zuordnen und fehlende Angaben ergänzen?`:'Wähle zuerst mindestens einen Kunden oder eine Zuordnung aus.';
+          panel.querySelector('[data-sp="customers-confirm"]').disabled=!count;
+        }
       } else {
-        void reviewOrDetail(current, button.dataset.sp, button.dataset.sheet);
+        void reviewOrDetail(current, button.dataset.sp, button.dataset.sheet, button.hasAttribute('data-sp-open-editor'));
       }
     });
     root.addEventListener('submit', event => {

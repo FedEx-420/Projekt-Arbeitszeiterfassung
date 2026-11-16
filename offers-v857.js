@@ -4,6 +4,8 @@
   function create(app){
     const {state,root,escape,n,same,lower,isManager,businessId,managerBusiness,api,allRows,render,chooseSimilar,normalizeUnit,materialUnit,unitSelect}=app;
     const ui={draft:null,saving:false,loading:false,error:'',generation:0,context:'',recovered:false,backup:false,netConverted:false};
+    let reviewCompany='', reviewRequest=null, reviews=new Map();
+    const reviewLabels={approved:'In Klarwerk freigegeben',accepted:'In Klarwerk angenommen',declined:'In Klarwerk abgelehnt'};
     const model908=()=>window.WorktimeOfferModel;
     const categoryId=()=>globalThis.crypto.randomUUID();
     const priceSlider=(value,attribute)=>{const range=model908().priceRange(value,attribute==='data-offer-category-slider'?2:4);return `<input class="offer-price-slider" type="range" min="${range.min}" max="${range.max}" step="${range.step}" value="${range.value}" ${attribute} aria-label="Preis fein um den ausgewählten Betrag anpassen"><small class="offer-price-range" data-offer-price-range>Feinbereich ${money(range.min)} bis ${money(range.max)}. Größere Änderungen bitte eintippen.</small>`;};
@@ -38,12 +40,33 @@
     const lineCents=row=>Math.round((n(row.quantity)*n(row.unit_price)+Number.EPSILON)*100);
     const totals=(items,rate)=>{const cents=items.reduce((sum,row)=>sum+lineCents(row),0),taxCents=Math.round(cents*Math.round(n(rate)*100)/10000);return {subtotal:cents/100,tax:taxCents/100,total:(cents+taxCents)/100};};
     function blank(){return {id:'',business_id:businessId(),customer_id:null,customer_name:'',customer_snapshot:{},offer_date:app.today(),valid_until:'',title:'',notes:'',status:'draft',vat_rate:0,offer_config:{version:908,kind:'itemized',categories:[],assignment:[],tax_choice:null,issuer:{}},items:[{kind:'material',name:'',material_id:null,quantity:1,unit_price:0}]};}
+    function reviewLabel(offer){
+      if(!same(reviewCompany,businessId()))return '';
+      const review=reviews.get(offer.id+':'+offer.revision);
+      return review?reviewLabels[review.review_status]||'':'';
+    }
+    function refreshReviews(){
+      const company=businessId(),actor=state.profile?.id;
+      if(!isManager()||!company||!actor||state.view!=='offers'||document.hidden||reviewRequest)return;
+      reviewRequest=(async()=>{
+        const rows=await allRows('klarwerk_offer_reviews','select=offer_id,offer_revision,review_status&business_id=eq.'+encodeURIComponent(company));
+        if (!isManager()||!same(company,businessId())||actor!==state.profile?.id||state.view!=='offers')return;
+        reviewCompany=company;
+        reviews=new Map(rows.map(row=>[row.offer_id+':'+row.offer_revision,row]));
+        const labels=new Map(list().map(offer=>[offer.id,reviewLabel(offer)]));
+        for(const node of root.querySelectorAll('[data-offer-review]')) {
+          const result=labels.get(node.dataset.offerReview);
+          node.textContent=result?' · '+result:'';
+        }
+      })().catch(()=>{}).finally(()=>{reviewRequest=null;});
+    }
+    window.setInterval(refreshReviews,4000);
     async function load(){
       if(!isManager()){state.rows.offers=[];state.offersReady=false;ui.draft=null;return;}
       activateDraft();
       const company=businessId(),generation=++ui.generation;if(!company)return;
       ui.loading=true;
-      try{const rows=await allRows('offers','select=*&business_id=eq.'+encodeURIComponent(company)+'&order=offer_date.desc,created_at.desc,id');if(generation!==ui.generation||!same(company,businessId())||!isManager())return;state.rows.offers=rows;state.offersReady=true;ui.error='';}
+      try{const rows=await allRows('offers','select=*&business_id=eq.'+encodeURIComponent(company)+'&order=offer_date.desc,created_at.desc,id');if(generation!==ui.generation||!same(company,businessId())||!isManager())return;state.rows.offers=rows;state.offersReady=true;ui.error='';refreshReviews();}
       catch{if(generation===ui.generation){state.offersReady=false;ui.error='Angebote konnten gerade nicht synchronisiert werden. Bitte erneut aktualisieren.';}}
       finally{if(generation===ui.generation)ui.loading=false;}
     }
@@ -63,7 +86,7 @@
         .replace(/<label>MwSt\. \(%\)<input[^>]+><\/label>/,`<input type="hidden" name="vat_rate" value="${escape(model.vat_rate??0)}"><p class="wide offer-tax-note"><b>Alle eingegebenen Preise sind Nettopreise, also ohne Umsatzsteuer.</b> Steuern und Freigabe bearbeitest du in Klarwerk.</p>`);
     }
     function listHtml(){
-      return list().map(offer=>`<article class="row-card"><button type="button" class="row-main" data-action="offer-open" data-id="${escape(offer.id)}"><b>${escape(offer.customer_name)}</b><span>${escape(offer.offer_number)} · ${app.dateText(offer.offer_date)}</span><small>${escape(offer.title)} · ${offer.status==='ready'?'Angebot fertig':'Entwurf'} · ${money(offer.total)}${offer.offer_config?.tax_pending?' netto':''}</small></button>${offer.offer_config?.tax_choice?`<button type="button" class="secondary small" data-action="offer-pdf" data-id="${escape(offer.id)}">PDF herunterladen</button>`: ''}</article>`).join('')||`<p class="empty">${ui.loading?'Angebote werden geladen …':'Noch keine Angebote für diese Firma vorhanden.'}</p>`;
+      return list().map(offer=>`<article class="row-card"><button type="button" class="row-main" data-action="offer-open" data-id="${escape(offer.id)}"><b>${escape(offer.customer_name)}</b><span>${escape(offer.offer_number)} · ${app.dateText(offer.offer_date)}</span><small>${escape(offer.title)} · ${offer.status==='ready'?'Angebot fertig':'Entwurf'} · ${money(offer.total)}${offer.offer_config?.tax_pending?' netto':''}<span data-offer-review="${escape(offer.id)}">${reviewLabel(offer)?' · '+escape(reviewLabel(offer)):''}</span></small></button>${offer.offer_config?.tax_choice?`<button type="button" class="secondary small" data-action="offer-pdf" data-id="${escape(offer.id)}">PDF herunterladen</button>`: ''}</article>`).join('')||`<p class="empty">${ui.loading?'Angebote werden geladen …':'Noch keine Angebote für diese Firma vorhanden.'}</p>`;
     }
     function view(){
       if(!isManager())return '<section class="panel"><h2>Angebote</h2><p>Dieser Bereich ist nur für Geschäfts- und Administratorkonten verfügbar.</p></section>';

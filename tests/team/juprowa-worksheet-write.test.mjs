@@ -11,17 +11,18 @@ const original={
 };
 const edits={requested:'Auftrag',completed:'Nachher',notes:'Fiktive Notiz',
   times:[{start:'08:00',end:'10:00',breakMinutes:'15'}],materials:[{quantity:'5,25',unit:'Stk'}]};
-function fixture() {
-  let current=structuredClone(original), writes=0;
+function fixture({sheet=original,store=value=>value}={}) {
+  let current=structuredClone(sheet), writes=0;
   const fetcher=async(url,options)=>{
     if(url.searchParams.get('type')==='WorksheetList')return Response.json([current]);
     assert.equal(url.searchParams.get('type'),'Worksheet');
     assert.equal(options.method,'POST');assert.equal(options.redirect,'error');
     assert.equal(options.body.get('ITEMID'),'12');
-    current=JSON.parse(options.body.get('DATA'));writes++;
+    current=store(JSON.parse(options.body.get('DATA')));writes++;
     return Response.json({result:'unrecognized response envelope'});
   };
-  const ctx={auth:{uid:'fixture',passport:'fixture'},mandantId:'0',technician:'11',beforeSend:async()=>{}};
+  const ctx={auth:{uid:'fixture',passport:'fixture'},mandantId:'0',technician:'11',beforeSend:async()=>{},
+    workers:[{id:'1',name:'Erste Testperson'},{id:'2',name:'Zweite Testperson'}]};
   return {fetcher,ctx,state:()=>current,writes:()=>writes};
 }
 
@@ -57,4 +58,48 @@ test('requires explicit approval and a signature, then reads back the closed sta
   assert.equal(state().SEND_MAIL_TO_CUSTOMER,false);
   assert.equal(state().SEND_MAIL_TO_RECIPIENT,false);
   assert.equal(writes(),1);
+});
+
+const revisedEdits={...edits,rowFormat:2,
+  addresses:{service:{street:'Testweg 5',postalCode:'00123'}},
+  times:[{originalIndex:0,travelStart:'07:30',travelEnd:'08:00',travelKm:'12',breakStart:'08:45',breakMinutes:'15'},
+    {originalIndex:null,day:'2026-11-16',workerId:'2',start:'09:30',end:'10:30'}],
+  materials:[{originalIndex:null,article:'tx-42',supplier:'T',description:'Fiktives Material',quantity:'35,5',unit:'m'}],
+};
+
+test('updates the same sheet with address, travel, added time and replacement material using provider fields',async()=>{
+  const {fetcher,ctx,state}=fixture();
+  const input={action:'worksheet-save',confirmed:true,worksheetId:'12',sheetRevision:await worksheetRevision(original),edits:revisedEdits};
+  await saveExistingWorksheet(fetcher,{...ctx,input});
+  assert.equal(state().ID,12);
+  assert.equal(state().AK_BAUADR_STR,'Testweg 5');
+  assert.equal(state().AK_BAUADR_PLZ,'00123');
+  assert.equal(state().WORKTIMES[0].AZ_TRAVEL_WIDTH,12);
+  assert.equal(state().WORKTIMES[0].AZ_WORK_PAUSE_BEG,'08:45:00');
+  assert.equal(state().WORKTIMES[1].AZ_WORKER,'2');
+  assert.equal(state().WORKTIMES[1].AZ_WORKERNAME,'Zweite Testperson');
+  assert.equal(state().WORKTIMES[1].AZ_WORK_PAUSE_BEG,'09:30:00');
+  assert.equal(state().POSITIONS.length,1);
+  assert.deepEqual(state().POSITIONS[0],{AP_POSTYPE:'0',AP_GERID:'',AP_VKPREIS:'',AP_POSPREIS:'',
+    AP_ARTNR:'TX-42',AP_LIEF:'T',AP_TEXT:'Fiktives Material',AP_KT1:'Fiktives Material',AP_KT2:'',AP_MENGE:'35.5',AP_MENGEEH:'m'});
+  assert.deepEqual(state().MEDIAFILES,original.MEDIAFILES);
+  assert.deepEqual(state().FORMDATA,original.FORMDATA);
+});
+
+test('protects existing linked rows, rejects unrecognized workers and catches incomplete readback',async()=>{
+  const base={action:'worksheet-save',confirmed:true,worksheetId:'12',sheetRevision:await worksheetRevision(original),edits:revisedEdits};
+  const brokenReadback=fixture({store(value){value.WORKTIMES[0].AZ_TRAVEL_WIDTH=0;return value;}});
+  await assert.rejects(saveExistingWorksheet(brokenReadback.fetcher,{...brokenReadback.ctx,input:base}),
+    error=>error.code==='worksheet_unconfirmed');
+  const unknown=fixture();
+  const invalid=structuredClone(base);
+  invalid.edits.times[1].workerId='invalid';
+  await assert.rejects(saveExistingWorksheet(unknown.fetcher,{...unknown.ctx,input:invalid}),/Monteur auswählen/);
+  assert.equal(unknown.writes(),0);
+  const linked=structuredClone(original);
+  linked.POSITIONS[0].AP_GERID='99';
+  const protectedRecord=fixture({sheet:linked});
+  await assert.rejects(saveExistingWorksheet(protectedRecord.fetcher,{...protectedRecord.ctx,
+    input:{...base,sheetRevision:await worksheetRevision(linked)}}),/nicht entfernt/);
+  assert.equal(protectedRecord.writes(),0);
 });

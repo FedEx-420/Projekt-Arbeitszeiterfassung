@@ -2640,6 +2640,12 @@
   initializeShopping();
   const klarwerkConnection=window.WorktimeKlarwerkConnection?.create({root,state,businessId,isManager,api,escape});
   if(klarwerkConnection){const baseSettings=settingsView,baseRender=render;settingsView=()=>baseSettings()+klarwerkConnection.settings();render=()=>{baseRender();klarwerkConnection.afterRender();};}
+  const servicePad=window.WorktimeServicePad?.create({root,state,businessId,isManager,api,escape});
+  if(servicePad){
+    const baseSettings=settingsView,baseRender=render;
+    settingsView=()=>baseSettings()+servicePad.settings();
+    render=()=>{baseRender();servicePad.afterRender();};
+  }
   const themeRender=render;render=()=>{themeRender();window.WorktimeKlarwerkTheme?.afterRender(root);};window.WorktimeKlarwerkTheme?.afterRender(root);
   const supplierStock=window.WorktimeSupplierStock?.create({root,state,businessId,isManager,api,escape,shoppingProvider:()=>activeShoppingProvider()});
   if(supplierStock){const beforeStockRender=render;render=()=>{beforeStockRender();supplierStock.afterRender();};}

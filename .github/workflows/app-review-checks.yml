@@ -42,6 +42,7 @@ jobs:
       - name: Juprowa work-order material export
         run: |
           node tests/team/juprowa-material-browser-v1009.test.cjs
+          node --test tests/team/juprowa-servicepad-v1022.test.mjs
 
       - name: Invoice and work-order rules in disposable databases
         run: |

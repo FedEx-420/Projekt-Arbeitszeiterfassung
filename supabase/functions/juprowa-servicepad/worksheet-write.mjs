@@ -104,12 +104,17 @@ export async function saveExistingWorksheet(fetcher,{auth,mandantId,technician,i
     updated.sendFormToCustomer_={};
   }
   await beforeSend();
-  const response=await requestPortal(fetcher,'Worksheet',auth,{}, {ITEMID:id,DATA:JSON.stringify(updated)});
-  const confirmed=response?.ResponseParams?.data;
-  if(String(confirmed?.ID)!==id||(close&&Number(confirmed.AK_AUFSTATUS)!==5))throw pending();
+  try {
+    await requestPortal(fetcher,'Worksheet',auth,{}, {ITEMID:id,DATA:JSON.stringify(updated)});
+  } catch(error) {
+    if(error.code==='portal_write_access')throw error;
+    // Cloud versions return different response envelopes. A request with an
+    // ambiguous transport result may already have reached the portal.
+  }
   const result=(await scopedWorksheets(fetcher,auth,mandantId,true)).get(id);
+  const lines=value=>String(value??'').replace(/\r\n/g,'\n');
   if(!result||Number(result.AK_AUFSTATUS)!==Number(updated.AK_AUFSTATUS)||
-      ['AK_ARBEITEN','AK_DURCHZUFUEHREN','AK_NOTIZ'].some(field=>String(result[field]??'')!==updated[field])||
+      ['AK_ARBEITEN','AK_DURCHZUFUEHREN','AK_NOTIZ'].some(field=>lines(result[field])!==lines(updated[field]))||
       (close&&result.SIGNATURE_NAME!==updated.SIGNATURE_NAME))throw pending();
   const periods=worksheetRows(result.WORKTIMES), positions=worksheetRows(result.POSITIONS);
   const intendedPeriods=worksheetRows(updated.WORKTIMES),intendedPositions=worksheetRows(updated.POSITIONS);

@@ -19,7 +19,7 @@ const portalUnavailable = () => new ServicepadError('portal_unavailable', 502,
 const unexpectedReply = () => new ServicepadError('portal_reply', 502,
   'ServicePad hat eine unerwartete Antwort geliefert. Der Abruf wurde abgebrochen.');
 
-export async function requestPortal(fetcher, type, auth, params = {}) {
+export async function requestPortal(fetcher, type, auth, params = {}, form) {
   const url = new URL(serviceUrl);
   url.searchParams.set('type', type);
   url.searchParams.set('UID', auth.uid);
@@ -29,7 +29,8 @@ export async function requestPortal(fetcher, type, auth, params = {}) {
   let response, raw;
   try {
     response = await fetcher(url, {
-      headers: { accept: 'application/json' },
+      headers: { accept: 'application/json', ...(form?{'content-type':'application/x-www-form-urlencoded'}:{}) },
+      ...(form?{method:'POST',body:new URLSearchParams(form)}:{}),
       cache: 'no-store',
       redirect: 'error',
       signal: AbortSignal.timeout(14000),
@@ -40,6 +41,7 @@ export async function requestPortal(fetcher, type, auth, params = {}) {
   }
   if (response.status === 401 || response.status === 403) {
     if (type === 'Userdata') throw loginRejected();
+    if (form) throw new ServicepadError('portal_write_access',403,'ServicePad hat das Speichern für diesen Zugang abgelehnt.');
     throw new ServicepadError('portal_list_access', 403,
       'Die Anmeldung bei ServicePad war erfolgreich. Dieser Portalzugang konnte die Arbeitsscheine jedoch nicht abrufen.');
   }
@@ -94,7 +96,7 @@ export async function checkLogin(fetcher, auth) {
   } else if (uid !== auth.uid) {
     throw unexpectedReply();
   }
-  return { customerId, mandants, auth: { uid, passport } };
+  return { customerId, mandants, auth: { uid, passport }, technician: remoteId(user.MONTEUR_ID) };
 }
 
 export function portalLogin({ serial, username, password }) {
@@ -107,14 +109,14 @@ export function portalLogin({ serial, username, password }) {
   return { uid: company + name, passport: company + name + secret };
 }
 
-async function scopedWorksheets(fetcher, auth, mandantId) {
+export async function scopedWorksheets(fetcher, auth, mandantId, includeClosed = false) {
   const result = await requestPortal(fetcher, 'WorksheetList', auth);
   if (!Array.isArray(result) || result.some(row => !row || !remoteId(row.ID)
       || !/^-?\d+$/.test(String(row.AK_AUFSTATUS ?? '')))) throw unexpectedReply();
   const matches = new Map();
   for (const row of result) {
     const scope = row.ID_MANDANT == null || row.ID_MANDANT === '' ? '0' : remoteId(row.ID_MANDANT);
-    if (scope !== mandantId || Number(row.AK_AUFSTATUS) >= 5) continue;
+    if (scope !== mandantId || (!includeClosed && Number(row.AK_AUFSTATUS) >= 5)) continue;
     matches.set(remoteId(row.ID), row);
   }
   return matches;
@@ -127,6 +129,7 @@ export async function openWorksheets(fetcher, auth, mandantId) {
     return {
       id,
       number: label(row.AK_SCHEINNR) || id,
+      project: fieldText(row.AK_PROJEKTNR),
       customer: [label(row.AK_BAUADR_NAM1), label(row.AK_BAUADR_NAM2)].filter(Boolean).join(' '),
       location: [label(row.AK_BAUADR_STR), [label(row.AK_BAUADR_PLZ), label(row.AK_BAUADR_ORT)].filter(Boolean).join(' ')].filter(Boolean).join(', '),
       technician: label(row.AK_MONTEUR_TEXT),
@@ -139,8 +142,9 @@ export async function openWorksheets(fetcher, auth, mandantId) {
 
 const fieldText = value => typeof value === 'number' ? String(value) : label(value);
 const dateValue = value => /^\d{4}-\d{2}-\d{2}/.exec(label(value))?.[0] || '';
-const records = value => value && typeof value === 'object'
+export const worksheetRows = value => value && typeof value === 'object'
   ? Object.values(value).filter(row => row && typeof row === 'object') : [];
+const records = worksheetRows;
 const address = (row, prefix) => [
   [row[prefix + '_NAM1'], row[prefix + '_NAM2'], row[prefix + '_NAM3']].map(value => label(value)).filter(Boolean).join(' '),
   label(row[prefix + '_STR']),
@@ -178,5 +182,11 @@ export async function worksheetDetail(fetcher, auth, mandantId, id) {
     signed: typeof row.SIGNATURE_DATA === 'string' && row.SIGNATURE_DATA.includes(',') && row.SIGNATURE_DATA.split(',')[1]?.length > 0,
     attachmentCount: records(row.MEDIAFILES).length,
     formCount: records(row.FORMDATA).length,
+    revision: await worksheetRevision(row),
   };
+}
+
+export async function worksheetRevision(row) {
+  const bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(row)));
+  return [...new Uint8Array(bytes)].map(part=>part.toString(16).padStart(2,'0')).join('');
 }

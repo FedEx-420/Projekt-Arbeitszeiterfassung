@@ -7,10 +7,10 @@
 
     function settings() {
       if (!scope()) return '';
-      return `<section class="panel" aria-labelledby="juprowa-heading">
-        <h2 id="juprowa-heading">Juprowa ServicePad</h2>
+      return `<details id="juprowa-settings" class="panel"${active?.key === scope() && active.expanded ? ' open' : ''}>
+        <summary>Juprowa ServicePad</summary>
         <div id="juprowa-servicepad"><p role="status">Verbindung wird geprüft …</p></div>
-      </section>`;
+      </details>`;
     }
 
     function paint(current) {
@@ -26,16 +26,19 @@
           <button type="button" data-sp="form"${muted}>Neu anmelden</button>
           <button type="button" data-sp="disconnect"${muted}>Verbindung trennen</button>` : '';
       const form = current.loaded && (current.form || !current.connection)
-        ? `<form id="juprowa-connect" autocomplete="off">
+        ? `<form id="juprowa-connect" method="post" autocomplete="off">
             <p>Verwende den Portalzugang des Betriebs, den du hier verknüpfen möchtest.</p>
             <div class="form-grid">
-              <div><label>Seriennummer<input name="serial" required maxlength="80" aria-describedby="juprowa-serial-note"></label>
+              <div><span id="juprowa-serial-label">Seriennummer</span>
+                <input name="serial" required maxlength="80" aria-labelledby="juprowa-serial-label" aria-describedby="juprowa-serial-note">
                 <details><summary aria-label="Hilfe zur Seriennummer">Info</summary>
                   <p id="juprowa-serial-note">Seriennummer des Betriebs aus der ServicePad-Anmeldung.</p></details></div>
-              <div><label>Benutzer<input name="username" required maxlength="120" aria-describedby="juprowa-user-note"></label>
+              <div><span id="juprowa-user-label">Benutzer</span>
+                <input name="username" required maxlength="120" aria-labelledby="juprowa-user-label" aria-describedby="juprowa-user-note">
                 <details><summary aria-label="Hilfe zum Benutzernamen">Info</summary>
                   <p id="juprowa-user-note">Der Benutzername, mit dem du ServicePad öffnest.</p></details></div>
-              <div><label>Passwort<input name="password" type="password" required maxlength="512" aria-describedby="juprowa-password-note"></label>
+              <div><span id="juprowa-password-label">Passwort</span>
+                <input name="password" type="password" required maxlength="512" aria-labelledby="juprowa-password-label" aria-describedby="juprowa-password-note">
                 <details><summary aria-label="Hilfe zum Passwort">Info</summary>
                   <p id="juprowa-password-note">Das Passwort für ServicePad. Die Arbeitszeiterfassung speichert die Zugangsdaten für weitere Abrufe verschlüsselt.</p></details></div>
             </div>
@@ -113,16 +116,19 @@
     function afterRender() {
       const key = scope();
       if (active?.key !== key) active = null;
-      if (!key || !root.querySelector('#juprowa-servicepad')) {
+      const section = root.querySelector('#juprowa-settings');
+      if (!key || !section) {
         active = null;
         return;
       }
-      if (active) {
-        paint(active);
-        return;
-      }
-      active = { key, business: businessId() };
-      void run(active, 'status');
+      active ??= { key, business: businessId(), expanded: false };
+      const current = active;
+      section.addEventListener('toggle', () => {
+        if (!section.isConnected || active !== current || scope() !== current.key) return;
+        current.expanded = section.open;
+        if (section.open && !current.loaded && !current.busy) void run(current, 'status');
+      });
+      if (current.expanded) paint(current);
     }
 
     root.addEventListener('click', event => {
@@ -140,9 +146,10 @@
     });
     root.addEventListener('submit', event => {
       const form = event.target;
-      if (form.id !== 'juprowa-connect' || !active || scope() !== active.key) return;
+      if (form.id !== 'juprowa-connect') return;
       event.preventDefault();
       event.stopPropagation();
+      if (!active || scope() !== active.key) return;
       const fields = Object.fromEntries(new FormData(form));
       void run(active, 'connect', fields, form);
     }, true);

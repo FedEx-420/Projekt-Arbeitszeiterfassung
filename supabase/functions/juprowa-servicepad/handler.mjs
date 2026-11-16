@@ -140,8 +140,11 @@ export function createServicepadHandler({ baseUrl, serviceKey, fetcher = fetch }
           throw new ServicepadError('customer_preview', 400, 'Erstelle vor der Übernahme eine Kundenvorschau.');
         }
         const { customers, next } = await customerPage(fetcher, verified.auth, mandant.customerMandantId, input.cursor ?? '0');
+        const selected = applying && Array.isArray(input.newCustomers)
+          ? new Set(input.newCustomers.filter(id=>typeof id==='string'&&/^[1-9][0-9]{0,14}$/.test(id)).slice(0,401)) : new Set();
         const result = await rest('rpc/juprowa_customer_batch', { method: 'POST', body: {
-          p_business: company, p_revision: connection.revision, p_customers: customers,
+          p_business: company, p_revision: connection.revision,
+          p_customers: customers.map(customer=>({...customer,add_new:selected.has(customer.source_id)})),
           p_expected: applying ? input.fingerprint : null,
         } });
         if (result.changed) throw changed();

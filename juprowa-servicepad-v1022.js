@@ -5,10 +5,10 @@
     const scope = () => isManager() && businessId() ? state.profile.id + ':' + businessId() : '';
     let active;
 
-    function settings() {
+    function section(mode, heading) {
       if (!scope()) return '';
-      return `<details id="juprowa-settings" class="panel"${active?.key === scope() && active.expanded ? ' open' : ''}>
-        <summary>Juprowa ServicePad</summary>
+      return `<details id="juprowa-settings" data-juprowa-mode="${mode}" class="panel"${active?.key === scope() && active.mode===mode && active.expanded ? ' open' : ''}>
+        <summary>${heading}</summary>
         <div id="juprowa-servicepad"><p role="status">Verbindung wird geprüft …</p></div>
       </details>`;
     }
@@ -18,12 +18,13 @@
       const review = current.customerReview;
       return `<section aria-labelledby="juprowa-customer-heading">
         <h3 id="juprowa-customer-heading">Kunden aus Juprowa übernehmen</h3>
-        <p>Ergänzt leere Felder und zeigt unklare Zuordnungen zur Prüfung. Das verknüpfte Klarwerk-Konto erhält die übernommenen Kunden beim nächsten Abgleich.</p>
+        <p>Ergänzt leere Felder bei eindeutig passenden Kunden. Neue Kunden kannst du einzeln wählen. Unklare Zuordnungen bleiben zur Prüfung offen.</p>
         <button type="button" data-sp="customers-preview"${disabled}>Kundenvorschau laden</button>
-        ${review ? `<p role="status">${review.applied ? 'Kunden übernommen. ' : ''}Neue Kunden ${review.counts.new} · Eindeutig zugeordnet ${review.counts.linked} · Zu prüfen ${review.counts.review}</p>
+        ${review ? `<p role="status">${review.applied ? 'Kundendaten ergänzt. Neu angelegt: '+Number(review.counts.added||0)+'. ' : ''}Mögliche Neukunden ${review.counts.new} · Eindeutig zugeordnet ${review.counts.linked} · Zu prüfen ${review.counts.review}</p>
           ${review.review?.length ? `<details><summary>Unklare Zuordnungen anzeigen</summary><ul>${review.review.map(row =>
             `<li>${escape(row.name)}${row.candidates.length ? ' · mögliche Zuordnung: ' + escape(row.candidates.join(', ')) : ''}</li>`).join('')}</ul></details>` : ''}
-          ${!review.applied && review.counts.new + review.counts.linked > 0 ? `<button type="button" class="primary" data-sp="customers-import"${disabled}>Kunden dieser Vorschau übernehmen</button>` : ''}
+          ${!review.applied&&review.new_candidates?.length?`<details><summary>Einzelne Neukunden auswählen</summary><ul>${review.new_candidates.map(row=>`<li><label><input type="checkbox" data-juprowa-new value="${escape(row.id)}"${disabled}> ${escape([row.name,row.city].filter(Boolean).join(' · '))}</label></li>`).join('')}</ul></details>`:''}
+          ${!review.applied && review.counts.new + review.counts.linked > 0 ? `<button type="button" class="primary" data-sp="customers-import"${disabled}>Fehlende Daten ergänzen und Auswahl übernehmen</button>` : ''}
           ${review.next && (review.applied || review.counts.new + review.counts.linked === 0) ? `<button type="button" data-sp="customers-next"${disabled}>Nächste Kundenseite prüfen</button>` : ''}` : ''}
       </section>`;
     }
@@ -56,7 +57,7 @@
         ? `<p>Verknüpfter Mandant <strong>${escape(current.connection.label)}</strong></p>` : '';
       const muted = current.busy ? ' disabled' : '';
       const buttons = current.connection && !current.form
-        ? `<button type="button" data-sp="refresh"${muted}>Arbeitsscheine aktualisieren</button>
+        ? `${current.mode==='customers'?'':`<button type="button" data-sp="refresh"${muted}>Arbeitsscheine aktualisieren</button>`}
           <button type="button" data-sp="form"${muted}>Neu anmelden</button>
           <button type="button" data-sp="disconnect"${muted}>Verbindung trennen</button>` : '';
       const form = current.loaded && (current.form || !current.connection)
@@ -79,7 +80,7 @@
             <p><button type="submit"${muted}>Mit ServicePad verbinden</button>
               ${current.connection ? '<button type="button" data-sp="cancel">Abbrechen</button>' : ''}</p>
           </form>` : '';
-      const worksheets = Array.isArray(current.worksheets) ? current.worksheets : null;
+      const worksheets = current.mode!=='customers'&&Array.isArray(current.worksheets) ? current.worksheets : null;
       const list = worksheets
         ? `<h3>Offene Arbeitsscheine (${worksheets.length})</h3>
           ${worksheets.length ? `<ul class="servicepad-worksheets">${worksheets.map(sheet => `<li><details>
@@ -92,7 +93,7 @@
       panel.innerHTML = account + info
         + (current.busy ? '<p role="status">ServicePad wird abgefragt …</p>' : '')
         + (current.loaded ? '' : `<button type="button" data-sp="refresh"${muted}>Verbindung prüfen</button>`)
-        + buttons + form + customerReview(current, muted) + sheetDetail(current.sheetDetail) + list;
+        + buttons + form + (current.mode==='orders'?'':customerReview(current, muted)) + sheetDetail(current.sheetDetail) + list;
     }
 
     const call = (current, action, fields = {}) => api('/functions/v1/juprowa-servicepad', {
@@ -131,7 +132,7 @@
         current.connection = result.connection;
         current.loaded = true;
         current.form = false;
-        if (action === 'status' && result.connection) result = await call(current, 'list');
+        if (action === 'status' && result.connection && current.mode!=='customers') result = await call(current, 'list');
         if (active === current && scope() === current.key) current.worksheets = result.worksheets ?? null;
       } catch (error) {
         if (error.code === 'connection_changed') {
@@ -154,7 +155,9 @@
       if (current.busy || !current.connection) return;
       const previous = current.customerReview;
       const importing = command === 'customers-import';
-      if (importing && (!previous?.fingerprint || !window.confirm('Die eindeutigen Kunden dieser Vorschau jetzt übernehmen?'))) return;
+      const newCustomers=importing?[...root.querySelectorAll('#juprowa-servicepad [data-juprowa-new]:checked')].map(node=>node.value):[];
+      if (importing && (!previous?.fingerprint || (!previous.counts.linked&&!newCustomers.length) ||
+        !window.confirm(newCustomers.length?'Fehlende Daten ergänzen und die '+newCustomers.length+' ausgewählten Neukunden anlegen?':'Fehlende Angaben der eindeutig zugeordneten Kunden ergänzen?'))) return;
       const detail = command === 'worksheet-detail';
       const cursor = importing ? previous.cursor : command === 'customers-next' ? previous?.next : '0';
       current.busy = true;
@@ -163,7 +166,7 @@
       paint(current);
       try {
         const result = await call(current, detail || importing ? command : 'customers-preview',
-          detail ? { worksheetId: sheetId } : { cursor, fingerprint: importing ? previous.fingerprint : undefined });
+          detail ? { worksheetId: sheetId } : { cursor, fingerprint: importing ? previous.fingerprint : undefined, newCustomers });
         if (active !== current || scope() !== current.key) return;
         if (detail) current.sheetDetail = result.detail;
         else {
@@ -204,7 +207,9 @@
         active = null;
         return;
       }
-      active ??= { key, business: businessId(), expanded: false };
+      const mode=section.dataset.juprowaMode;
+      if(active?.mode!==mode)active=null;
+      active ??= { key, business: businessId(), mode, expanded: false };
       const current = active;
       section.addEventListener('toggle', () => {
         if (!section.isConnected || active !== current || scope() !== current.key) return;
@@ -239,6 +244,7 @@
       void run(active, 'connect', fields, form);
     }, true);
 
-    return { settings, afterRender };
+    return { settings:()=>section('settings','Juprowa ServicePad'),customers:()=>section('customers','Juprowa-Kundendaten ergänzen'),
+      orders:()=>section('orders','Offene Juprowa-Arbeitsscheine'),afterRender };
   } };
 })();

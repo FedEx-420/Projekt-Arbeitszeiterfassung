@@ -29,10 +29,10 @@
         ? `<form id="juprowa-connect" method="post" autocomplete="off">
             <p>Verwende den Portalzugang des Betriebs, den du hier verknüpfen möchtest.</p>
             <div class="form-grid">
-              <div><span id="juprowa-serial-label">Seriennummer</span>
+              <div><span id="juprowa-serial-label">Kundennummer</span>
                 <input name="serial" required maxlength="80" aria-labelledby="juprowa-serial-label" aria-describedby="juprowa-serial-note">
-                <details><summary aria-label="Hilfe zur Seriennummer">Info</summary>
-                  <p id="juprowa-serial-note">Seriennummer des Betriebs aus der ServicePad-Anmeldung.</p></details></div>
+                <details><summary aria-label="Hilfe zur Kundennummer">Info</summary>
+                  <p id="juprowa-serial-note">Die Kundennummer aus dem Anmeldeformular der Juprowa Cloud. Gib sie mit allen Stellen ein.</p></details></div>
               <div><span id="juprowa-user-label">Benutzer</span>
                 <input name="username" required maxlength="120" aria-labelledby="juprowa-user-label" aria-describedby="juprowa-user-note">
                 <details><summary aria-label="Hilfe zum Benutzernamen">Info</summary>

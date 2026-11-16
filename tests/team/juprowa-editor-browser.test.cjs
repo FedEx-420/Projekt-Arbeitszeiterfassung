@@ -8,7 +8,10 @@ async function main() {
   try {
     const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
     page.setDefaultTimeout(8000);
-    await page.setContent('<main id="app"></main>');
+    await page.setContent('<main id="app" class="content"></main>');
+    for (const name of ['styles-v700.css','responsive-v701.css','neutral-theme-v1002.css','juprowa-servicepad-v1028.css']) {
+      await page.addStyleTag({ path: path.resolve(__dirname, '../../'+name) });
+    }
     await page.addScriptTag({ path: path.resolve(__dirname, '../../juprowa-servicepad-v1022.js') });
     await page.evaluate(() => {
       const root = document.querySelector('#app');
@@ -18,7 +21,14 @@ async function main() {
         return escapeNode.innerHTML.replaceAll('"','&quot;');
       };
       const connection = { revision: 'fixture', label: 'Fiktiver Betrieb' };
-      const sheets = [{ id: '12', number: 'TEST-12' }];
+      const sheets = [
+        { id: '12', number: 'TEST-12', project: '1003', customer: 'König Gebäudetechnik', date: '2026-11-16',
+          location: 'Musterstraße 14, 53111 Bonn', technician: 'Monteur A', description: 'Leuchten im Flur austauschen' },
+        { id: '13', number: 'TEST-13', project: '1002', customer: 'Rathaus Mitte', date: '2026-10-28',
+          location: 'Rathausplatz 1, 53111 Bonn', technician: 'Monteur B', description: 'Steckdosen im Erdgeschoss prüfen' },
+        { id: '14', number: 'TEST-14', project: '1001', customer: 'Hausverwaltung Rheinblick',
+          location: 'Uferweg 7, 53111 Bonn', technician: 'Monteur C', description: 'Beleuchtung in der Tiefgarage prüfen' },
+      ];
       const detail = { ...sheets[0], revision: 'fixture-sheet', requested: 'Fiktiver Auftrag', completed: 'Vorher', notes: '',
         addresses: { service: { street: 'Testweg 1' } }, workers: [{ id: '6', name: 'Monteur A' }, { id: '7', name: 'Monteur B' }],
         times: [{ day: '2026-11-16', workerId: '6', start: '08:00', end: '09:00' }],
@@ -46,8 +56,33 @@ async function main() {
       window.showTestCustomers = () => { root.innerHTML = servicePad.customers(); servicePad.afterRender(); };
     });
     await page.getByText('Offene Juprowa-Arbeitsscheine', { exact: true }).click();
-    await page.getByText('TEST-12', { exact: true }).click();
-    await page.getByRole('button', { name: 'Arbeitsschein bearbeiten' }).click();
+    const results = page.getByRole('list', { name: 'Offene Juprowa-Arbeitsscheine' });
+    const search = page.getByRole('searchbox', { name: 'Juprowa-Arbeitsschein suchen' });
+    await results.getByText('König Gebäudetechnik').waitFor();
+    assert.equal(await results.locator('li').count(),3);
+    assert.equal(await results.getByRole('listitem').first().getByRole('heading').innerText(),'König Gebäudetechnik');
+    await page.getByRole('combobox', { name: 'Sortierung' }).selectOption('oldest');
+    assert.equal(await results.getByRole('listitem').first().getByRole('heading').innerText(),'Rathaus Mitte');
+    assert.equal(await results.getByRole('listitem').last().getByRole('heading').innerText(),'Hausverwaltung Rheinblick');
+    await search.fill('konig mustersTrasse');
+    await page.getByText('1 von 3 Arbeitsscheinen').waitFor();
+    assert.equal(await results.getByRole('listitem').count(),1);
+    await search.fill('Kein solcher Treffer');
+    await page.getByText('Keine Arbeitsscheine passen zur Suche.').waitFor();
+    await page.getByRole('button',{name:'Suche zurücksetzen'}).click();
+    await page.getByText('3 offene Arbeitsscheine').waitFor();
+    for (const width of [320, 390, 1280]) {
+      await page.setViewportSize({ width, height: 844 });
+      assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+    }
+    await page.setViewportSize({ width: 390, height: 844 });
+    const firstSheet=results.getByRole('listitem').filter({hasText:'König Gebäudetechnik'});
+    await firstSheet.getByRole('button',{name:'Details öffnen'}).click();
+    const preview=page.getByRole('dialog',{name:'Arbeitsschein TEST-12'});
+    await preview.getByText('Arbeitszeiten',{exact:true}).waitFor();
+    await preview.getByText('Altes Material',{exact:false}).waitFor();
+    await preview.getByRole('button',{name:'Schließen'}).click();
+    await firstSheet.getByRole('button', { name: 'Arbeitsschein bearbeiten' }).click();
     const editor = page.getByRole('dialog');
     await editor.getByText('Einsatzort bearbeiten').click();
     await editor.getByRole('textbox', { name: 'Straße und Hausnummer' }).fill('Testweg 5');

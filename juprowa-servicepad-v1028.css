@@ -1,0 +1,144 @@
+.servicepad-board,
+.servicepad-preview,
+.servicepad-editor {
+  --sp-ink: #233a31;
+  --sp-muted: #50655b;
+  --sp-line: #dbe6df;
+  --sp-soft: #eff5f1;
+  --sp-paper: #fff;
+}
+
+.servicepad-board.panel {
+  padding: clamp(14px, 2vw, 24px);
+  border: 1px solid var(--sp-line);
+  color: var(--sp-ink);
+}
+
+.servicepad-board > summary {
+  cursor: pointer;
+  color: var(--sp-ink);
+  font-size: clamp(16px, 2vw, 21px);
+  font-weight: 700;
+}
+
+.servicepad-board[open] > summary { margin-bottom: 16px; }
+
+.servicepad-account-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  border: 1px solid var(--sp-line);
+  border-radius: 12px;
+  background: var(--sp-soft);
+}
+
+.servicepad-account-bar p { display: grid; margin: 0; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+.servicepad-account-bar p span { color: var(--sp-muted); font-size: .8rem; }
+.servicepad-account-bar button { background: var(--sp-paper); }
+
+#juprowa-servicepad .servicepad-list-tools {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 13rem);
+  align-items: end;
+  gap: 12px;
+}
+
+.servicepad-list-tools label { display: grid; gap: 5px; min-width: 0; font-size: .8rem; font-weight: 700; }
+.servicepad-list-tools :is(input, select) { width: 100%; min-width: 0; min-height: 44px; margin: 0; }
+.servicepad-sheet-meta { color: var(--sp-muted, #50655b); font-size: .8rem; }
+.servicepad-result-count { margin: 12px 0 7px; font-variant-numeric: tabular-nums; }
+
+#juprowa-servicepad .servicepad-worksheets {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+#juprowa-servicepad .servicepad-worksheet {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(7ch, .32fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 13px 14px;
+  border: 1px solid var(--sp-line, #dbe6df);
+  border-radius: 12px;
+  background: var(--sp-paper, #fff);
+}
+
+#juprowa-servicepad .servicepad-worksheet[hidden], #juprowa-servicepad [data-sp-no-results][hidden] { display: none; }
+.servicepad-worksheet:focus-within { border-color: #739688; }
+.servicepad-sheet-main, .servicepad-sheet-schedule { min-width: 0; overflow-wrap: anywhere; }
+.servicepad-sheet-main > h3 { margin: 0; color: var(--sp-ink, #233a31); font-size: 1rem; line-height: 1.32; }
+.servicepad-sheet-main > p { margin: 3px 0 0; }
+.servicepad-sheet-location { font-size: .875rem; }
+.servicepad-sheet-description {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: pre-line;
+  color: var(--sp-muted, #50655b);
+  font-size: .8rem;
+}
+
+.servicepad-sheet-schedule { display: grid; gap: 4px; align-content: start; }
+.servicepad-sheet-schedule time { font-weight: 700; font-variant-numeric: tabular-nums; font-size: .875rem; }
+.servicepad-sheet-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.servicepad-sheet-actions button { min-height: 42px; margin: 0; padding: 7px 12px; font-size: .82rem; }
+.servicepad-empty { padding: 14px; border: 1px dashed var(--sp-line, #dbe6df); border-radius: 12px; margin: 0; }
+.servicepad-empty p { margin-top: 0; }
+.servicepad-connection-options { margin-top: 14px; border-top: 1px solid var(--sp-line); padding-top: 12px; }
+.servicepad-connection-options > summary { font-size: .84rem; cursor: pointer; }
+.servicepad-connection-options .actions { margin-top: 8px; }
+
+.servicepad-preview[open] {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  width: min(680px, calc(100vw - 24px));
+  max-height: min(85dvh, 800px);
+  padding: 0;
+  color: var(--sp-ink);
+}
+
+.servicepad-preview-header, .servicepad-preview-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px clamp(14px, 3vw, 24px);
+  flex-shrink: 0;
+  background: var(--sp-soft);
+}
+
+.servicepad-preview-header h2 { margin: 0; font-size: clamp(1rem, 3vw, 1.35rem); overflow-wrap: anywhere; }
+.servicepad-preview-body { overflow-y: auto; min-height: 0; padding: 14px clamp(14px, 3vw, 24px); }
+.servicepad-preview-body > section { margin-top: 14px; }
+.servicepad-preview-body :is(h3, p, ul) { margin: 4px 0; }
+.servicepad-preview-body h3 { font-size: 1rem; }
+.servicepad-preview-body ul { padding-left: 1.15rem; overflow-wrap: anywhere; }
+.servicepad-preview-footer { justify-content: flex-end; }
+.servicepad-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 225px), 1fr)); gap: 8px; margin: 0; }
+.servicepad-facts > div { min-width: 0; padding: 9px 10px; border: 1px solid var(--sp-line); border-radius: 8px; }
+.servicepad-facts dt { color: var(--sp-muted); font-size: .8rem; font-weight: 700; }
+.servicepad-facts dd { margin: 2px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.servicepad-editor { max-height: 92dvh; overflow: auto; }
+
+@media (max-width: 760px) {
+  #juprowa-servicepad .servicepad-worksheet { grid-template-columns: minmax(0, 1fr) minmax(0, .45fr); row-gap: 10px; align-items: start; }
+  .servicepad-sheet-schedule { text-align: right; }
+  .servicepad-sheet-actions { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); }
+  .servicepad-sheet-actions button { min-height: 44px; white-space: normal; }
+}
+
+@media (max-width: 480px) {
+  #juprowa-servicepad .servicepad-list-tools { grid-template-columns: minmax(0, 1fr); }
+  .servicepad-account-bar button { width: 100%; }
+  .servicepad-preview-footer button { width: 100%; }
+}

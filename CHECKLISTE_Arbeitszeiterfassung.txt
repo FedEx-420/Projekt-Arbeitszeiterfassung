@@ -406,6 +406,7 @@ JUPROWA ARBEITSSCHEINABGLEICH
 [x] v1027: Offene Juprowa-Scheine direkt in der Arbeitszeiterfassung bearbeiten. Anschriften, Arbeiten, Notizen, Arbeitszeiten, Anfahrt und Material an derselben Juprowa-ID speichern. Hinzufügen und Entfernen von Zeitabschnitten und normalen Materialzeilen, Bestätigung und Rücklesekontrolle mit fiktiven Daten prüfen.
 [x] v1027: Juprowa-Kundenvorschau um Sammelauswahl der Neukunden und ausdrückliche manuelle Zuordnung zweifelhafter Treffer ergänzen. Firmenabgrenzung und Bestandsschutz mit fiktiven Kunden prüfen.
 [x] v1027: Klarwerk gibt den Status der geprüften Angebotsrevision an die Arbeitszeiterfassung zurück. Aktuelle Revision und Firmenabgrenzung mit fiktiven Angebotsdaten geprüft.
+[x] v1028: Offene Juprowa-Arbeitsscheine als responsive Auftragsliste mit sichtbaren Kundendaten, direktem Bearbeiten, Details, Suche und Terminreihenfolge darstellen.
 
 KLARWERK-MENÜS UND ANGEBOTE v1010
 [x] Automatischen Abgleich für Rechnungen, Einkaufsbelege und Angebote in den regulären Klarwerk-Menüs integrieren. Kontoverbindung in den Einstellungen verwalten.

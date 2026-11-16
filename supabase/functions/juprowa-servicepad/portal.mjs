@@ -13,7 +13,7 @@ export class ServicepadError extends Error {
 }
 
 const loginRejected = () => new ServicepadError('portal_login', 422,
-  'ServicePad hat die Anmeldung abgelehnt. Prüfe Seriennummer, Benutzer und Passwort.');
+  'ServicePad hat die Anmeldung abgelehnt. Verwende die Kundennummer, den Benutzernamen und das Passwort aus dem Juprowa-Portal.');
 const portalUnavailable = () => new ServicepadError('portal_unavailable', 502,
   'ServicePad konnte die Anfrage gerade nicht beantworten. Versuche es erneut.');
 const unexpectedReply = () => new ServicepadError('portal_reply', 502,
@@ -37,7 +37,11 @@ async function requestPortal(fetcher, type, auth) {
   } catch {
     throw portalUnavailable();
   }
-  if (response.status === 401 || response.status === 403) throw loginRejected();
+  if (response.status === 401 || response.status === 403) {
+    if (type === 'Userdata') throw loginRejected();
+    throw new ServicepadError('portal_list_access', 403,
+      'Die Anmeldung bei ServicePad war erfolgreich. Dieser Portalzugang konnte die Arbeitsscheine jedoch nicht abrufen.');
+  }
   if (!response.ok) throw portalUnavailable();
   if (raw === '' && type === 'WorksheetList') return [];
   try {
@@ -71,17 +75,22 @@ export async function checkLogin(fetcher, auth) {
   const customer = result?.CURR_CUSTOMER;
   const user = result?.CURR_USER;
   const customerId = remoteId(customer?.ID) || remoteId(customer?.KUNDENNR);
-  if (!customerId || !user || typeof user.UID !== 'string') throw unexpectedReply();
-  if (user.UID !== auth.uid) throw loginRejected();
+  const uid = user?.UID;
+  if (!customerId || typeof uid !== 'string' || !uid || uid.length > 256 || /[\x00-\x20\x7f]/.test(uid)) {
+    throw unexpectedReply();
+  }
   const mandants = allowedMandants(customer, user);
   if (!mandants.length) throw new ServicepadError('portal_scope', 403,
     'Dieser ServicePad-Zugang ist keinem abrufbaren Mandanten zugeordnet.');
-  // ServicePad returns the URL-encoded passport it uses for subsequent requests.
+  // The login name and ServicePad's canonical UID can differ. Follow the
+  // authenticated response, which provides the UID and URL-encoded passport.
   let passport = auth.passport;
   if (typeof user.PASSPORT === 'string' && user.PASSPORT.length <= 2048 && user.PASSPORT) {
     try { passport = decodeURIComponent(user.PASSPORT); } catch { passport = user.PASSPORT; }
+  } else if (uid !== auth.uid) {
+    throw unexpectedReply();
   }
-  return { customerId, mandants, auth: { uid: auth.uid, passport } };
+  return { customerId, mandants, auth: { uid, passport } };
 }
 
 export function portalLogin({ serial, username, password }) {
@@ -89,7 +98,7 @@ export function portalLogin({ serial, username, password }) {
   const name = typeof username === 'string' ? username.trim().toUpperCase() : '';
   const secret = typeof password === 'string' ? password.trim() : '';
   if (!company || company.length > 80 || !name || name.length > 120 || !secret || secret.length > 512) {
-    throw new ServicepadError('portal_fields', 400, 'Gib Seriennummer, ServicePad-Benutzer und Passwort ein.');
+    throw new ServicepadError('portal_fields', 400, 'Gib Kundennummer, ServicePad-Benutzer und Passwort ein.');
   }
   return { uid: company + name, passport: company + name + secret };
 }

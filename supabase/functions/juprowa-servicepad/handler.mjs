@@ -1,5 +1,6 @@
 import { checkLogin, openWorksheets, portalLogin, ServicepadError, worksheetDetail } from './portal.mjs';
 import { customerPage } from './customers.mjs';
+import { saveExistingWorksheet } from './worksheet-write.mjs';
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -90,7 +91,7 @@ export function createServicepadHandler({ baseUrl, serviceKey, fetcher = fetch }
       if (!baseUrl || !serviceKey) throw new Error('Missing configuration');
       let input;
       try { input = await req.json(); } catch { input = null; }
-      if (!input || !['status', 'connect', 'list', 'disconnect', 'customers-preview', 'customers-import', 'worksheet-detail'].includes(input.action)) {
+      if (!input || !['status', 'connect', 'list', 'disconnect', 'customers-preview', 'customers-import', 'worksheet-detail','worksheet-save','worksheet-close'].includes(input.action)) {
         return json({ error: 'Diese ServicePad-Aktion ist ungültig.' }, 400);
       }
       const company = await activeBusiness(req, input.businessId);
@@ -134,14 +135,37 @@ export function createServicepadHandler({ baseUrl, serviceKey, fetcher = fetch }
       if (verified.customerId !== connection.portal_customer_id || !mandant) {
         throw new ServicepadError('portal_scope', 403, 'Der verknüpfte ServicePad-Mandant ist mit diesem Zugang nicht mehr verfügbar.');
       }
+      if (input.action==='worksheet-save'||input.action==='worksheet-close') {
+        if(typeof input.worksheetId!=='string'||!/^[1-9]\d{0,14}$/.test(input.worksheetId)||input.confirmed!==true) {
+          throw new ServicepadError('worksheet_invalid',400,'Öffne den gewünschten Arbeitsschein und bestätige die Änderung.');
+        }
+        const nonce=crypto.randomUUID();
+        const lease=p_release=>rest('rpc/juprowa_worksheet_lease',{method:'POST',body:{
+          p_business:company,p_revision:connection.revision,p_sheet:input.worksheetId,p_nonce:nonce,p_release,
+        }});
+        if(!await lease(false))throw new ServicepadError('worksheet_busy',409,'Dieser Arbeitsschein wird gerade gespeichert. Prüfe den Stand erneut.');
+        try{
+          const result=await saveExistingWorksheet(fetcher,{auth:verified.auth,mandantId:connection.mandant_id,
+            technician:verified.technician,input,beforeSend:async()=>{
+              const [current]=await rest(filter+'&select=revision');
+              if(current?.revision!==connection.revision)throw changed();
+            }});
+          return json(result);
+        } finally {
+          await lease(true).catch(()=>{});
+        }
+      }
       if (input.action === 'customers-preview' || input.action === 'customers-import') {
         const applying = input.action === 'customers-import';
         if (applying && (typeof input.fingerprint !== 'string' || !/^[a-f0-9]{64}$/.test(input.fingerprint))) {
           throw new ServicepadError('customer_preview', 400, 'Erstelle vor der Übernahme eine Kundenvorschau.');
         }
         const { customers, next } = await customerPage(fetcher, verified.auth, mandant.customerMandantId, input.cursor ?? '0');
+        const selected = applying && Array.isArray(input.newCustomers)
+          ? new Set(input.newCustomers.filter(id=>typeof id==='string'&&/^[1-9][0-9]{0,14}$/.test(id)).slice(0,401)) : new Set();
         const result = await rest('rpc/juprowa_customer_batch', { method: 'POST', body: {
-          p_business: company, p_revision: connection.revision, p_customers: customers,
+          p_business: company, p_revision: connection.revision,
+          p_customers: customers.map(customer=>({...customer,add_new:selected.has(customer.source_id)})),
           p_expected: applying ? input.fingerprint : null,
         } });
         if (result.changed) throw changed();

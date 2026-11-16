@@ -27,6 +27,7 @@
         <form data-klarwerk-form class="entry-form">
           <label class="wide">Name der Verbindung<input name="label" maxlength="80" value="Meine Buchhaltung" required></label>
           <label class="wide"><input name="klarwerk_consent" type="checkbox" required> Ich gebe diese Arbeitsschein- und Kundendaten für Klarwerk frei.</label>
+          <label class="wide"><input name="klarwerk_offers" type="checkbox"> Angebote für Klarwerk freigeben</label>
           <button class="primary">Freigabecode erzeugen</button>
         </form><div data-klarwerk-pair></div><p data-klarwerk-status role="status"></p><div data-klarwerk-links></div>
         <button type="button" class="secondary" data-klarwerk-action="refresh">Verbindungen aktualisieren</button>
@@ -47,8 +48,10 @@
           new Date(link.pair_expires) < new Date() ? 'Code abgelaufen' : 'Code wartet auf Verknüpfung';
         const revoke = link.revoked_at ? '' :
           `<button type="button" class="danger" data-klarwerk-action="revoke" data-id="${esc(link.id)}">Widerrufen</button>`;
+        const offers=!link.revoked_at&&link.claimed_at?`<button type="button" data-klarwerk-action="offer-scope" data-id="${esc(link.id)}"
+          data-enable="${!link.offers_allowed}">${link.offers_allowed?'Angebotsfreigabe entziehen':'Angebote für Klarwerk freigeben'}</button>`:'';
         return `<article class="row-card"><div><b>${esc(link.label)}</b>
-          <span>${esc(link.account_label || 'Noch nicht verknüpft')} · ${status}</span></div>${revoke}</article>`;
+          <span>${esc(link.account_label || 'Noch nicht verknüpft')} · ${status}</span></div><div class="actions">${offers}${revoke}</div></article>`;
       }).join('') || (loaded ? '<p>Noch keine Verbindungen.</p>' : '');
       window.WorktimeKlarwerkTheme?.afterRender(root);
     }
@@ -96,7 +99,8 @@
       event.preventDefault();
       event.stopImmediatePropagation();
       if (!form.reportValidity()) return;
-      return perform('pair', {label:new FormData(form).get('label')}, result => {
+      const values=new FormData(form);
+      return perform('pair', {label:values.get('label'),offers_allowed:values.has('klarwerk_offers')}, result => {
         pair = result;
         loaded = false;
       });
@@ -114,6 +118,13 @@
         case 'refresh':
           await load();
           break;
+        case 'offer-scope': {
+          const id=button.dataset.id,enabled=button.dataset.enable==='true';
+          await perform('offer-scope',{id,enabled},result=>{
+            links=links.map(link=>link.id===id?{...link,offers_allowed:result.offers_allowed}:link);
+          });
+          break;
+        }
         case 'revoke':
           await perform('revoke', {id:button.dataset.id}, () => {
             if (pair?.id === button.dataset.id) pair = null;

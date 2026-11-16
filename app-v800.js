@@ -2642,8 +2642,10 @@
   if(klarwerkConnection){const baseSettings=settingsView,baseRender=render;settingsView=()=>baseSettings()+klarwerkConnection.settings();render=()=>{baseRender();klarwerkConnection.afterRender();};}
   const servicePad=window.WorktimeServicePad?.create({root,state,businessId,isManager,api,escape});
   if(servicePad){
-    const baseSettings=settingsView,baseRender=render;
+    const baseSettings=settingsView,baseCustomers=customersView,baseOrders=ordersView,baseRender=render;
     settingsView=()=>baseSettings()+servicePad.settings();
+    customersView=()=>servicePad.customers()+baseCustomers();
+    ordersView=()=>servicePad.orders()+baseOrders();
     render=()=>{baseRender();servicePad.afterRender();};
   }
   const themeRender=render;render=()=>{themeRender();window.WorktimeKlarwerkTheme?.afterRender(root);};window.WorktimeKlarwerkTheme?.afterRender(root);

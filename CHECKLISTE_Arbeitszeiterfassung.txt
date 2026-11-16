@@ -16,6 +16,7 @@ Ich aktualisiere die Häkchen bei den weiteren Arbeiten.
 
 ZEICHEN
 [x] Umgesetzt; die genannte Prüfung ist erfolgt.
+[x] Klarwerk-Anbindung: Mitarbeitende je Zeitabschnitt für Rechnungen bereitstellen und Arbeitsscheine aus älteren Stornos geschützt wieder öffnen. Migration im verbundenen Betrieb und Zugriffsgrenzen anhand von Prüfdatensätzen kontrolliert.
 [ ] Noch offen, teilweise umgesetzt oder noch abschließend zu prüfen.
 Ein erfolgreicher Test mit Beispieldaten ist kein Live-Test jedes Geschäftskontos.
 

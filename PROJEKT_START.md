@@ -14,6 +14,8 @@ Nach einer Veröffentlichung liefert GitHub Pages den neuen Stand automatisch au
 
 ## Auf dem neuen Laptop
 
+Klarwerk-Abgleich vom 16.11.2026. Die firmengebundene Schnittstelle liefert Mitarbeiternamen zu Rechnungspositionen und öffnet die Arbeitsscheine einer vorhandenen Stornorechnung über eine bestätigte, wiederholbare Aktion. Die Rechnungs- und Stornobelege bleiben im Originalregister.
+
 1. Diese Seite als Lesezeichen speichern. Für die Nutzung der Arbeitszeit-App genügt der App-Link und die gewohnte Anmeldung.
 2. Für die Weiterentwicklung mit demselben GitHub- und ChatGPT-Konto anmelden. Das angeheftete ChatGPT-Projekt heißt „Arbeitszeiterfassung“ und enthält den Chat „Projektübergabe Arbeitszeiterfassung“. Für Codearbeit in Codex „Ausführen in → Cloud“ und die private Umgebung „Projekt-Arbeitszeiterfassung“ auswählen; das bestehende Repository ist dort hinterlegt.
 3. Im neuen Chat sagen: „Arbeite am Projekt FedEx-420/Projekt-Arbeitszeiterfassung weiter. Lies zuerst AGENTS.md, PROJEKT_START.md und CHECKLISTE_Arbeitszeiterfassung.txt. Priorität haben eindeutige Artikelbilder und schnelle Artikel-/Katalogsuche.“

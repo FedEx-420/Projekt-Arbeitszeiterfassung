@@ -190,6 +190,24 @@ async function main(){
   assert.deepEqual(workSheet.hours.map(period=>period.work_date||workSheet.work_date),periods.map(period=>period.work_date));
   assert.equal(workSheet.hours.reduce((sum,period)=>sum+Number(period.hours),0),8.25);
  });
+ await test('wholesaler stops preserve complete addresses and stay in the paired business',async()=>{
+  await db.exec(migrationSource('20261115234324_klarwerk_wholesaler_stops.sql'));
+  const task={...f.order,work_date:'2026-11-24'};
+  const stop={label:'Testgroßhandel',street:'Handelsweg',house_no:'7',postal_code:'12345',city:'Teststadt',country:'Deutschland',
+    date:task.work_date,time:'07:35'};
+  await f.actor('business');
+  const sheet=await f.save({...task,wholesaler_stops:[stop]});
+  await assert.rejects(f.save({...task,id:sheet.id,wholesaler_stops:[{...stop,house_no:''}]}),/work_orders_wholesaler_stops_format/);
+  await assert.rejects(f.save({...task,id:sheet.id,wholesaler_stops:[{date:stop.date,time:stop.time}]}),/work_orders_wholesaler_stops_format/);
+  const saved=await f.save({...task,id:sheet.id});
+  assert.deepEqual(saved.wholesaler_stops,[stop]);
+  await f.admin();
+  const work=(await dispatch(T,'list',{entity:'work-sheets',ids:[sheet.id]}))[0];
+  assert.deepEqual(work.wholesaler_stops,[stop]);
+  const routes=await dispatch(T,'list',{entity:'fleet-orders',month:stop.date.slice(0,7),company:ids.otherBusiness});
+  assert.deepEqual(routes.orders.find(route=>route.id===sheet.id).shoppingStops,[stop]);
+  assert.ok(!routes.orders.some(route=>route.customerId===ids.otherCustomer));
+ });
  await test('RPC is not callable with ordinary user credentials and role changes revoke existing access',async()=>{await f.actor('anna');await assert.rejects(dispatch(T,'company'));await f.admin();await db.query("update profiles set role='employee' where id=$1",[ids.business]);await assert.rejects(dispatch(T,'company'));await db.query("update profiles set role='business' where id=$1",[ids.business]);});
  await test('revocation immediately blocks reads and writes',async()=>{await manage(ids.business,ids.business,'revoke',{id:link.id});await assert.rejects(dispatch(T,'company'));await assert.rejects(dispatch(T,'rpc',{name:'issue_invoice_auto_v934',args}));});
  console.log(JSON.stringify({passed,productionWrites:0}));await db.close();

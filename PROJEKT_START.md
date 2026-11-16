@@ -468,3 +468,6 @@ Die bestehende Prüfung auf zwischenzeitliche Änderungen schützt parallele Bea
 ## Mehrere Zeitabschnitte in Klarwerk-Fahrten
 
 Die Migration `20261115172500_klarwerk_fleet_work_period_days.sql` gibt für einen Arbeitsschein jeden Einsatztag im gewählten Monat mit den tatsächlichen Mitarbeitern und Startzeiten der Zeitabschnitte aus. Klarwerk unterscheidet die Fahrzeugprüfung und manuell erfasste Fahrten nach Arbeitsschein und Einsatztag. Aufeinanderfolgende Zeitabschnitte am gleichen Ziel erzeugen in der automatischen Route keinen zusätzlichen Stopp. Wenn zwischen zwei Abschnitten ein anderes Ziel liegt, berücksichtigt Klarwerk die Rückkehr. Die Abrechnung liest die bereits separat ausgegebenen Zeitabschnitte und deren Datum.
+
+## Großhändlerstopps auf Arbeitsscheinen (v1021)
+Kundenarbeitsscheine erfassen je Großhändlerstopp Datum, Ankunftszeit und vollständige Anschrift. Die vorhandene atomare Speicherung und die beschränkte Betriebsverbindung transportieren das Feld als `wholesaler_stops`. Klarwerk verwendet die Angaben ausschließlich für Fahrten und Rechnungsentwürfe des verknüpften Betriebs. Die Datenbankmigration muss vor der Auslieferung des geänderten Formulars aktiv sein.

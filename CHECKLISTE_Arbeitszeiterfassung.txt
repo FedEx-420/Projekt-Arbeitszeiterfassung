@@ -422,3 +422,5 @@ AUSFÜHRUNGSORT JE ARBEITSSCHEIN
 [x] v1020: Kundenanschriften beim Speichern abgleichen. Änderungen in geöffneten Apps über eine betriebsbezogene Versionsabfrage im Zwei-Sekunden-Takt erkennen. Hin- und Rückrichtung, Formularentwürfe und Firmenabgrenzung mit isolierten Daten geprüft.
 
 [x] Weitere Zeitabschnitte desselben Arbeitsscheins für Klarwerk-Fahrten berücksichtigen. Einsatzdaten, Fahrer, Monatswechsel, wiederholte Anfahrt nach einem anderen Ziel sowie getrennte Fahrzeugprüfung pro Tag überprüft. Die Abrechnung erhält weiterhin alle einzelnen Arbeitszeitpositionen.
+
+- [x] Großhändlerstopps mit Datum, Ankunftszeit und Pflichtanschrift an Arbeitsscheinen erfassen und über die Klarwerk-Betriebsverbindung für Fahrtprüfung und Rechnungsentwurf übergeben.

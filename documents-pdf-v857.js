@@ -195,6 +195,7 @@
     e.lines(data.orderCount+' Arbeitsschein(e) | '+hours(data.hours)+' Arbeitszeit',{size:9,gap:16});
     for(const day of data.days){
       e.context='';e.heading(date(day.date),90);e.context=date(day.date);
+      if(day.sites?.length){e.heading('Ausführungsort',65);e.lines(day.sites.join('\n'),{size:9,gap:14});}
       e.table(['Mitarbeiter','Von','Bis','Pause','Stunden'],day.periods.map(p=>({numeric:[3,4],cells:[p.name,time(p.start),time(p.end),hours(p.pause),hours(p.hours)]})),[217.28,75,75,74,74]);
       for(const note of day.notes||[]){e.heading('Dokumentation',65);e.lines(note,{size:9,gap:14});}
       if(day.items.length)e.table(['Leistung / Material','Menge','Einheit','Einzelpreis','Gesamt'],day.items.map(item=>({numeric:[1,3,4],cells:[[item.name,item.description].filter(Boolean).join('\n'),count(item.quantity),item.unit,priceMoney(item.price),money(item.quantity*item.price)]})),[218,65,45,87,100.28],{numericHeaders:[1,3,4]});

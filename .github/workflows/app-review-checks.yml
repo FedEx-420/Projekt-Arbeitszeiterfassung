@@ -37,6 +37,7 @@ jobs:
       - name: Navigation and disconnected finance workspace
         run: |
           node tests/team/navigation-v901.test.cjs
+          node tests/team/work-order-link.test.cjs
           node tests/team/finance-v1000.test.cjs
           node tests/team/no-finance-browser-v1003.test.cjs
       - name: Juprowa work-order material export

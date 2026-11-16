@@ -19,12 +19,13 @@ const portalUnavailable = () => new ServicepadError('portal_unavailable', 502,
 const unexpectedReply = () => new ServicepadError('portal_reply', 502,
   'ServicePad hat eine unerwartete Antwort geliefert. Der Abruf wurde abgebrochen.');
 
-async function requestPortal(fetcher, type, auth) {
+export async function requestPortal(fetcher, type, auth, params = {}) {
   const url = new URL(serviceUrl);
   url.searchParams.set('type', type);
   url.searchParams.set('UID', auth.uid);
   url.searchParams.set('PASSPORT', auth.passport);
   if (type === 'Userdata') url.searchParams.set('ts', String(Date.now()));
+  for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
   let response, raw;
   try {
     response = await fetcher(url, {
@@ -43,7 +44,7 @@ async function requestPortal(fetcher, type, auth) {
       'Die Anmeldung bei ServicePad war erfolgreich. Dieser Portalzugang konnte die Arbeitsscheine jedoch nicht abrufen.');
   }
   if (!response.ok) throw portalUnavailable();
-  if (raw === '' && type === 'WorksheetList') return [];
+  if (raw === '' && (type === 'WorksheetList' || type === 'KundeList')) return [];
   try {
     return JSON.parse(raw);
   } catch {
@@ -58,13 +59,16 @@ function allowedMandants(customer, user) {
   const allowed = (user.ALLOWED_MANDANT || '').split(',').map(name => name.trim().toUpperCase()).filter(Boolean);
   const result = [];
   if (!allowed.length || allowed.includes('BASIS')) {
-    result.push({ id: '0', label: customer.MANDANTEN ? 'Basismandant' : label(customer.NAME) || 'ServicePad' });
+    result.push({ id: '0', label: customer.MANDANTEN ? 'Basismandant' : label(customer.NAME) || 'ServicePad', customerMandantId: '0' });
   }
   for (const row of Object.values(customer.MANDANTEN ?? {})) {
     const id = remoteId(row?.ID);
     const name = label(row?.MANDANT_ID);
     if (id && id !== '0' && name && (!allowed.length || allowed.includes(name.toUpperCase()))) {
-      if (!result.some(entry => entry.id === id)) result.push({ id, label: name });
+      if (!result.some(entry => entry.id === id)) {
+        const option = String(row.R_USE_MANDANT_CUSTOMERS ?? '');
+        result.push({ id, label: name, customerMandantId: option === '0' ? '0' : option === '1' ? id : null });
+      }
     }
   }
   return result;
@@ -103,7 +107,7 @@ export function portalLogin({ serial, username, password }) {
   return { uid: company + name, passport: company + name + secret };
 }
 
-export async function openWorksheets(fetcher, auth, mandantId) {
+async function scopedWorksheets(fetcher, auth, mandantId) {
   const result = await requestPortal(fetcher, 'WorksheetList', auth);
   if (!Array.isArray(result) || result.some(row => !row || !remoteId(row.ID)
       || !/^-?\d+$/.test(String(row.AK_AUFSTATUS ?? '')))) throw unexpectedReply();
@@ -111,9 +115,16 @@ export async function openWorksheets(fetcher, auth, mandantId) {
   for (const row of result) {
     const scope = row.ID_MANDANT == null || row.ID_MANDANT === '' ? '0' : remoteId(row.ID_MANDANT);
     if (scope !== mandantId || Number(row.AK_AUFSTATUS) >= 5) continue;
-    const id = remoteId(row.ID);
+    matches.set(remoteId(row.ID), row);
+  }
+  return matches;
+}
+
+export async function openWorksheets(fetcher, auth, mandantId) {
+  const matches = await scopedWorksheets(fetcher, auth, mandantId);
+  return [...matches].map(([id, row]) => {
     const date = /^\d{4}-\d{2}-\d{2}/.exec(label(row.AK_TERMIN) || label(row.STARTDATE))?.[0];
-    matches.set(id, {
+    return {
       id,
       number: label(row.AK_SCHEINNR) || id,
       customer: [label(row.AK_BAUADR_NAM1), label(row.AK_BAUADR_NAM2)].filter(Boolean).join(' '),
@@ -121,8 +132,51 @@ export async function openWorksheets(fetcher, auth, mandantId) {
       technician: label(row.AK_MONTEUR_TEXT),
       description: label(row.AK_ARBEITEN, 1600),
       date: date && date > '1970-01-02' && date < '2999-01-01' ? date : null,
-    });
-  }
-  return [...matches.values()].sort((a, b) => (a.date ?? '9999').localeCompare(b.date ?? '9999')
+    };
+  }).sort((a, b) => (a.date ?? '9999').localeCompare(b.date ?? '9999')
     || a.number.localeCompare(b.number, 'de', { numeric: true }));
+}
+
+const fieldText = value => typeof value === 'number' ? String(value) : label(value);
+const dateValue = value => /^\d{4}-\d{2}-\d{2}/.exec(label(value))?.[0] || '';
+const records = value => value && typeof value === 'object'
+  ? Object.values(value).filter(row => row && typeof row === 'object') : [];
+const address = (row, prefix) => [
+  [row[prefix + '_NAM1'], row[prefix + '_NAM2'], row[prefix + '_NAM3']].map(value => label(value)).filter(Boolean).join(' '),
+  label(row[prefix + '_STR']),
+  [row[prefix + '_PLZ'], row[prefix + '_ORT'], row[prefix + '_LAND']].map(value => label(value)).filter(Boolean).join(' '),
+].filter(Boolean).join('\n');
+
+export async function worksheetDetail(fetcher, auth, mandantId, id) {
+  if (typeof id !== 'string' || !remoteId(id)) throw new ServicepadError('worksheet_id', 400, 'Dieser Arbeitsschein ist ungültig.');
+  const row = (await scopedWorksheets(fetcher, auth, mandantId)).get(id);
+  if (!row) throw new ServicepadError('worksheet_missing', 404, 'Der offene Arbeitsschein ist in diesem Mandanten nicht mehr verfügbar.');
+  return {
+    id,
+    number: fieldText(row.AK_SCHEINNR) || id,
+    project: fieldText(row.AK_PROJEKTNR),
+    service: address(row, 'AK_BAUADR'),
+    billing: address(row, 'RE_ADR'),
+    requested: label(row.AK_DURCHZUFUEHREN, 12000),
+    completed: label(row.AK_ARBEITEN, 12000),
+    notes: label(row.AK_NOTIZ, 12000),
+    times: records(row.WORKTIMES).map(time => ({
+      day: dateValue(time.AZ_DATUM),
+      worker: fieldText(time.AZ_WORKERNAME) || fieldText(time.AZ_WORKER),
+      start: fieldText(time.AZ_WORK_BEG),
+      end: fieldText(time.AZ_WORK_END),
+      breakMinutes: fieldText(time.AZ_WORK_PAUSE),
+      travelStart: fieldText(time.AZ_TRAVEL_BEG),
+      travelEnd: fieldText(time.AZ_TRAVEL_END),
+    })),
+    materials: records(row.POSITIONS).map(item => ({
+      article: fieldText(item.AP_ARTNR),
+      name: [item.AP_KT1, item.AP_KT2].map(fieldText).filter(Boolean).join(' ') || label(item.AP_TEXT, 1200),
+      quantity: fieldText(item.AP_MENGE),
+      unit: fieldText(item.AP_MENGEEH),
+    })),
+    signed: typeof row.SIGNATURE_DATA === 'string' && row.SIGNATURE_DATA.includes(',') && row.SIGNATURE_DATA.split(',')[1]?.length > 0,
+    attachmentCount: records(row.MEDIAFILES).length,
+    formCount: records(row.FORMDATA).length,
+  };
 }

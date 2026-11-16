@@ -43,6 +43,7 @@ jobs:
         run: |
           node tests/team/juprowa-material-browser-v1009.test.cjs
           node --test tests/team/juprowa-servicepad-v1022.test.mjs
+          node --test tests/team/juprowa-customer-import.test.cjs tests/team/juprowa-customer-portal.test.mjs
 
       - name: Invoice and work-order rules in disposable databases
         run: |

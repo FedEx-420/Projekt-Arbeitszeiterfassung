@@ -13,6 +13,40 @@
       </details>`;
     }
 
+    function customerReview(current, disabled) {
+      if (!current.connection || current.form) return '';
+      const review = current.customerReview;
+      return `<section aria-labelledby="juprowa-customer-heading">
+        <h3 id="juprowa-customer-heading">Kunden aus Juprowa übernehmen</h3>
+        <p>Ergänzt leere Felder und zeigt unklare Zuordnungen zur Prüfung. Das verknüpfte Klarwerk-Konto erhält die übernommenen Kunden beim nächsten Abgleich.</p>
+        <button type="button" data-sp="customers-preview"${disabled}>Kundenvorschau laden</button>
+        ${review ? `<p role="status">${review.applied ? 'Kunden übernommen. ' : ''}Neue Kunden ${review.counts.new} · Eindeutig zugeordnet ${review.counts.linked} · Zu prüfen ${review.counts.review}</p>
+          ${review.review?.length ? `<details><summary>Unklare Zuordnungen anzeigen</summary><ul>${review.review.map(row =>
+            `<li>${escape(row.name)}${row.candidates.length ? ' · mögliche Zuordnung: ' + escape(row.candidates.join(', ')) : ''}</li>`).join('')}</ul></details>` : ''}
+          ${!review.applied && review.counts.new + review.counts.linked > 0 ? `<button type="button" class="primary" data-sp="customers-import"${disabled}>Kunden dieser Vorschau übernehmen</button>` : ''}
+          ${review.next && (review.applied || review.counts.new + review.counts.linked === 0) ? `<button type="button" data-sp="customers-next"${disabled}>Nächste Kundenseite prüfen</button>` : ''}` : ''}
+      </section>`;
+    }
+
+    function sheetDetail(sheet) {
+      if (!sheet) return '';
+      const definition = [
+        ['Projekt', sheet.project], ['Einsatzort', sheet.service], ['Rechnungsanschrift', sheet.billing],
+        ['Auszuführen', sheet.requested], ['Ausgeführt', sheet.completed], ['Notizen', sheet.notes],
+      ].filter(([, value]) => value);
+      return `<section class="panel" id="juprowa-worksheet-detail" tabindex="-1"><h3>Arbeitsschein ${escape(sheet.number)}</h3>
+        <dl>${definition.map(([key, value]) => `<dt>${key}</dt><dd style="white-space:pre-wrap">${escape(value)}</dd>`).join('')}</dl>
+        <h4>Arbeitszeiten</h4>
+        ${sheet.times.length ? `<ul>${sheet.times.map(time => `<li>${escape([time.day, time.worker, [time.start, time.end].filter(Boolean).join(' – '),
+          time.breakMinutes ? time.breakMinutes + ' min Pause' : '',
+          time.travelStart && time.travelEnd ? 'Anfahrt ' + time.travelStart + ' – ' + time.travelEnd : ''].filter(Boolean).join(' · '))}</li>`).join('')}</ul>` : '<p>Keine Zeiten im abgerufenen Arbeitsschein.</p>'}
+        <h4>Material</h4>
+        ${sheet.materials.length ? `<ul>${sheet.materials.map(item => `<li>${escape([item.article, item.name,
+          [item.quantity, item.unit].filter(Boolean).join(' ')].filter(Boolean).join(' · '))}</li>`).join('')}</ul>` : '<p>Kein Material im abgerufenen Arbeitsschein.</p>'}
+        <p>${sheet.signed ? 'Unterschrift vorhanden' : 'Keine Unterschrift im abgerufenen Arbeitsschein'} · ${sheet.attachmentCount} Anhänge · ${sheet.formCount} Formulare laut ServicePad</p>
+      </section>`;
+    }
+
     function paint(current) {
       const panel = root.querySelector('#juprowa-servicepad');
       if (!panel || active !== current || scope() !== current.key) return;
@@ -53,11 +87,12 @@
             ${sheet.location ? `<p>Einsatzort <strong>${escape(sheet.location)}</strong></p>` : ''}
             ${sheet.technician ? `<p>Monteur <strong>${escape(sheet.technician)}</strong></p>` : ''}
             ${sheet.description ? `<p style="white-space: pre-wrap">${escape(sheet.description)}</p>` : ''}
+            <button type="button" data-sp="worksheet-detail" data-sheet="${escape(sheet.id)}"${muted}>Details öffnen</button>
           </details></li>`).join('')}</ul>` : '<p>Im verknüpften Mandanten sind keine offenen Arbeitsscheine verfügbar.</p>'}` : '';
       panel.innerHTML = account + info
         + (current.busy ? '<p role="status">ServicePad wird abgefragt …</p>' : '')
         + (current.loaded ? '' : `<button type="button" data-sp="refresh"${muted}>Verbindung prüfen</button>`)
-        + buttons + form + list;
+        + buttons + form + customerReview(current, muted) + sheetDetail(current.sheetDetail) + list;
     }
 
     const call = (current, action, fields = {}) => api('/functions/v1/juprowa-servicepad', {
@@ -69,6 +104,8 @@
       current.busy = true;
       current.message = '';
       current.worksheets = null;
+      current.sheetDetail = null;
+      if (action === 'connect' || action === 'disconnect') current.customerReview = null;
       if (form) form.querySelector('[type="submit"]').disabled = true;
       else paint(current);
       try {
@@ -113,7 +150,53 @@
       }
     }
 
+    async function reviewOrDetail(current, command, sheetId) {
+      if (current.busy || !current.connection) return;
+      const previous = current.customerReview;
+      const importing = command === 'customers-import';
+      if (importing && (!previous?.fingerprint || !window.confirm('Die eindeutigen Kunden dieser Vorschau jetzt übernehmen?'))) return;
+      const detail = command === 'worksheet-detail';
+      const cursor = importing ? previous.cursor : command === 'customers-next' ? previous?.next : '0';
+      current.busy = true;
+      current.message = '';
+      if (detail) current.sheetDetail = null;
+      paint(current);
+      try {
+        const result = await call(current, detail || importing ? command : 'customers-preview',
+          detail ? { worksheetId: sheetId } : { cursor, fingerprint: importing ? previous.fingerprint : undefined });
+        if (active !== current || scope() !== current.key) return;
+        if (detail) current.sheetDetail = result.detail;
+        else {
+          current.customerReview = { ...result, cursor, review: result.review ?? previous?.review ?? [] };
+          if (importing && !result.applied) current.message = 'Die Kundendaten haben sich geändert. Prüfe die neue Vorschau.';
+        }
+      } catch (error) {
+        current.message = error.message || 'Der ServicePad-Abgleich ist fehlgeschlagen.';
+        if (error.code === 'connection_changed') {
+          current.loaded = false;
+          current.connection = null;
+          current.worksheets = null;
+          current.customerReview = null;
+        }
+      } finally {
+        current.busy = false;
+        paint(current);
+        if (detail && current.sheetDetail && active === current && scope() === current.key) {
+          root.querySelector('#juprowa-worksheet-detail')?.focus();
+        }
+      }
+    }
+
     function afterRender() {
+      const profile = root.querySelector('#customer-profile');
+      const customer = profile && state.rows.customers.find(row => row.id === state.customerId);
+      const saved = customer?.custom_fields;
+      if (saved && (saved.juprowa_number || Array.isArray(saved.juprowa_contacts))) {
+        const contacts = Array.isArray(saved.juprowa_contacts) ? saved.juprowa_contacts : [];
+        profile.insertAdjacentHTML('beforeend', `<details><summary>Juprowa-Kontaktdaten</summary>
+          ${saved.juprowa_number ? `<p>Kundennummer ${escape(saved.juprowa_number)}</p>` : ''}
+          ${contacts.filter(Boolean).map(c => `<p>${[c.name,c.email,c.phone,c.phone_2,c.phone_3,c.mobile,c.fax,c.note].filter(Boolean).map(escape).join('<br>')}</p>`).join('')}</details>`);
+      }
       const key = scope();
       if (active?.key !== key) active = null;
       const section = root.querySelector('#juprowa-settings');
@@ -142,6 +225,8 @@
         void run(current, current.connection ? 'list' : 'status');
       } else if (button.dataset.sp === 'disconnect') {
         if (window.confirm('ServicePad von diesem Geschäftskonto trennen?')) void run(current, 'disconnect');
+      } else {
+        void reviewOrDetail(current, button.dataset.sp, button.dataset.sheet);
       }
     });
     root.addEventListener('submit', event => {

@@ -435,3 +435,4 @@ AUSFÜHRUNGSORT JE ARBEITSSCHEIN
 [x] Weitere Zeitabschnitte desselben Arbeitsscheins für Klarwerk-Fahrten berücksichtigen. Einsatzdaten, Fahrer, Monatswechsel, wiederholte Anfahrt nach einem anderen Ziel sowie getrennte Fahrzeugprüfung pro Tag überprüft. Die Abrechnung erhält weiterhin alle einzelnen Arbeitszeitpositionen.
 
 - [x] Großhändlerstopps mit Datum, Ankunftszeit und Pflichtanschrift an Arbeitsscheinen erfassen und über die Klarwerk-Betriebsverbindung für Fahrtprüfung und Rechnungsentwurf übergeben.
+[x] v1030: Offene Juprowa-Arbeitsscheine im regulären Editor bearbeiten, mit verifizierten Großhändlerpositionen ergänzen und erst nach separater Bestätigung übertragen. Klarwerk übernimmt gespeicherte Nettopreise. Neuanlage, Anhänge und wiederholte Übergabe isoliert geprüft. Abnahme mit einem Live-Mandanten steht aus.

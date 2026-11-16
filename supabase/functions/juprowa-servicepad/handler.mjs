@@ -1,6 +1,7 @@
 import { checkLogin, openWorksheets, portalLogin, ServicepadError, worksheetDetail } from './portal.mjs';
 import { customerPage } from './customers.mjs';
 import { saveExistingWorksheet } from './worksheet-write.mjs';
+import { transferSavedWorksheet } from './worktime-transfer.mjs';
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -91,7 +92,8 @@ export function createServicepadHandler({ baseUrl, serviceKey, fetcher = fetch }
       if (!baseUrl || !serviceKey) throw new Error('Missing configuration');
       let input;
       try { input = await req.json(); } catch { input = null; }
-      if (!input || !['status', 'connect', 'list', 'disconnect', 'customers-preview', 'customers-import', 'worksheet-detail','worksheet-save','worksheet-close'].includes(input.action)) {
+      if (!input || !['status', 'connect', 'list', 'disconnect', 'customers-preview', 'customers-import', 'worksheet-detail','worksheet-save','worksheet-close',
+        'worksheet-link','worksheet-transfer'].includes(input.action)) {
         return json({ error: 'Diese ServicePad-Aktion ist ungültig.' }, 400);
       }
       const company = await activeBusiness(req, input.businessId);
@@ -134,6 +136,65 @@ export function createServicepadHandler({ baseUrl, serviceKey, fetcher = fetch }
       const mandant = verified.mandants.find(entry => entry.id === connection.mandant_id);
       if (verified.customerId !== connection.portal_customer_id || !mandant) {
         throw new ServicepadError('portal_scope', 403, 'Der verknüpfte ServicePad-Mandant ist mit diesem Zugang nicht mehr verfügbar.');
+      }
+      const bindings='juprowa_work_order_links?business_id=eq.'+company+'&portal_customer_id=eq.'+
+        encodeURIComponent(connection.portal_customer_id)+'&mandant_id=eq.'+encodeURIComponent(connection.mandant_id);
+      if(input.action==='worksheet-link'||input.action==='worksheet-transfer'){
+        if(typeof input.localOrderId!=='string'||!uuid.test(input.localOrderId))throw changed();
+        const localOrderId=input.localOrderId.toLowerCase();
+        const path=bindings+'&local_order_id=eq.'+localOrderId;
+        const snapshot=await rest('rpc/juprowa_work_order_export',{method:'POST',body:{
+          p_business:company,p_revision:connection.revision,p_order:localOrderId}});
+        if(!snapshot?.order||snapshot.order.id!==localOrderId)throw new ServicepadError('local_order',404,
+          'Der offene Arbeitsschein konnte im ausgewählten Betrieb nicht gelesen werden.');
+        const baseLink={business_id:company,portal_customer_id:connection.portal_customer_id,mandant_id:connection.mandant_id,local_order_id:localOrderId};
+        let [link]=await rest(path+'&select=*');
+        if(input.action==='worksheet-link'){
+          const original=await worksheetDetail(fetcher,verified.auth,connection.mandant_id,input.worksheetId,verified.workers);
+          if(original.revision!==input.sheetRevision||link&&link.worksheet_id!==original.id)throw changed();
+          if(!link)await rest('juprowa_work_order_links',{method:'POST',body:{...baseLink,worksheet_id:original.id,sheet_revision:original.revision}});
+          return json({localOrderId,worksheetId:original.id});
+        }
+        if(input.confirmed!==true)throw new ServicepadError('worksheet_invalid',400,'Bestätige die Übergabe des gespeicherten Arbeitsscheins.');
+        const assignments=input.workers??{};
+        if(typeof assignments!=='object'||Array.isArray(assignments)||Object.keys(assignments).length>100||
+           Object.entries(assignments).some(([id,worker])=>!uuid.test(id)||typeof worker!=='string'||!verified.workers.some(entry=>entry.id===worker)))
+          throw new ServicepadError('invalid_workers',422,'Bitte die ServicePad-Monteure prüfen.');
+        if(!link) {
+          [link]=await rest('juprowa_work_order_links',{method:'POST',body:baseLink});
+          if(!link)throw changed();
+        }
+        const nonce=crypto.randomUUID();
+        const leaseKey=link.worksheet_id||String(100000000000000+parseInt(localOrderId.replaceAll('-','').slice(0,11),16));
+        const lease=p_release=>rest('rpc/juprowa_worksheet_lease',{method:'POST',body:{
+          p_business:company,p_revision:connection.revision,p_sheet:leaseKey,p_nonce:nonce,p_release}});
+        if(!await lease(false))throw new ServicepadError('worksheet_busy',409,'Dieser Arbeitsschein wird bereits an Juprowa übergeben.');
+        try{
+          const result=await transferSavedWorksheet(fetcher,{auth:verified.auth,mandantId:connection.mandant_id,
+            technician:verified.technician,workers:verified.workers,snapshot,link,assignments,
+            markAttempt:async()=>Boolean((await rest(path+'&attempted_at=is.null',{method:'PATCH',body:{attempted_at:new Date().toISOString()}}))[0]),
+            updateLink:async(id,revision)=>{
+              const [confirmed]=await rest(path,{method:'PATCH',body:{worksheet_id:id,sheet_revision:revision,transferred_at:new Date().toISOString()}});
+              if(!confirmed)throw changed();
+            },
+            beforeSend:async()=>{
+              const [current]=await rest(filter+'&select=revision');
+              const [order]=await rest('work_orders?id=eq.'+localOrderId+'&select=updated_at,invoiced');
+              if(current?.revision!==connection.revision||!order||order.invoiced||order.updated_at!==snapshot.order.updated_at)throw changed();
+            },
+            loadFile:async file=>{
+              if(typeof file.path!=='string'||file.path.split('/').length!==2||!file.path.split('/')[1].startsWith(localOrderId+'-'))
+                throw new ServicepadError('worksheet_file',422,'Ein Anhang konnte dem Arbeitsschein nicht sicher zugeordnet werden.');
+              const response=await supabase('/storage/v1/object/work-order-documents/'+file.path.split('/').map(encodeURIComponent).join('/'));
+              if(!response.ok||Number(response.headers.get('content-length'))>8388608)
+                throw new ServicepadError('worksheet_file',422,'Ein Anhang konnte nicht übertragen werden oder ist größer als 8 MB.');
+              const bytes=new Uint8Array(await response.arrayBuffer());
+              if(!bytes.length||bytes.length>8388608)throw new ServicepadError('worksheet_file',422,'Ein Anhang ist leer oder größer als 8 MB.');
+              let binary='';for(let i=0;i<bytes.length;i+=16384)binary+=String.fromCharCode(...bytes.subarray(i,i+16384));
+              return 'data:'+(file.mime||'application/octet-stream')+';base64,'+btoa(binary);
+            }});
+          return json(result);
+        }finally{await lease(true).catch(()=>{});}
       }
       if (input.action==='worksheet-save'||input.action==='worksheet-close') {
         if(typeof input.worksheetId!=='string'||!/^[1-9]\d{0,14}$/.test(input.worksheetId)||input.confirmed!==true) {
@@ -186,7 +247,8 @@ export function createServicepadHandler({ baseUrl, serviceKey, fetcher = fetch }
         const detail = await worksheetDetail(fetcher, verified.auth, connection.mandant_id, input.worksheetId, verified.workers);
         const [current] = await rest(filter + '&select=revision');
         if (current?.revision !== connection.revision) throw changed();
-        return json({ detail });
+        const [local]=await rest(bindings+'&worksheet_id=eq.'+encodeURIComponent(detail.id)+'&select=local_order_id');
+        return json({ detail:{...detail,...(local?{localOrderId:local.local_order_id}:{})} });
       }
       const worksheets = await openWorksheets(fetcher, verified.auth, connection.mandant_id);
       const [current] = await rest(filter + '&select=revision');

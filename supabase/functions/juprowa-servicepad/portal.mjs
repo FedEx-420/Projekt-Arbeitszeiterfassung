@@ -165,6 +165,7 @@ export async function worksheetDetail(fetcher, auth, mandantId, id, workers = []
   return {
     id,
     number: fieldText(row.AK_SCHEINNR) || id,
+    date: dateValue(row.AK_TERMIN)||dateValue(row.STARTDATE),
     project: fieldText(row.AK_PROJEKTNR),
     service: address(row, 'AK_BAUADR'),
     billing: address(row, 'RE_ADR'),

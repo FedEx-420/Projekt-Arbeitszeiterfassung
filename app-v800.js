@@ -11,7 +11,7 @@
   const state = {
     session: null, profile: null, people: [], view: 'home', date: today(), month: today().slice(0, 7),
     businessId: '', businessBrand: null, employeeId: '', customerId: '', customerSearch: '', materialId: '', orderId: '', timeEntryId: '', orderCustomer: '', orderOrigin: 'orders', menu: false, vacationForm: false, appointmentForm: false, composeMessage: false, mailboxFolder: 'received', notice: null, busy: false,
-    rows: { people: [], workweeks: [], entries: [], orders: [], items: [], customers: [], customerRates: [], days: [], vacations: [], messages: [], attachments: [], recipients: [], materials: [], appointments: [], planningRequests: [], payslips: [], documents: [] }
+    rows: { people: [], workweeks: [], entries: [], orders: [], archivedOrders: [], items: [], customers: [], customerRates: [], days: [], vacations: [], messages: [], attachments: [], recipients: [], materials: [], appointments: [], planningRequests: [], payslips: [], documents: [] }
   };
   let startupStage = '', startupGeneration = 0, startupAccountReady = null, materialLoadState = 'idle';
   const startupLoaded = new Set(), startupFailed = new Set();
@@ -319,8 +319,18 @@
       }
     }
   }
+  function loadOrderRows(orders) {
+    state.rows.orders=orders.filter(order=>!order.klarwerk_archived_at)
+      .map(order=>order.klarwerk_billed?{...order,invoiced:true}:order);
+    state.rows.archivedOrders=orders.filter(order=>order.klarwerk_archived_at);
+  }
+  const hoursOrders=()=>[...state.rows.orders,...state.rows.archivedOrders];
+  const archivedOrder=id=>Boolean(id&&state.rows.archivedOrders.some(order=>same(order.id,id)));
   async function reload() {
-    const load = async (name, table, query = 'select=*') => { try { state.rows[name] = await rows(table, query) || []; } catch { state.rows[name] = []; } };
+    const load = async (name, table, query = 'select=*') => { try {
+      const list=await rows(table,query)||[];
+      if(name==='orders')loadOrderRows(list);else state.rows[name]=list;
+    } catch { state.rows[name] = []; } };
     const loadRecipients = async () => { try { state.rows.recipients = (await api('/functions/v1/mailbox-send', { method: 'POST', body: { action: 'recipients' } }))?.recipients || []; } catch { state.rows.recipients = []; } };
     await Promise.all([
       load('people', 'profiles'), load('entries', 'time_entries', 'select=*&order=work_date.desc,created_at.desc'), load('orders', 'work_orders', 'select=*&order=work_date.desc,created_at.desc'),
@@ -350,7 +360,12 @@
       try { await reload(current); } catch { /* Originalfehler erhalten */ }
       if (current()) notice(error.message || 'Die Aktion konnte nicht gespeichert werden.', true);
     } finally {
-      if (current()) { state.busy = false; render(); }
+      if (current()) {
+        state.busy = false; render();
+        const next=pendingServicepadTransfer;
+        pendingServicepadTransfer=null;
+        if(next&&state.profile?.id===next.actor&&businessId()===next.company)void servicePad?.offerLocalTransfer(next.id,next.original);
+      }
     }
   }
 
@@ -387,7 +402,7 @@
       if (!same(row.employee_id, id) || (date && row.work_date !== date)) return false;
       // A manually saved entry and a work order with precisely the same job
       // represent one working period. Keep the work-order source once.
-      return row.work_order_id || row.team_work_order_id || !state.rows.orders.some(order => orderPeriods(order).some(period => sameWorkTime(row,{...order,...period})));
+      return row.work_order_id || row.team_work_order_id || !hoursOrders().some(order => orderPeriods(order).some(period => sameWorkTime(row,{...order,...period})));
     });
   }
   function dayEntries(id = workerId(), date = state.date) { return effectiveTimeEntries(id, date); }
@@ -538,7 +553,70 @@
   const materialUnit = material => normalizeUnit(material?.unit,isHourlyMaterial(material));
   const itemUnit = item => normalizeUnit(item?.unit,isHourlyMaterial(item?.position_name || item?.name));
   function unitSelect(name,value,attributes='') { return `<label>Einheit<select name="${escape(name)}" class="material-unit" ${attributes}>${MATERIAL_UNITS.map(unit=>`<option value="${unit}" ${unit===value?'selected':''}>${unit}</option>`).join('')}</select></label>`; }
-  function materialRow(item = {}) { return `<div class="material-row" data-material-id="${escape(item.material_id||'')}"><label>Material<input name="material" list="materials" value="${escape(item.position_name || item.name || '')}"></label><label>Menge<input name="quantity" type="number" min="0.25" step="0.25" value="${escape(item.quantity || 1)}"></label>${unitSelect('unit',itemUnit(item),`data-material-unit data-unit-explicit="${Boolean(item.id || item.unit)}"`)}</div>`; }
+  function materialRow(item = {}) {
+    const name=item.position_name||item.name||'';
+    return `<div class="material-row" data-material-id="${escape(item.material_id||'')}" data-material-name="${escape(name)}">
+      <label>Material<input name="material" list="materials" value="${escape(name)}"></label><label>Menge<input name="quantity" type="number" min="0.25" step="0.25" value="${escape(item.quantity || 1)}"></label>${unitSelect('unit',itemUnit(item),`data-material-unit data-unit-explicit="${Boolean(item.id || item.unit)}"`)}
+      ${isManager()?'<button type="button" class="secondary small" data-action="worksheet-supplier-article">Großhändlerartikel auswählen</button>':''}
+    </div>`;
+  }
+  function supplierArticlePicker(row) {
+    const availability=window.WorktimeSupplierAvailability, ctx=availability?.onlineContext?.();
+    const company=businessId(),user=state.profile?.id;
+    if(!ctx){window.alert('Verbinde im Einkauf einmal den Großhändler für die Online-Artikelsuche. Deine Eingaben im Arbeitsschein bleiben geöffnet.');return;}
+    const dialog=document.createElement('dialog');
+    dialog.className='panel';
+    dialog.innerHTML=`<h3>Artikel bei ${escape(ctx.supplier)} suchen</h3><form class="entry-form">
+      <label class="wide">Name oder Artikelnummer<input name="query" required minlength="2" maxlength="160" value="${escape(row.querySelector('[name=material]').value)}"></label>
+      <button class="primary">Suchen</button><button type="button" data-dismiss-supplier>Schließen</button></form>
+      <p role="status" data-supplier-result-status></p><div data-supplier-results></div>`;
+    const form=dialog.querySelector('form'), results=dialog.querySelector('[data-supplier-results]'),status=dialog.querySelector('[role=status]');
+    let searchSequence=0, importing=false;
+    const current=()=>dialog.open&&row.isConnected&&state.profile?.id===user&&businessId()===company&&availability.onlineContext(ctx.supplier)?.key===ctx.key;
+    dialog.querySelector('[data-dismiss-supplier]').onclick=()=>dialog.close();
+    dialog.addEventListener('close',()=>dialog.remove(),{once:true});
+    form.onsubmit=async event=>{
+      event.preventDefault();
+      if(importing||!current())return;
+      const request=++searchSequence;
+      results.replaceChildren();
+      status.textContent='Großhändler wird abgefragt …';
+      try{
+        const found=await availability.onlineRequest('search',{query:form.elements.query.value.trim(),cursor:null,in_stock_only:false},ctx.supplier);
+        if(!current()||searchSequence!==request)return;
+        for(const item of (found.items||[]).slice(0,20)){
+          const button=document.createElement('button');
+          button.type='button';button.textContent=[item.sku,item.name].filter(Boolean).join(' · ');
+          button.onclick=async()=>{
+            if(importing||!current())return;
+            importing=true;button.disabled=true;
+            status.textContent='Artikel, Einheit und Nettopreis werden geprüft …';
+            try {
+              const detail=await availability.onlineRequest('article',{item_ref:item.item_ref},ctx.supplier);
+              if(!current())return;
+              if(detail.data?.article_number!==item.sku||!detail.offer_ref||!Number.isFinite(detail.data.recommended_price_1))throw Error('Der Artikelpreis konnte nicht eindeutig bestätigt werden.');
+              const response=await availability.onlineRequest('import_article',{offer_ref:detail.offer_ref},ctx.supplier);
+              if(!current())return;
+              const material=response.material;
+              if(!material?.id||!same(material.business_id,company)||material.catalog_supplier!==ctx.supplier||material.catalog_article_number!==item.sku)
+                throw Error('Der übernommene Artikel gehört nicht zur ausgewählten Händlerposition.');
+              state.rows.materials=[...state.rows.materials.filter(old=>!same(old.id,material.id)),material];
+              availability.invalidateMaterials?.();
+              row.dataset.materialId=material.id;row.dataset.materialName=material.name;
+              row.querySelector('[name=material]').value=material.name;
+              row.querySelector('[name=unit]').value=materialUnit(material);
+              row.querySelector('[name=unit]').dataset.unitExplicit='true';
+              dialog.close();row.querySelector('[name=quantity]').focus();
+            }catch(error){if(current())status.textContent=error.message;}
+            finally{importing=false;button.disabled=false;}
+          };
+          results.append(button);
+        }
+        status.textContent=results.children.length?'Artikel zur Übernahme auswählen.':'Keine passenden Artikel gefunden.';
+      }catch(error){if(current()&&request===searchSequence)status.textContent=error.message;}
+    };
+    document.body.append(dialog);dialog.showModal();form.elements.query.focus();
+  }
   root.addEventListener('change',event=>{if(event.target.matches('[data-material-unit]'))event.target.dataset.unitExplicit='true';});
   root.addEventListener('input',event=>{
     if(event.target.name!=='material')return;
@@ -745,15 +823,61 @@
     list.lastElementChild.querySelector('[data-stop-key="time"]').focus();
   });
 
-  function orderEditor(order) {
+  function orderEditor(order, imported) {
     if (!order) return '';
     const items = state.rows.items.filter(item => same(item.work_order_id, order.id) && !isHourlyMaterial(item.position_name));
     const documents = state.rows.documents.filter(document => same(document.work_order_id, order.id));
-    const rows = items.length ? items.map(materialRow).join('') : materialRow();
+    const editorItems=imported?.materials||items;
+    const rows=editorItems.length?editorItems.map(materialRow).join(''):materialRow();
     const billingStatus = order.invoiced ? '<span class="badge">Bereits abgerechnet</span>' : '';
-    return `<section class="panel"><div class="page-head"><div><span class="eyebrow">Arbeitsschein bearbeiten</span><h3>${escape(order.customer_name || 'Ohne Kunde')}</h3>${orderSiteMarkup(order)}</div><div class="actions">${billingStatus}${items.length && canExportJuprowaMaterial(order) ? `<button type="button" class="secondary small" data-action="juprowa-material" data-id="${escape(order.id)}">Juprowa-Materialdatei</button>` : ''}<button type="button" class="secondary small" data-action="order-pdf" data-id="${order.id}">PDF drucken / speichern</button><button type="button" class="danger small" data-action="delete-order" data-id="${order.id}">Arbeitsschein löschen</button><button type="button" class="secondary small" data-action="close-order">Schließen</button></div></div><form data-form="order-edit" class="entry-form"><input type="hidden" name="id" value="${order.id}">${orderDatePicker(order.work_date)}<label class="wide">Kunde<input name="customer" required list="customers" value="${escape(order.customer_name || '')}"></label>${serviceLocationFields(order)}${wholesalerFields(order)}<label class="wide">Beschreibung<input name="title" value="${escape(order.title || '')}"></label><div class="wide order-input-layout"><section class="order-time-section entry-form"><h4 class="wide">Arbeitszeiten</h4>${teamEnabled() ? '' : `<p class="wide">Arbeitsstunden werden beim Speichern automatisch als <b>${escape(hourlyNameForEmployee(order.employee_id))}</b> mit dem Preis aus der Materialliste ergänzt.</p>`}${teamOrderTimeFields(order.employee_id,orderPeriods(order),`<label>Arbeitsbeginn${timeInput('start', order.start_time?.slice(0, 5))}</label><label>Arbeitsende${timeInput('end', order.end_time?.slice(0, 5))}</label><label>Pause in Stunden<input name="pause" type="number" min="0" step="0.25" value="${n(order.pause_hours)}"></label><label>Ausgeführte Stunden<input name="hours" type="number" min="0.25" step="0.25" value="${n(order.executed_hours)}" required></label>`)}</section><section class="order-material-section"><h4>Material</h4><div class="wide" id="material-lines">${rows}</div><button type="button" class="secondary wide" data-action="more-material">Weiteres Material</button></section></div>${noteTemplates()}<label class="wide">Notiz / Dokumentation<textarea name="documentation" rows="4">${escape(order.documentation || '')}</textarea></label><label class="wide">Weitere Dokumente hochladen<input name="documents" type="file" multiple accept="image/*,.pdf,.doc,.docx"></label>${documents.length ? `<p class="wide">Vorhandene Dokumente: ${documents.map(document => escape(document.file_name)).join(', ')}</p>` : ''}${signatureFields(order)}<button class="primary wide" data-signature-submit>Änderungen speichern</button></form>${customerList()}${materialList()}</section>`;
+    return `<section class="panel"><div class="page-head"><div><span class="eyebrow">${imported?"Juprowa-Arbeitsschein "+escape(imported.sheet.number):"Arbeitsschein bearbeiten"}</span><h3>${escape(order.customer_name || 'Ohne Kunde')}</h3>${orderSiteMarkup(order)}</div><div class="actions">${imported?"":billingStatus}${!imported&&items.length && canExportJuprowaMaterial(order) ? `<button type="button" class="secondary small" data-action="juprowa-material" data-id="${escape(order.id)}">Juprowa-Materialdatei</button>` : ''}${imported?"":`<button type="button" class="secondary small" data-action="order-pdf" data-id="${order.id}">PDF drucken / speichern</button><button type="button" class="danger small" data-action="delete-order" data-id="${order.id}">Arbeitsschein löschen</button>${isManager()?`<button type="button" class="secondary small" data-action="worksheet-send-to-servicepad" data-id="${order.id}">An Juprowa übergeben</button>`:""}`}<button type="button" class="secondary small" data-action="close-order">Schließen</button></div></div>${imported?`<p class="notice">Speichere den Arbeitsschein zuerst in der Arbeitszeiterfassung. Anschließend kannst du die Übergabe an Juprowa bestätigen.</p>${imported.sheet.notes?`<details><summary>Vorhandene Juprowa-Notizen</summary><p>${escape(imported.sheet.notes)}</p></details>`:""}`:""}<form data-form="order-edit" ${imported?"data-servicepad-import":""} class="entry-form"><input type="hidden" name="id" value="${order.id}">${orderDatePicker(order.work_date)}<label class="wide">Kunde<input name="customer" required list="customers" value="${escape(order.customer_name || '')}"></label>${serviceLocationFields(order)}${wholesalerFields(order)}<label class="wide">Beschreibung<input name="title" value="${escape(order.title || '')}"></label><div class="wide order-input-layout"><section class="order-time-section entry-form"><h4 class="wide">Arbeitszeiten</h4>${teamEnabled() ? '' : `<p class="wide">Arbeitsstunden werden beim Speichern automatisch als <b>${escape(hourlyNameForEmployee(order.employee_id))}</b> mit dem Preis aus der Materialliste ergänzt.</p>`}${teamOrderTimeFields(order.employee_id,orderPeriods(order),`<label>Arbeitsbeginn${timeInput('start', order.start_time?.slice(0, 5))}</label><label>Arbeitsende${timeInput('end', order.end_time?.slice(0, 5))}</label><label>Pause in Stunden<input name="pause" type="number" min="0" step="0.25" value="${n(order.pause_hours)}"></label><label>Ausgeführte Stunden<input name="hours" type="number" min="0.25" step="0.25" value="${n(order.executed_hours)}" required></label>`)}</section><section class="order-material-section"><h4>Material</h4><div class="wide" id="material-lines">${rows}</div><button type="button" class="secondary wide" data-action="more-material">Weiteres Material</button></section></div>${noteTemplates()}<label class="wide">Notiz / Dokumentation<textarea name="documentation" rows="4">${escape(order.documentation || '')}</textarea></label><label class="wide">Weitere Dokumente hochladen<input name="documents" type="file" multiple accept="image/*,.pdf,.doc,.docx"></label>${documents.length ? `<p class="wide">Vorhandene Dokumente: ${documents.map(document => escape(document.file_name)).join(', ')}</p>` : ''}${signatureFields(order)}<button class="primary wide" data-signature-submit>Änderungen speichern</button></form>${customerList()}${materialList()}</section>`;
   }
-  function orderDetailView() { const order = state.rows.orders.find(row => same(row.id, state.orderId)); return order ? orderEditor(order) : `<section class="panel"><h2>Arbeitsschein nicht gefunden</h2><p>Der Arbeitsschein ist nicht mehr verfügbar.</p><button type="button" class="secondary" data-action="close-order">Zurück</button></section>`; }
+  function orderDetailView() { if(state.servicepadImport&&state.servicepadImport.order.id===state.orderId&&state.servicepadImport.company===businessId())return orderEditor(state.servicepadImport.order,state.servicepadImport); const order = state.rows.orders.find(row => same(row.id, state.orderId)); return order ? orderEditor(order) : `<section class="panel"><h2>Arbeitsschein nicht gefunden</h2><p>Der Arbeitsschein ist nicht mehr verfügbar.</p><button type="button" class="secondary" data-action="close-order">Zurück</button></section>`; }
+  function openServicepadOrder(sheet) {
+    if(archivedOrder(sheet.localOrderId))throw new Error('Dieser Arbeitsschein wurde in Klarwerk archiviert.');
+    if(!isManager()||!teamEnabled())throw Error('Der reguläre Arbeitsscheineditor ist für dieses Geschäftskonto gerade nicht verfügbar.');
+    const company=businessId();
+    const local=sheet.localOrderId&&state.rows.orders.find(order=>same(order.id,sheet.localOrderId)&&orderInBusiness(order));
+    if(sheet.localOrderId&&!local)throw Error('Der verknüpfte Arbeitsschein ist noch nicht geladen. Bitte aktualisieren.');
+    if(local){
+      state.servicepadImport=null;state.orderId=local.id;state.employeeId=local.employee_id;state.date=local.work_date;
+      state.month=state.date.slice(0,7);state.view='order-detail';state.orderOrigin='orders';render();return;
+    }
+    const people=workers(), picked=new Map();
+    const periods=(sheet.times||[]).map(period=>{
+      const key=period.workerId||period.worker;
+      if(!picked.has(key)){
+        const exact=people.filter(person=>normalized(personName(person))===normalized(period.worker)||
+          normalized(person.username)===normalized(period.worker));
+        if(exact.length===1)picked.set(key,exact[0].id);
+        else {
+          const choice=window.prompt('Juprowa-Monteur „'+(period.worker||'unbekannt')+'“ einem Mitarbeiter zuordnen:\n'+
+            people.map((person,index)=>(index+1)+' – '+personName(person)).join('\n'));
+          const employee=people[Number(choice)-1];
+          if(!employee)throw Error('Bitte für jeden Zeitabschnitt einen Mitarbeiter auswählen.');
+          picked.set(key,employee.id);
+        }
+      }
+      return {key:crypto.randomUUID(),employee_id:picked.get(key),work_date:period.day,start_time:period.start,end_time:period.end,
+        pause_hours:(Number(period.breakMinutes)||0)/60};
+    }).sort((left,right)=>String(left.work_date).localeCompare(String(right.work_date)));
+    const billing=sheet.addresses?.billing||{}, site=sheet.addresses?.service||{};
+    const customer=state.rows.customers.find(row=>sheet.localCustomerId&&same(row.id,sheet.localCustomerId));
+    const street=String(site.street||'').trim();
+    const streetParts=/^(.+?)\s+(\d[\w\-/ ]*)$/.exec(street);
+    const day=periods[0]?.work_date||sheet.date||today();
+    const owner=periods[0]?.employee_id||workerId();
+    const order={id:'servicepad-import',employee_id:owner,work_date:day,customer_id:customer?.id,
+      customer_name:customer?.name||billing.name||site.name||'',title:sheet.requested||'',
+      documentation:sheet.completed||'',team_periods:periods,work_kind:'customer',
+      service_location:{label:site.name||'',street:streetParts?.[1]||street,house_no:streetParts?.[2]||'',
+        postal_code:site.postalCode||'',city:site.city||'',country:site.country||'Deutschland'}};
+    const materials=(sheet.materials||[]).filter(row=>row.editableIdentity!==false&&Number(String(row.quantity).replace(',','.'))>0)
+      .map(row=>({position_name:row.name||row.description||row.article,unit:normalizeUnit(row.unit),quantity:String(row.quantity).replace(',','.')}));
+    state.servicepadImport={company,sheet,order,materials};
+    state.orderId=order.id;state.employeeId=owner;state.date=day;state.month=day.slice(0,7);state.view='order-detail';state.orderOrigin='orders';
+    render();
+  }
   function ordersView() {
     const id = workerId(), list = state.rows.orders.filter(row => orderForEmployee(row,id,state.date));
     const previous = dayEntries(id).at(-1)?.end_time?.slice(0, 5) || '07:30';
@@ -1014,10 +1138,18 @@
     const created = await write('materials', { business_id: targetBusinessId, name, unit_price: 0, unit: normalizeUnit(unit), active: true });
     return rememberCatalogRow('materials', created, 'Der Artikel');
   }
+  async function resolveWorkSheetMaterial(input, company, unit) {
+    const row=input.closest?.('.material-row');
+    if(row?.dataset.materialId&&row.dataset.materialName===input.value){
+      const exact=state.rows.materials.find(material=>same(material.id,row.dataset.materialId)&&same(material.business_id,company));
+      if(exact)return exact;
+    }
+    return ensureMaterial(input.value,company,unit);
+  }
   async function saveMaterials(form, order, replace = false) {
     const targetBusinessId = materialBusinessId(order.employee_id);
     const materials = [...form.querySelectorAll('[name="material"]')], quantities = [...form.querySelectorAll('[name="quantity"]')], units = [...form.querySelectorAll('[name="unit"]')];
-    const resolved = []; for (let index = 0; index < materials.length; index++) { const material = await ensureMaterial(materials[index].value, targetBusinessId, units[index]?.value); if (material && !isHourlyMaterial(material)) resolved.push({ material, quantity: Math.max(0.25, n(quantities[index]?.value || 1)), unit: units[index]?.dataset.unitExplicit==='true' ? normalizeUnit(units[index].value) : materialUnit(material) }); }
+    const resolved = []; for (let index = 0; index < materials.length; index++) { const material = await resolveWorkSheetMaterial(materials[index], targetBusinessId, units[index]?.value); if (material && !isHourlyMaterial(material)) resolved.push({ material, quantity: Math.max(0.25, n(quantities[index]?.value || 1)), unit: units[index]?.dataset.unitExplicit==='true' ? normalizeUnit(units[index].value) : materialUnit(material) }); }
     if (replace) await remove('work_order_items', `work_order_id=eq.${encodeURIComponent(order.id)}`);
     for (const item of resolved) await write('work_order_items', { work_order_id: order.id, material_id: item.material.id, position_name: item.material.name, quantity: item.quantity, unit: item.unit, unit_price: n(item.material.unit_price) });
   }
@@ -1205,7 +1337,7 @@
     });
   }
   async function saveOrder(form) { const id = workerId(); if (locked(id)) throw new Error(lockedText(id)); const customer = await ensureCustomer(form.elements.customer.value, id); const value = timeValues(form), signature = signatureValues(form); const created = await write('work_orders', { employee_id: id, work_date: state.date, customer_id: customer.id, customer_name: customer.name, title: String(form.elements.title.value || '').trim(), start_time: value.start, end_time: value.end, pause_hours: value.pause, executed_hours: value.hours, calculation_mode: 'end_time', documentation: String(form.elements.documentation.value || ''), ...signature }); const order = created?.[0]; if (!order) throw new Error('Der Arbeitsschein konnte nicht gespeichert werden.'); await saveMaterials(form, order); await saveHourlyMaterial(order, value.hours); await saveDocuments(form, order, id); state.orderCustomer = ''; state.orderSite = null; }
-  async function updateOrder(form) { if (teamEnabled() || state.rows.orders.find(row => same(row.id, form.elements.id.value))?.team_periods?.length) return saveTeamOrder(form, state.rows.orders.find(row => same(row.id, form.elements.id.value))); const order = state.rows.orders.find(row => same(row.id, form.elements.id.value)); if (!order) throw new Error('Der Arbeitsschein wurde nicht gefunden.'); const id = order.employee_id, workDate = form.elements.work_date.value || order.work_date; if (workDate !== order.work_date && locked(id, workDate)) throw new Error(lockedText(id, workDate)); const customer = await ensureCustomer(form.elements.customer.value, id), value = timeValues(form), signature = signatureValues(form); const changes = { customer_id: customer.id, customer_name: customer.name, service_location:readServiceLocation(form, order.work_kind || 'customer'), title: String(form.elements.title.value || '').trim(), start_time: value.start, end_time: value.end, pause_hours: value.pause, executed_hours: value.hours, calculation_mode: 'end_time', documentation: String(form.elements.documentation.value || ''), ...signature }; if (workDate !== order.work_date) changes.work_date = workDate; await write('work_orders', changes, 'PATCH', `id=eq.${encodeURIComponent(order.id)}`); await saveMaterials(form, order, true); await saveHourlyMaterial(order, value.hours); await saveDocuments(form, order, id); state.orderId = ''; state.view = state.orderOrigin || 'orders'; }
+  async function updateOrder(form) { if(form.hasAttribute?.('data-servicepad-import'))return saveTeamOrder(form); if (teamEnabled() || state.rows.orders.find(row => same(row.id, form.elements.id.value))?.team_periods?.length) return saveTeamOrder(form, state.rows.orders.find(row => same(row.id, form.elements.id.value))); const order = state.rows.orders.find(row => same(row.id, form.elements.id.value)); if (!order) throw new Error('Der Arbeitsschein wurde nicht gefunden.'); const id = order.employee_id, workDate = form.elements.work_date.value || order.work_date; if (workDate !== order.work_date && locked(id, workDate)) throw new Error(lockedText(id, workDate)); const customer = await ensureCustomer(form.elements.customer.value, id), value = timeValues(form), signature = signatureValues(form); const changes = { customer_id: customer.id, customer_name: customer.name, service_location:readServiceLocation(form, order.work_kind || 'customer'), title: String(form.elements.title.value || '').trim(), start_time: value.start, end_time: value.end, pause_hours: value.pause, executed_hours: value.hours, calculation_mode: 'end_time', documentation: String(form.elements.documentation.value || ''), ...signature }; if (workDate !== order.work_date) changes.work_date = workDate; await write('work_orders', changes, 'PATCH', `id=eq.${encodeURIComponent(order.id)}`); await saveMaterials(form, order, true); await saveHourlyMaterial(order, value.hours); await saveDocuments(form, order, id); state.orderId = ''; state.view = state.orderOrigin || 'orders'; }
   function permissions(form) { return {time:form.dataset.form==='employee-permissions'?worker()?.menu_permissions?.time!==false:true,...Object.fromEntries(['customers', 'orders', 'calendar'].map(name => [name, form.elements[`perm-${name}`]?.checked !== false]))}; }
   async function saveCustomer(form) {
     const id = form.elements.id.value;
@@ -1335,7 +1467,9 @@
       state.timeEntryId = entry.id; state.orderId = ''; state.view = 'time'; state.menu = false; render(); return;
     }
     if (action === 'close-time') { state.timeEntryId = ''; render(); return; }
-    if (action === 'close-order') { state.orderId = ''; state.view = state.orderOrigin || 'orders'; render(); return; }
+    if (action === 'worksheet-send-to-servicepad') { void servicePad?.offerLocalTransfer(button.dataset.id); return; }
+    if (action === 'close-order') { state.servicepadImport=null; state.orderId = ''; state.view = state.orderOrigin || 'orders'; render(); return; }
+    if (action === 'worksheet-supplier-article') { supplierArticlePicker(button.closest('.material-row')); return; }
     if (action === 'more-material') { document.getElementById('material-lines')?.insertAdjacentHTML('beforeend', materialRow()); return; }
     if (action === 'new-customer') { state.customerId = 'new'; render(); return; }
     if (action === 'customer') { state.customerId = button.dataset.id; render(); revealCustomerProfile(); return; }
@@ -1561,7 +1695,9 @@
         if (name === 'customers') await loadCustomerRows(isCurrent, Boolean(onDataReady));
         else {
           const data = await allRows(table, query, Boolean(onDataReady));
-          if (isCurrent()) state.rows[name] = data;
+          if (isCurrent()) {
+            if(name==='orders')loadOrderRows(data);else state.rows[name]=data;
+          }
         }
       } catch { issues.push(name); }
       finally { if (isCurrent() && name !== 'people') onDataReady?.(name, !issues.includes(name)); }
@@ -1601,7 +1737,7 @@
   }
   function recordedPeriods(id = workerId(), date = '') {
     const entries = effectiveTimeEntries(id, date);
-    const orders = state.rows.orders.filter(order => orderForEmployee(order,id,date)).flatMap(order => orderPeriods(order).filter(period => same(period.employee_id,id) && (!date || period.work_date === date) && !entries.some(entry => (period.key ? same(entry.team_work_order_id,order.id) && same(entry.team_period_key,period.key) : same(entry.work_order_id,order.id)) || sameWorkTime(entry,{...order,...period}))).map(period => ({...order,...period,id:`work-order-${order.id}-${period.key || 'single'}`,work_order_id:order.id})));
+    const orders = hoursOrders().filter(order => orderForEmployee(order,id,date)).flatMap(order => orderPeriods(order).filter(period => same(period.employee_id,id) && (!date || period.work_date === date) && !entries.some(entry => (period.key ? same(entry.team_work_order_id,order.id) && same(entry.team_period_key,period.key) : same(entry.work_order_id,order.id)) || sameWorkTime(entry,{...order,...period}))).map(period => ({...order,...period,id:`work-order-${order.id}-${period.key || 'single'}`,work_order_id:order.id})));
     return [...entries, ...orders, ...schoolPeriods(id,date)];
   }
   function schoolPeriods(id=workerId(),date='') {
@@ -1994,7 +2130,8 @@
     ]);
     if (!same(actor, state.profile?.id)) throw new Error('Das Benutzerkonto hat sich geändert. Bitte die Planung erneut öffnen.');
     planningSync.assertCurrent(proof);
-    Object.assign(state.rows, { appointments, days, vacations, orders, entries, customerRates, workweeks });
+    Object.assign(state.rows, { appointments, days, vacations, entries, customerRates, workweeks });
+    loadOrderRows(orders);
     state.customerRatesReady=true;
     state.planningRequestsReady=requests!==null;
     if(requests!==null){state.rows.planningRequests=requests;planningSync.commit(proof);}
@@ -2129,6 +2266,7 @@
       if (appointment) await write('appointments', { notes: planningNotes({ ...planningMeta(appointment), status: 'completed', workOrderId: order.id }) }, 'PATCH', `id=eq.${encodeURIComponent(planId)}`);
     }
     state.orderCustomer = ''; state.orderSite = null; state.planPrefill = null;
+    if(isManager())pendingServicepadTransfer={id:order.id,company:businessId(),actor:state.profile?.id};
   }
   function ordersView() {
     const id = workerId(), list = state.rows.orders.filter(row => orderForEmployee(row,id,state.date)), selected = list.find(row => same(row.id, state.orderId)), prefill = same(state.planPrefill?.employeeId, id) && state.planPrefill?.date === state.date ? state.planPrefill : null;
@@ -2309,10 +2447,15 @@
     if (!['planning', 'time', 'orders', 'order-detail', 'home', 'calendar', 'settings'].includes(state.view)) return;
     planningSyncBusy = true;
     const orderId = state.orderId;
+    const priorArchived=state.rows.archivedOrders.map(order=>order.id).sort().join(',');
     const wasBilled = state.rows.orders.find(order => same(order.id, orderId))?.invoiced;
     try {
       const changed = await refreshPlanningData({ifChanged:true}) !== false;
       if (!changed) return;
+      if(priorArchived!==state.rows.archivedOrders.map(order=>order.id).sort().join(',')) {
+        for(const card of root.querySelectorAll('.row-card [data-action="open-order"]'))
+          if(archivedOrder(card.dataset.id)) card.closest('.row-card')?.remove();
+      }
       if (orderId && same(state.orderId, orderId) && wasBilled !== state.rows.orders.find(order => same(order.id, orderId))?.invoiced) {
         render();
         return;
@@ -2327,7 +2470,7 @@
     } catch { /* Keep the last verified plan during temporary network outages. */ }
     finally { planningSyncBusy = false; }
   }
-  window.setInterval(syncPlanningIfVisible, 20000);
+  window.setInterval(syncPlanningIfVisible, 8000);
   document.addEventListener('visibilitychange', syncPlanningIfVisible);
   window.addEventListener('focus', syncPlanningIfVisible);
 
@@ -2406,6 +2549,7 @@
     return periods;
   }
   const savedOrderSynchronized = Symbol('savedOrderSynchronized');
+  let pendingServicepadTransfer;
   async function syncSavedTeamOrder(order, planId, isCurrent) {
     const orderId = encodeURIComponent(order.id);
     const [entries, items, documents, plans] = await Promise.all([
@@ -2440,7 +2584,7 @@
   async function saveTeamOrder(form, existing = null) {
     if (!teamEnabled()) throw new Error('Die Mehrpersonen-Buchung ist noch nicht verbunden. Bestehende Daten bleiben erhalten.');
     const planId = String(form.elements.planning_id?.value || ''), owner = existing?.employee_id || form.querySelector('[data-team-times]')?.dataset.teamOwner || workerId();
-    const date = existing ? form.elements.work_date.value || existing.work_date : state.date;
+    const date=form.elements.work_date?.value||existing?.work_date||state.date;
     const periods = collectTeamPeriods(form), signature = signatureValues(form), workKind=window.WorktimeBusinessRules?.kind(form.elements.work_kind?.value)||'customer';
     if(workKind!=='customer'&&planId)throw new Error('Eine bestätigte Kundenplanung muss als Kundenauftrag abgeschlossen werden. Für interne Tätigkeiten bitte einen eigenen Arbeitsschein anlegen.');
     const documentation=window.WorktimeBusinessRules?.documentation(workKind,form.elements.documentation.value)||String(form.elements.documentation.value||'');
@@ -2450,7 +2594,7 @@
     if (workKind==='customer'&&!customer?.id) throw new Error('Bitte einen Kunden angeben.');
     const inputs = [...form.querySelectorAll('[name="material"]')], quantities = [...form.querySelectorAll('[name="quantity"]')], units = [...form.querySelectorAll('[name="unit"]')], items = [];
     for (let index=0; index<inputs.length; index++) {
-      const material = await ensureMaterial(inputs[index].value,businessId(),units[index]?.value);
+      const material = await resolveWorkSheetMaterial(inputs[index],businessId(),units[index]?.value);
       if (material && !isHourlyMaterial(material)) items.push({ material_id:material.id, quantity:Math.max(0.25,n(quantities[index]?.value || 1)), unit:units[index]?.dataset.unitExplicit==='true' ? normalizeUnit(units[index].value) : materialUnit(material) });
     }
     const timerId=form.dataset.timerId,timerDevice=form.dataset.timerDevice;
@@ -2466,9 +2610,12 @@
     // Core data is already committed atomically. A failed file upload never
     // causes the next attempt to create another work order.
     const hasNewReceipts = JSON.parse(form.dataset.receiptScans || '[]').length > 0;
+    const imported=form.hasAttribute?.('data-servicepad-import')?state.servicepadImport:null;
+    state.servicepadImport=null;
     try { await saveDocuments(form,order,actor); }
     catch { throw new Error('Der Arbeitsschein und alle Mitarbeiterzeiten sind gespeichert. Ein Dokument konnte nicht hochgeladen werden; bitte hier erneut hinzufügen.'); }
     if (!isCurrent()) return savedOrderSynchronized;
+    if(workKind==='customer'&&isManager())pendingServicepadTransfer={id:order.id,company,actor,original:imported?.sheet};
     if (hasNewReceipts) return; // Device receipt state is refreshed by the existing reload.
     try { await syncSavedTeamOrder(order, planId, isCurrent); }
     catch { return; } // A readback failure falls back to the existing complete refresh.
@@ -2533,6 +2680,11 @@
     }
     if (button.dataset.action==='delete-time') {
       const entry=state.rows.entries.find(row => same(row.id,button.dataset.id));
+      if(archivedOrder(entry?.team_work_order_id||entry?.work_order_id)) {
+        event.stopImmediatePropagation();
+        notice('Die Arbeitszeit des archivierten Arbeitsscheins bleibt erhalten.');
+        return;
+      }
       if (entry?.team_work_order_id) {
         event.stopImmediatePropagation(); state.orderId=entry.team_work_order_id; state.orderOrigin='time'; state.view='order-detail';
         notice('Diesen Zeitabschnitt bitte im gemeinsamen Arbeitsschein entfernen. So bleiben Auftrag, Abrechnung und Mitarbeiterzeiten synchron.');
@@ -2691,7 +2843,7 @@
   initializeShopping();
   const klarwerkConnection=window.WorktimeKlarwerkConnection?.create({root,state,businessId,isManager,api,escape});
   if(klarwerkConnection){const baseSettings=settingsView,baseRender=render;settingsView=()=>baseSettings()+klarwerkConnection.settings();render=()=>{baseRender();klarwerkConnection.afterRender();};}
-  const servicePad=window.WorktimeServicePad?.create({root,state,businessId,isManager,api,escape});
+  const servicePad=window.WorktimeServicePad?.create({root,state,businessId,isManager,api,escape,openNative:openServicepadOrder,message:(text,error)=>{notice(text,error);render();}});
   if(servicePad){
     const baseSettings=settingsView,baseCustomers=customersView,baseOrders=ordersView,baseRender=render;
     settingsView=()=>baseSettings()+servicePad.settings();

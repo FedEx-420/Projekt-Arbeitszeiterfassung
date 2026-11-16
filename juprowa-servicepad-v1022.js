@@ -6,9 +6,11 @@
   const sheetDate = value => /^\d{4}-\d{2}-\d{2}$/.test(value || '') ? value.split('-').reverse().join('.') : '';
   const searchable = value => value.toLocaleLowerCase('de-DE').normalize('NFD').replace(/\p{M}/gu,'').replaceAll('ß','ss').trim();
 
-  window.WorktimeServicePad = { create({ root, state, businessId, isManager, api, escape }) {
+  window.WorktimeServicePad = { create({ root, state, businessId, isManager, api, escape, openNative, message=()=>{} }) {
     const scope = () => isManager() && businessId() ? state.profile.id + ':' + businessId() : '';
     let active, editDialog, previewDialog;
+    const pendingLinks=new Map();
+    let transferring=false;
 
     function section(mode, heading) {
       if (!scope()) return '';
@@ -170,6 +172,11 @@
     function openSheetEditor(current) {
       const sheet=current.sheetDetail;
       if(!sheet||current.busy||!current.connection)return;
+      if(openNative){
+        try{previewDialog?.close();openNative(sheet);}
+        catch(error){message(error.message,true);}
+        return;
+      }
       editDialog?.close();
       const dialog=document.createElement('dialog');
       editDialog=dialog;
@@ -364,6 +371,43 @@
     const call = (current, action, fields = {}) => api('/functions/v1/juprowa-servicepad', {
       method: 'POST', body: { action, businessId: current.business, revision: current.connection?.revision, ...fields },
     });
+    async function offerLocalTransfer(id,original) {
+      if(!scope()||transferring)return;
+      const key=scope(), current={key,business:businessId()};
+      const linkKey=key+':'+id;
+      if(original)pendingLinks.set(linkKey,original);
+      transferring=true;
+      try{
+        const result=await call(current,'status');
+        if(key!==scope()||!result.connection)return;
+        current.connection=result.connection;
+        const prior=pendingLinks.get(linkKey);
+        if(prior){
+          await call(current,'worksheet-link',{localOrderId:id,worksheetId:prior.id,sheetRevision:prior.revision});
+          if(key!==scope())return;
+          pendingLinks.delete(linkKey);
+        }
+        if(!window.confirm('Der Arbeitsschein ist gespeichert. Möchtest du die gespeicherte Fassung jetzt an Juprowa übergeben?'))return;
+        if(key!==scope())return;
+        let transferred=await call(current,'worksheet-transfer',{localOrderId:id,confirmed:true});
+        if(Array.isArray(transferred.workerChoices)&&Array.isArray(transferred.workers)){
+          if(!transferred.workers.length)throw Error('ServicePad hat keine zuordenbaren Mitarbeiter geliefert.');
+          const workers={};
+          for(const employee of transferred.workerChoices){
+            const selection=window.prompt(employee.name+' einem Juprowa-Monteur zuordnen:\n'+
+              transferred.workers.map((worker,index)=>(index+1)+' – '+worker.name).join('\n'));
+            const worker=transferred.workers[Number(selection)-1];
+            if(!worker||key!==scope())return;
+            workers[employee.id]=worker.id;
+          }
+          if(key!==scope())return;
+          transferred=await call(current,'worksheet-transfer',{localOrderId:id,confirmed:true,workers});
+        }
+        if(!transferred?.id)throw Error('Juprowa hat den Arbeitsschein noch nicht bestätigt.');
+        if(key===scope())message('Juprowa hat den Arbeitsschein '+(transferred.number||transferred.id)+' bestätigt.');
+      }catch(error){if(key===scope())message('Der Arbeitsschein ist lokal gespeichert. '+error.message,true);}
+      finally{transferring=false;}
+    }
 
     async function run(current, action, fields, form) {
       if (current.busy) return;
@@ -562,6 +606,6 @@
     }, true);
 
     return { settings:()=>section('settings','Juprowa ServicePad'),customers:()=>section('customers','Juprowa-Kundendaten ergänzen'),
-      orders:()=>section('orders','Offene Juprowa-Arbeitsscheine'),afterRender };
+      orders:()=>section('orders','Offene Juprowa-Arbeitsscheine'),afterRender,offerLocalTransfer };
   } };
 })();

@@ -3,14 +3,16 @@
 
   const addressFields = {name:'Name',name2:'Namenszusatz',name3:'Weiterer Namenszusatz',street:'Straße und Hausnummer',postalCode:'Postleitzahl',city:'Ort',country:'Land'};
   const timeValue = value => String(value ?? '').replace(/^(\d):/,'0$1:').slice(0,5);
+  const sheetDate = value => /^\d{4}-\d{2}-\d{2}$/.test(value || '') ? value.split('-').reverse().join('.') : '';
+  const searchable = value => value.toLocaleLowerCase('de-DE').normalize('NFD').replace(/\p{M}/gu,'').replaceAll('ß','ss').trim();
 
   window.WorktimeServicePad = { create({ root, state, businessId, isManager, api, escape }) {
     const scope = () => isManager() && businessId() ? state.profile.id + ':' + businessId() : '';
-    let active, editDialog;
+    let active, editDialog, previewDialog;
 
     function section(mode, heading) {
       if (!scope()) return '';
-      return `<details id="juprowa-settings" data-juprowa-mode="${mode}" class="panel"${active?.key === scope() && active.mode===mode && active.expanded ? ' open' : ''}>
+      return `<details id="juprowa-settings" data-juprowa-mode="${mode}" class="panel${mode==='orders'?' servicepad-board':''}"${active?.key === scope() && active.mode===mode && active.expanded ? ' open' : ''}>
         <summary>${heading}</summary>
         <div id="juprowa-servicepad"><p role="status">Verbindung wird geprüft …</p></div>
       </details>`;
@@ -42,24 +44,79 @@
       </section>`;
     }
 
-    function sheetDetail(sheet) {
-      if (!sheet) return '';
+    function openSheetDetail(current) {
+      const sheet=current.sheetDetail;
+      if(!sheet||current.busy||!current.connection)return;
+      previewDialog?.close();
+      const dialog=document.createElement('dialog');
+      previewDialog=dialog;
+      dialog.className='servicepad-preview';
+      dialog.setAttribute('aria-labelledby','sp-preview-title');
       const definition = [
         ['Projekt', sheet.project], ['Einsatzort', sheet.service], ['Rechnungsanschrift', sheet.billing],
         ['Auszuführen', sheet.requested], ['Ausgeführt', sheet.completed], ['Notizen', sheet.notes],
       ].filter(([, value]) => value);
-      return `<section class="panel" id="juprowa-worksheet-detail" tabindex="-1"><h3>Arbeitsschein ${escape(sheet.number)}</h3>
-        <button type="button" class="primary" data-sp="worksheet-edit">In der Arbeitszeiterfassung bearbeiten</button>
-        <dl>${definition.map(([key, value]) => `<dt>${key}</dt><dd style="white-space:pre-wrap">${escape(value)}</dd>`).join('')}</dl>
-        <h4>Arbeitszeiten</h4>
+      dialog.innerHTML=`<header class="servicepad-preview-header"><h2 id="sp-preview-title">Arbeitsschein ${escape(sheet.number)}</h2>
+        <button type="button" class="secondary" data-sp-close-preview>Schließen</button></header>
+      <div class="servicepad-preview-body">
+        ${definition.length?`<dl class="servicepad-facts">${definition.map(([key, value]) => `<div><dt>${key}</dt><dd>${escape(value)}</dd></div>`).join('')}</dl>`:''}
+        <section><h3>Arbeitszeiten</h3>
         ${sheet.times.length ? `<ul>${sheet.times.map(time => `<li>${escape([time.day, time.worker, [time.start, time.end].filter(Boolean).join(' – '),
           time.breakMinutes ? time.breakMinutes + ' min Pause' : '',
-          time.travelStart && time.travelEnd ? 'Anfahrt ' + time.travelStart + ' – ' + time.travelEnd : ''].filter(Boolean).join(' · '))}</li>`).join('')}</ul>` : '<p>Keine Zeiten im abgerufenen Arbeitsschein.</p>'}
-        <h4>Material</h4>
-        ${sheet.materials.length ? `<ul>${sheet.materials.map(item => `<li>${escape([item.article, item.name,
-          [item.quantity, item.unit].filter(Boolean).join(' ')].filter(Boolean).join(' · '))}</li>`).join('')}</ul>` : '<p>Kein Material im abgerufenen Arbeitsschein.</p>'}
-        <p>${sheet.signed ? 'Unterschrift vorhanden' : 'Keine Unterschrift im abgerufenen Arbeitsschein'} · ${sheet.attachmentCount} Anhänge · ${sheet.formCount} Formulare laut ServicePad</p>
-      </section>`;
+          time.travelStart && time.travelEnd ? 'Anfahrt ' + time.travelStart + ' – ' + time.travelEnd : ''].filter(Boolean).join(' · '))}</li>`).join('')}</ul>` : '<p>Keine Arbeitszeiten eingetragen.</p>'}</section>
+        <section><h3>Material</h3>
+        ${sheet.materials.length ? `<ul>${sheet.materials.map(item => `<li>${escape([item.article, item.name || item.description,
+          [item.quantity, item.unit].filter(Boolean).join(' ')].filter(Boolean).join(' · '))}</li>`).join('')}</ul>` : '<p>Kein Material eingetragen.</p>'}</section>
+        <p class="servicepad-sheet-meta">${sheet.signed ? 'Unterschrift vorhanden' : 'Keine Unterschrift'} · ${Number(sheet.attachmentCount)||0} Anhänge · ${Number(sheet.formCount)||0} Formulare</p>
+      </div><footer class="servicepad-preview-footer"><button type="button" class="primary" data-sp-edit-preview>In der Arbeitszeiterfassung bearbeiten</button></footer>`;
+      let editing=false;
+      dialog.querySelector('[data-sp-close-preview]').onclick=()=>dialog.close();
+      dialog.querySelector('[data-sp-edit-preview]').onclick=()=>{editing=true;dialog.close();openSheetEditor(current);};
+      dialog.addEventListener('close',()=>{
+        if(previewDialog===dialog)previewDialog=null;
+        dialog.remove();
+        if(!editing&&active===current&&scope()===current.key)focusSheet(sheet.id,false);
+      },{once:true});
+      document.body.append(dialog);
+      dialog.showModal();
+    }
+
+    function focusSheet(id,editor) {
+      [...root.querySelectorAll('[data-sp="worksheet-detail"]')].find(button=>button.dataset.sheet===id &&
+        button.hasAttribute('data-sp-open-editor')===editor)?.focus({preventScroll:true});
+    }
+
+    function worksheetsView(current, sheets, disabled) {
+      if(!sheets.length)return '<p class="servicepad-empty">Im verknüpften Mandanten sind keine offenen Arbeitsscheine vorhanden.</p>';
+      const order=current.sheetOrder==='oldest'?1:-1;
+      const ordered=[...sheets].sort((a,b)=>Number(!a.date)-Number(!b.date)||order*(a.date||'').localeCompare(b.date||'')||
+        a.number.localeCompare(b.number,'de',{numeric:true}));
+      return `<div class="servicepad-list-tools">
+        <label>Juprowa-Arbeitsschein suchen<input type="search" data-sp-filter value="${escape(current.sheetFilter||'')}" placeholder="Kunde, Projektnummer, Ort oder Monteur"></label>
+        <label>Sortierung<select data-sp-order><option value="latest">Neueste Termine zuerst</option><option value="oldest"${order===1?' selected':''}>Älteste Termine zuerst</option></select></label>
+      </div>
+      <p class="servicepad-sheet-meta servicepad-result-count" role="status" data-sp-count></p>
+      <ul class="servicepad-worksheets" role="list" aria-label="Offene Juprowa-Arbeitsscheine">${ordered.map(sheet=>{
+        const keys=[sheet.number,sheet.project,sheet.customer,sheet.location,sheet.technician,sheetDate(sheet.date)];
+        const titleId='servicepad-sheet-'+escape(sheet.id);
+        return `<li class="servicepad-worksheet" data-sp-search="${escape(searchable(keys.filter(Boolean).join(' ')))}">
+          <div class="servicepad-sheet-main">
+            <h3 id="${titleId}">${escape(sheet.customer||'Arbeitsschein '+sheet.number)}</h3>
+            <p class="servicepad-sheet-meta">${escape([sheet.customer?'Nr. '+sheet.number:'',sheet.project?'Projekt '+sheet.project:''].filter(Boolean).join(' · '))}</p>
+            ${sheet.location?`<p class="servicepad-sheet-location">${escape(sheet.location)}</p>`:''}
+            ${sheet.description?`<p class="servicepad-sheet-description">${escape(sheet.description)}</p>`:''}
+          </div>
+          <div class="servicepad-sheet-schedule">
+            ${sheetDate(sheet.date)?`<time datetime="${escape(sheet.date)}">${sheetDate(sheet.date)}</time>`:'<span class="servicepad-sheet-meta">Ohne Termin</span>'}
+            ${sheet.technician?`<span class="servicepad-sheet-meta">${escape(sheet.technician)}</span>`:''}
+          </div>
+          <div class="servicepad-sheet-actions">
+            <button type="button" class="secondary" data-sp="worksheet-detail" data-sheet="${escape(sheet.id)}" aria-describedby="${titleId}"${disabled}>Details öffnen</button>
+            <button type="button" class="primary" data-sp="worksheet-detail" data-sheet="${escape(sheet.id)}" aria-describedby="${titleId}" data-sp-open-editor${disabled}>Arbeitsschein bearbeiten</button>
+          </div>
+        </li>`;
+      }).join('')}</ul>
+      <div class="servicepad-empty" data-sp-no-results hidden><p>Keine Arbeitsscheine passen zur Suche.</p><button type="button" class="secondary" data-sp="clear-search">Suche zurücksetzen</button></div>`;
     }
 
     function addressInputs(label, key, address) {
@@ -116,7 +173,7 @@
       editDialog?.close();
       const dialog=document.createElement('dialog');
       editDialog=dialog;
-      dialog.className='panel';
+      dialog.className='panel servicepad-editor';
       dialog.setAttribute('aria-labelledby','sp-edit-title');
       dialog.style.maxWidth='min(780px,96vw)';
       dialog.innerHTML=`<form method="dialog" class="entry-form">
@@ -191,7 +248,11 @@
       });
       dialog.querySelector('[data-sp-clear]').onclick=()=>{resetConfirmation();strokes=[];pointer=null;drawing=null;ctx.clearRect(0,0,canvas.width,canvas.height);};
       dialog.querySelector('[data-sp-cancel]').onclick=()=>dialog.close();
-      dialog.addEventListener('close',()=>{if(editDialog===dialog)editDialog=null;dialog.remove();});
+      dialog.addEventListener('close',()=>{
+        if(editDialog===dialog)editDialog=null;
+        dialog.remove();
+        if(!current.busy&&active===current&&scope()===current.key)focusSheet(sheet.id,true);
+      },{once:true});
       form.addEventListener('submit',async event=>{
         event.preventDefault();
         if(active!==current||scope()!==current.key||current.busy)return;
@@ -243,13 +304,16 @@
       if (!panel || active !== current || scope() !== current.key) return;
       const info = current.message
         ? `<p class="notice error" role="alert">${escape(current.message)}</p>` : '';
-      const account = current.connection
-        ? `<p>Verknüpfter Mandant <strong>${escape(current.connection.label)}</strong></p>` : '';
       const muted = current.busy ? ' disabled' : '';
-      const buttons = current.connection && !current.form
-        ? `${current.mode==='customers'?'':`<button type="button" data-sp="refresh"${muted}>Arbeitsscheine aktualisieren</button>`}
-          <button type="button" data-sp="form"${muted}>Neu anmelden</button>
-          <button type="button" data-sp="disconnect"${muted}>Verbindung trennen</button>` : '';
+      const inOrders=current.mode==='orders';
+      const connectionActions=`<button type="button" class="secondary" data-sp="form"${muted}>Neu anmelden</button>
+        <button type="button" class="secondary" data-sp="disconnect"${muted}>Verbindung trennen</button>`;
+      const reloadButton=`<button type="button" class="secondary" data-sp="refresh"${muted}>Arbeitsscheine aktualisieren</button>`;
+      const account = !current.connection ? '' : inOrders ? `<header class="servicepad-account-bar">
+          <p><span>Verknüpfter Mandant</span><strong>${escape(current.connection.label)}</strong></p>
+          ${current.form?'':reloadButton}</header>` : `<p>Verknüpfter Mandant <strong>${escape(current.connection.label)}</strong></p>`;
+      const buttons = current.connection && !current.form && !inOrders
+        ? (current.mode==='customers'?'':reloadButton)+connectionActions : '';
       const form = current.loaded && (current.form || !current.connection)
         ? `<form id="juprowa-connect" method="post" autocomplete="off">
             <p>Verwende den Portalzugang des Betriebs, den du hier verknüpfen möchtest.</p>
@@ -271,28 +335,30 @@
               ${current.connection ? '<button type="button" data-sp="cancel">Abbrechen</button>' : ''}</p>
           </form>` : '';
       const worksheets = current.mode!=='customers'&&Array.isArray(current.worksheets) ? current.worksheets : null;
-      const list = worksheets
-        ? `<h3>Offene Arbeitsscheine (${worksheets.length})</h3>
-          ${worksheets.length ? `<label>Juprowa-Arbeitsschein suchen<input type="search" data-sp-filter value="${escape(current.sheetFilter||'')}" placeholder="Schein-, Projektnummer oder Kunde"></label>
-          <ul class="servicepad-worksheets">${worksheets.map(sheet => `<li data-sp-search="${escape([sheet.number,sheet.project,sheet.customer,sheet.location].filter(Boolean).join(' ').toLowerCase())}"><details>
-            <summary>${escape([sheet.number, sheet.project?'Projekt '+sheet.project:'', sheet.customer, sheet.date?.split('-').reverse().join('.')].filter(Boolean).join(' · '))}</summary>
-            ${sheet.location ? `<p>Einsatzort <strong>${escape(sheet.location)}</strong></p>` : ''}
-            ${sheet.technician ? `<p>Monteur <strong>${escape(sheet.technician)}</strong></p>` : ''}
-            ${sheet.description ? `<p style="white-space: pre-wrap">${escape(sheet.description)}</p>` : ''}
-            <button type="button" data-sp="worksheet-detail" data-sheet="${escape(sheet.id)}"${muted}>Details öffnen</button>
-            <button type="button" class="primary" data-sp="worksheet-detail" data-sheet="${escape(sheet.id)}" data-sp-open-editor${muted}>Arbeitsschein bearbeiten</button>
-          </details></li>`).join('')}</ul>` : '<p>Im verknüpften Mandanten sind keine offenen Arbeitsscheine verfügbar.</p>'}` : '';
+      const list = worksheets&&!current.form ? worksheetsView(current,worksheets,muted) : '';
+      const settings=inOrders&&current.connection&&!current.form ? `<details class="servicepad-connection-options"><summary>Verbindung verwalten</summary>
+        <div class="actions">${connectionActions}</div></details>` : '';
       panel.innerHTML = account + info
         + (current.outcome?`<p role="status">${escape(current.outcome)}</p>`:'')
         + (current.busy ? '<p role="status">ServicePad wird abgefragt …</p>' : '')
         + (current.loaded ? '' : `<button type="button" data-sp="refresh"${muted}>Verbindung prüfen</button>`)
-        + buttons + form + (current.mode==='orders'?'':customerReview(current, muted)) + sheetDetail(current.sheetDetail) + list;
+        + buttons + form + (inOrders?'':customerReview(current, muted)) + list + settings;
       filterSheets(panel,current.sheetFilter||'');
     }
 
     function filterSheets(panel,value) {
-      const query=value.toLowerCase().trim();
-      for(const item of panel.querySelectorAll('[data-sp-search]'))item.hidden=!item.dataset.spSearch.includes(query);
+      const terms=searchable(value).split(/\s+/).filter(Boolean);
+      const items=panel.querySelectorAll('[data-sp-search]');
+      let visible=0;
+      for(const item of items){
+        item.hidden=!terms.every(term=>item.dataset.spSearch.includes(term));
+        if(!item.hidden)visible++;
+      }
+      const count=panel.querySelector('[data-sp-count]');
+      if(count)count.textContent=terms.length?`${visible} von ${items.length} Arbeitsscheinen`:
+        `${items.length} ${items.length===1?'offener Arbeitsschein':'offene Arbeitsscheine'}`;
+      const empty=panel.querySelector('[data-sp-no-results]');
+      if(empty)empty.hidden=visible>0;
     }
 
     const call = (current, action, fields = {}) => api('/functions/v1/juprowa-servicepad', {
@@ -387,7 +453,7 @@
         paint(current);
         if (detail && current.sheetDetail && active === current && scope() === current.key) {
           if (openEditor) openSheetEditor(current);
-          else root.querySelector('#juprowa-worksheet-detail')?.focus();
+          else openSheetDetail(current);
         }
       }
     }
@@ -408,11 +474,12 @@
       if (!key || !section) {
         active = null;
         editDialog?.close();
+        previewDialog?.close();
         return;
       }
       const mode=section.dataset.juprowaMode;
       if(active?.mode!==mode)active=null;
-      if(!active)editDialog?.close();
+      if(!active){editDialog?.close();previewDialog?.close();}
       active ??= { key, business: businessId(), mode, expanded: false };
       const current = active;
       section.addEventListener('toggle', () => {
@@ -431,7 +498,14 @@
 
     root.addEventListener('change',event=>{
       const field=event.target, current=active;
-      if (!current || current.busy || scope()!==current.key || !field.matches('[data-juprowa-new],[data-juprowa-assignment]')) return;
+      if (!current || current.busy || scope()!==current.key) return;
+      if(field.matches('[data-sp-order]')){
+        current.sheetOrder=field.value;
+        paint(current);
+        root.querySelector('[data-sp-order]')?.focus({preventScroll:true});
+        return;
+      }
+      if (!field.matches('[data-juprowa-new],[data-juprowa-assignment]')) return;
       const confirmation=field.closest('#juprowa-servicepad').querySelector('[data-customer-confirm]');
       if (confirmation) confirmation.hidden=true;
       if (field.hasAttribute('data-juprowa-new')) {
@@ -452,8 +526,11 @@
         void run(current, current.connection ? 'list' : 'status');
       } else if (button.dataset.sp === 'disconnect') {
         if (window.confirm('ServicePad von diesem Geschäftskonto trennen?')) void run(current, 'disconnect');
-      } else if (button.dataset.sp==='worksheet-edit') {
-        openSheetEditor(current);
+      } else if (button.dataset.sp==='clear-search') {
+        const search=root.querySelector('[data-sp-filter]');
+        current.sheetFilter=search.value='';
+        filterSheets(button.closest('#juprowa-servicepad'),'');
+        search.focus();
       } else if (button.dataset.sp==='customers-select-all'||button.dataset.sp==='customers-select-none') {
         const panel=button.closest('#juprowa-servicepad'), all=button.dataset.sp==='customers-select-all';
         const checkboxes=[...panel.querySelectorAll('[data-juprowa-new]')];

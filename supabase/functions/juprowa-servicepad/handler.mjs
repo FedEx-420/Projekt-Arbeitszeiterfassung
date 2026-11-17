@@ -85,6 +85,20 @@ export function createServicepadHandler({ baseUrl, serviceKey, fetcher = fetch }
     return companyId;
   }
 
+  async function connectedBusiness(req) {
+    const token=req.headers.get('x-klarwerk-key');
+    if(!token||!/^\w{64}$/.test(token))throw new ServicepadError('auth',401,'Verbindungsfreigabe erforderlich.');
+    const digest=new Uint8Array(await crypto.subtle.digest('SHA-256',encoder.encode(token)));
+    const hash=[...digest].map(byte=>byte.toString(16).padStart(2,'0')).join('');
+    const response=await supabase('/rest/v1/rpc/klarwerk_dispatch_v1007',{
+      method:'POST',body:{p_hash:hash,p_op:'company',p_body:{}}
+    });
+    if(!response.ok)throw new ServicepadError('forbidden',403,'Betriebsverbindung nicht verfügbar.');
+    const scope=await response.json();
+    if(!uuid.test(scope?.company?.id))throw new ServicepadError('forbidden',403,'Betriebsverbindung nicht verfügbar.');
+    return scope.company.id;
+  }
+
   return async function servicepad(req) {
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers });
     if (req.method !== 'POST') return json({ error: 'Diese Aktion erfordert POST.' }, 405);
@@ -93,13 +107,15 @@ export function createServicepadHandler({ baseUrl, serviceKey, fetcher = fetch }
       let input;
       try { input = await req.json(); } catch { input = null; }
       if (!input || !['status', 'connect', 'list', 'disconnect', 'customers-preview', 'customers-import', 'worksheet-detail','worksheet-save','worksheet-close',
-        'worksheet-link','worksheet-transfer'].includes(input.action)) {
+        'worksheet-link','worksheet-transfer','customers-sync-klarwerk'].includes(input.action)) {
         return json({ error: 'Diese ServicePad-Aktion ist ungültig.' }, 400);
       }
-      const company = await activeBusiness(req, input.businessId);
+      const automated=input.action==='customers-sync-klarwerk';
+      const company = automated?await connectedBusiness(req):await activeBusiness(req, input.businessId);
       const table = 'juprowa_servicepad_connections';
       const filter = table + '?business_id=eq.' + company;
       const [connection] = await rest(filter + '&select=*');
+      if(automated&&!connection)return json({connected:false,next:null});
       if (input.action === 'status') return json({ connection: mapping(connection) });
       if (input.action === 'connect') {
         if ((input.revision || null) !== (connection?.revision ?? null)) throw changed();
@@ -126,7 +142,7 @@ export function createServicepadHandler({ baseUrl, serviceKey, fetcher = fetch }
         if (!saved) throw changed();
         return json({ connection: mapping(saved), worksheets });
       }
-      if (!connection || input.revision !== connection.revision) throw changed();
+      if (!connection || !automated&&input.revision !== connection.revision) throw changed();
       if (input.action === 'disconnect') {
         const [removed] = await rest(filter + '&revision=eq.' + connection.revision, { method: 'DELETE' });
         if (!removed) throw changed();
@@ -136,6 +152,18 @@ export function createServicepadHandler({ baseUrl, serviceKey, fetcher = fetch }
       const mandant = verified.mandants.find(entry => entry.id === connection.mandant_id);
       if (verified.customerId !== connection.portal_customer_id || !mandant) {
         throw new ServicepadError('portal_scope', 403, 'Der verknüpfte ServicePad-Mandant ist mit diesem Zugang nicht mehr verfügbar.');
+      }
+      if(automated){
+        const {customers,next}=await customerPage(fetcher,verified.auth,mandant.customerMandantId,input.cursor??'0');
+        const payload={p_business:company,p_revision:connection.revision,
+          p_customers:customers.map(row=>({...row,add_new:false}))};
+        const preview=await rest('rpc/juprowa_customer_batch',{method:'POST',body:{...payload,p_expected:null}});
+        if(preview.changed||typeof preview.fingerprint!=='string')throw changed();
+        const result=await rest('rpc/juprowa_customer_batch',{
+          method:'POST',body:{...payload,p_expected:preview.fingerprint}
+        });
+        if(result.changed)throw changed();
+        return json({connected:true,next,updated:Number(result.updated||result.enriched||0)});
       }
       const bindings='juprowa_work_order_links?business_id=eq.'+company+'&portal_customer_id=eq.'+
         encodeURIComponent(connection.portal_customer_id)+'&mandant_id=eq.'+encodeURIComponent(connection.mandant_id);
